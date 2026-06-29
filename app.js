@@ -1836,16 +1836,33 @@ function onBlocDrop(e) {
 }
 
 function switchEditionTab(tab) {
-  _editionTab=tab;
-  document.querySelectorAll('.edition-tab').forEach(t=>t.classList.remove('active'));
+  _editionTab = tab;
+  document.querySelectorAll('.edition-tab').forEach(t => t.classList.remove('active'));
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+  const mainLayout   = document.getElementById('edition-layout-main');
+  const mappingPanel = document.getElementById('edition-mapping-panel');
+  const newBtn       = document.getElementById('edition-new-btn');
+  const tabsRow      = document.getElementById('edition-tabs-row');
+
+  if (tab === 'mapping') {
+    if (mainLayout)   mainLayout.style.display  = 'none';
+    if (mappingPanel) mappingPanel.style.display = '';
+    if (newBtn)       newBtn.style.display       = 'none';
+    initMappingView();
+    return;
+  }
+
+  if (mainLayout)   mainLayout.style.display  = '';
+  if (mappingPanel) mappingPanel.style.display = 'none';
+  if (newBtn)       newBtn.style.display       = '';
+
   resetEditionForm();
   renderEditionList();
-  const newBtn=document.getElementById('edition-new-btn');
-  newBtn.textContent=tab==='blocs'?'+ Nouveau bloc':'+ Nouvelle extension';
-  document.getElementById('edit-form-hint').textContent=tab==='blocs'
-    ?'Blocs intégrés : surcharge nom/sigle/couleur. Blocs custom : création libre.'
-    :'Extensions intégrées : surcharge. Extensions custom : création libre.';
+  newBtn.textContent = tab === 'blocs' ? '+ Nouveau bloc' : '+ Nouvelle extension';
+  document.getElementById('edit-form-hint').textContent = tab === 'blocs'
+    ? 'Blocs intégrés : surcharge nom/sigle/couleur. Blocs custom : création libre.'
+    : 'Extensions intégrées : surcharge. Extensions custom : création libre.';
 }
 
 function editBloc(blocId) {
@@ -2176,6 +2193,355 @@ function initSettingsView(){
   if(inp)inp.value=_D.settings?.ui_scale||1;
   if(_D.settings?.ui_scale) applyUiScale(_D.settings.ui_scale);
 }
+
+// ── Mapping TCG ────────────────────────────────────────────────────────────
+const SB_URL = 'https://kfyphcestbcgtkzurvas.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmeXBoY2VzdGJjZ3RrenVydmFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NTAwMzMsImV4cCI6MjA5ODIyNjAzM30.8sxe-_-uZdG4G0CGpUKViBMHE78RuReVaP_SsyLCaa8';
+let _mapping = { sets:[], mappings:{}, query:'', filter:'all', initialized:false };
+
+async function initMappingView() {
+  if (_mapping.initialized) { renderMappingList(); return; }
+  const el = document.getElementById('mapping-list');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2);font-size:.82rem">Chargement…</div>';
+  try {
+    let allRows = [], offset = 0, pageSize = 1000;
+    while (true) {
+      const res = await fetch(
+        `${SB_URL}/rest/v1/cards?select=set_id,set_name,set_logo&order=set_name.asc`,
+        { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Range-Unit': 'items', 'Range': `${offset}-${offset+pageSize-1}` } }
+      );
+      const rows = await res.json();
+      if (!rows.length) break;
+      allRows = allRows.concat(rows);
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+    }
+    const seen = new Set();
+    _mapping.sets = allRows
+      .filter(r => { if (seen.has(r.set_id)) return false; seen.add(r.set_id); return true; })
+      .map(r => ({ id: r.set_id, name: r.set_name, logo: r.set_logo }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    const mRes = await fetch(`${SB_URL}/rest/v1/set_mapping?select=ptcg_ext_id,tcgdex_set_id,tcgdex_set_name`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    const mRows = await mRes.json();
+    _mapping.mappings = {};
+    mRows.forEach(r => { _mapping.mappings[r.ptcg_ext_id] = { set_id: r.tcgdex_set_id, set_name: r.tcgdex_set_name }; });
+    _mapping.initialized = true;
+    renderMappingList();
+  } catch(e) {
+    if (el) el.innerHTML = `<p style="color:var(--accent2);font-size:.82rem;padding:16px">Erreur : ${e.message}</p>`;
+  }
+}
+
+function renderMappingList() {
+  const el = document.getElementById('mapping-list');
+  if (!el) return;
+  const q = (_mapping.query||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  let totalFiltered = 0, html = '';
+  getBlocs().forEach(bloc => {
+    const builtInExts = (bloc.extensions||[]).filter(e => {
+      const ov = (_D.ext_overrides||{})[e.id]||{};
+      return !ov._hidden && (!ov.bloc_id_override || ov.bloc_id_override === bloc.id);
+    }).map(e => { const ov=(_D.ext_overrides||{})[e.id]||{}; return {...e,...ov,_builtin:true}; });
+    const movedHere = getBlocs().filter(b=>b._builtin&&b.id!==bloc.id).flatMap(b=>
+      (b.extensions||[]).filter(e=>{const ov=(_D.ext_overrides||{})[e.id]||{};return !ov._hidden&&ov.bloc_id_override===bloc.id;})
+        .map(e=>{const ov=(_D.ext_overrides||{})[e.id]||{};return{...e,...ov,_builtin:true};})
+    );
+    const customExts = (_D.custom_exts||[]).filter(e=>e.bloc_id===bloc.id);
+    const allExts = sortExts([...builtInExts,...movedHere,...customExts]);
+    if (!allExts.length) return;
+    const rows = allExts.map(e => {
+      const mapped   = _mapping.mappings[e.id];
+      if (_mapping.filter === 'mapped'   && !mapped) return '';
+      if (_mapping.filter === 'unmapped' &&  mapped) return '';
+      const name     = e.nom || e.name || e.id;
+      const code     = e.code || '';
+      const logoSrc  = e.logo  || bloc.logo  || '';
+      const sigleSrc = e.sigle || bloc.sigle || '';
+      if (q) {
+        const hay = (name+code).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        if (!hay.includes(q)) return '';
+      }
+      totalFiltered++;
+      const safeId = e.id.replace(/'/g,"\\'");
+      return `<div class="mrow" id="mrow-${e.id}">
+        <div class="mrow-ext">
+          ${logoSrc  ? `<img src="${logoSrc}"  alt="" class="mrow-logo"      onerror="this.style.display='none'">` : ''}
+          ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="mrow-sigle-img" onerror="this.style.display='none'">` : `<div class="mrow-sigle-ph">${code.slice(0,5)||'?'}</div>`}
+          <div class="mrow-names">
+            <span class="mrow-name">${name}</span>
+            ${code ? `<span class="mrow-code">${code}</span>` : ''}
+          </div>
+        </div>
+        <div class="mrow-set"><div class="mrow-set-wrap">
+          <input type="text" class="mrow-input" id="mset-${e.id}"
+            placeholder="Chercher un set TCGdex…"
+            value="${mapped ? mapped.set_name+' ('+mapped.set_id+')' : ''}"
+            oninput="showMappingDropdown('${safeId}',this.value)"
+            onfocus="showMappingDropdown('${safeId}',this.value)"
+            autocomplete="off">
+          <div class="mrow-dropdown" id="mdrop-${e.id}" style="display:none"></div>
+        </div></div>
+        <div class="mrow-status" id="mstatus-${e.id}">
+          ${mapped
+            ? `<span class="mbadge mbadge-ok">✓</span><button class="mbadge-clear" onclick="clearMapping('${safeId}')" title="Supprimer">×</button>`
+            : `<span class="mbadge mbadge-no">—</span>`}
+        </div>
+      </div>`;
+    }).filter(Boolean).join('');
+    if (!rows) return;
+    const uid    = 'mbloc_' + bloc.id;
+    const isOpen = !sessionStorage.getItem('mbloc_closed_' + bloc.id);
+    html += `<div class="mbloc">
+      <div class="mbloc-header collapsible" onclick="toggleMappingBloc('${bloc.id}')">
+        ${bloc.logo  ? `<img src="${bloc.logo}"  alt="" class="mbloc-logo"  onerror="this.style.display='none'">` : ''}
+        ${bloc.sigle ? `<img src="${bloc.sigle}" alt="" class="mbloc-sigle" onerror="this.style.display='none'">` : ''}
+        <span class="mbloc-name">${bloc.nom||bloc.id}</span>
+        <span class="mbloc-count">${allExts.length} ext.</span>
+        <div class="cer-chevron ${isOpen?'open':''}" id="mchev-${bloc.id}" style="margin-left:auto">▼</div>
+      </div>
+      <div id="${uid}" style="${isOpen?'':'display:none'}">${rows}</div>
+    </div>`;
+  });
+  const counter = document.getElementById('mapping-counter');
+  if (counter) counter.textContent = `${totalFiltered} extension${totalFiltered>1?'s':''}`;
+  el.innerHTML = html || `<p style="color:var(--text2);font-size:.82rem;padding:16px 0">Aucune extension.</p>`;
+}
+
+function toggleMappingBloc(blocId) {
+  const panel = document.getElementById('mbloc_' + blocId);
+  const chev  = document.getElementById('mchev-' + blocId);
+  if (!panel) return;
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : '';
+  if (chev) chev.classList.toggle('open', !open);
+  if (open) sessionStorage.setItem('mbloc_closed_' + blocId, '1');
+  else sessionStorage.removeItem('mbloc_closed_' + blocId);
+}
+
+function showMappingDropdown(extId, query) {
+  const drop = document.getElementById(`mdrop-${extId}`);
+  if (!drop) return;
+  const q = (query||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const matches = q
+    ? _mapping.sets.filter(s =>
+        s.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q) ||
+        s.id.toLowerCase().includes(q)).slice(0,30)
+    : _mapping.sets.slice(0,30);
+  if (!matches.length) { drop.style.display='none'; return; }
+  drop.innerHTML = matches.map(s => {
+    const sn = s.name.replace(/'/g,"\\'");
+    return `<div class="mrow-drop-item" onmousedown="selectMapping('${extId}','${s.id}','${sn}')">
+      ${s.logo ? `<img src="${s.logo}" alt="" style="height:14px;object-fit:contain;margin-right:6px" onerror="this.style.display='none'">` : ''}
+      <span>${s.name}</span><span style="color:var(--text3);font-size:.7rem;margin-left:6px">${s.id}</span>
+    </div>`;
+  }).join('');
+  drop.style.display = 'block';
+}
+
+async function selectMapping(extId, setId, setName) {
+  const drop = document.getElementById(`mdrop-${extId}`);
+  const inp  = document.getElementById(`mset-${extId}`);
+  if (drop) drop.style.display = 'none';
+  if (inp)  inp.value = `${setName} (${setId})`;
+  const ext = getAllExtensions().find(e => e.id === extId);
+  if (!ext) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/set_mapping`, {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({ tcgdex_set_id: setId, tcgdex_set_name: setName, ptcg_ext_id: extId, ptcg_ext_name: ext.nom||ext.name||extId, ptcg_sigle: ext.sigle||'' })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    _mapping.mappings[extId] = { set_id: setId, set_name: setName };
+    const status = document.getElementById(`mstatus-${extId}`);
+    if (status) status.innerHTML = `<span class="mbadge mbadge-ok">✓</span><button class="mbadge-clear" onclick="clearMapping('${extId.replace(/'/g,"\\'")}')">×</button>`;
+    toast('Mapping sauvegardé.', 'success');
+  } catch(e) { toast('Erreur : ' + e.message, 'error'); }
+}
+
+async function clearMapping(extId) {
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/set_mapping?ptcg_ext_id=eq.${encodeURIComponent(extId)}`,
+      { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    delete _mapping.mappings[extId];
+    const inp = document.getElementById(`mset-${extId}`);
+    const status = document.getElementById(`mstatus-${extId}`);
+    if (inp) inp.value = '';
+    if (status) status.innerHTML = `<span class="mbadge mbadge-no">—</span>`;
+    toast('Mapping supprimé.', 'success');
+  } catch(e) { toast('Erreur : ' + e.message, 'error'); }
+}
+
+function filterMappingList(q) { _mapping.query = q; renderMappingList(); }
+function setMappingFilter(filter, btn) {
+  _mapping.filter = filter;
+  document.querySelectorAll('.mapping-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMappingList();
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.mrow-set-wrap'))
+    document.querySelectorAll('.mrow-dropdown').forEach(d => d.style.display = 'none');
+  if (!e.target.closest('#pkdx-ext-panel') && !e.target.closest('#pkdx-ext-toggle'))
+    _closePkdxExtPanel();
+});
+
+// ── Pokédex extension filter ───────────────────────────────────────────────
+let _pkdxExtFilter = null;
+
+function _closePkdxExtPanel() {
+  const panel = document.getElementById('pkdx-ext-panel');
+  if (panel) panel.style.display = 'none';
+  const btn = document.getElementById('pkdx-ext-toggle');
+  if (btn) btn.classList.remove('active');
+}
+
+async function togglePokedexExtFilter(btn) {
+  const panel = document.getElementById('pkdx-ext-panel');
+  const open  = panel && panel.style.display !== 'none';
+  if (open) { _closePkdxExtPanel(); return; }
+  if (!_mapping.initialized) await initMappingView();
+  btn.classList.add('active');
+  _buildExtFilterList();
+  if (panel) panel.style.display = '';
+}
+
+function _buildExtFilterList() {
+  const el = document.getElementById('pkdx-ext-list');
+  if (!el) return;
+  const exts = sortExts(getAllExtensions().filter(e => _mapping.mappings[e.id]));
+  if (!exts.length) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:.8rem;padding:8px 12px">Aucune extension mappée.</div>';
+    return;
+  }
+  const allActive = _pkdxExtFilter === null ? 'active' : '';
+  let html = `<div class="pkdx-ext-filter-item ${allActive}" onclick="setPokedexExtFilter(null,null,null,this)">Toutes les extensions</div>`;
+  html += exts.map(e => {
+    const setId  = _mapping.mappings[e.id].set_id;
+    const name   = e.nom || e.name || e.id;
+    const active = (_pkdxExtFilter && _pkdxExtFilter.setId === setId) ? 'active' : '';
+    return `<div class="pkdx-ext-filter-item ${active}" onclick="setPokedexExtFilter('${setId}','${e.id.replace(/'/g,"\\'")}','${name.replace(/'/g,"\\'")}',this)">${name}</div>`;
+  }).join('');
+  el.innerHTML = html;
+}
+
+async function setPokedexExtFilter(setId, extId, name, el) {
+  document.querySelectorAll('.pkdx-ext-filter-item').forEach(i => i.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const labelEl = document.getElementById('pkdx-ext-label');
+
+  if (!setId) {
+    _pkdxExtFilter = null;
+    _pkdx.extFilterNames = null;
+    if (labelEl) labelEl.textContent = 'Extension';
+    _closePkdxExtPanel();
+    _applyPokedexFilter();
+    return;
+  }
+
+  _pkdxExtFilter = { setId, extId, name };
+  if (labelEl) labelEl.textContent = name;
+
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/cards?set_id=eq.${encodeURIComponent(setId)}&select=name`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Range': '0-999' } });
+    const cards = await res.json();
+    // Parse card names to extract base name + form type
+    _pkdx.extFilterNames = _parseTcgCardNames(cards.map(c => c.name || ''));
+  } catch(e) { _pkdx.extFilterNames = null; }
+
+  _closePkdxExtPanel();
+
+  // Force load forms and all frNames
+  const prevShowForms = _pkdx.showForms;
+  _pkdx.showForms = true;
+  if (!_pkdx.formsLoaded) await _loadFormsList();
+  await _hydrateAllFrNames();
+  _pkdx.showForms = prevShowForms;
+  const formsBtn = document.getElementById('pkdx-forms-toggle');
+  if (formsBtn) formsBtn.classList.toggle('active', _pkdx.showForms);
+
+  _applyPokedexFilter();
+}
+
+// Parse TCGdex French card names → Set of "baseName" or "baseName|formType"
+function _parseTcgCardNames(cardNames) {
+  const nn = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+
+  const formParticles = [
+    { re: /\bde hisui\b/i,   type: 'hisui'  },
+    { re: /\bd['']hisui\b/i, type: 'hisui'  },
+    { re: /\bde galar\b/i,   type: 'galar'  },
+    { re: /\bd['']alola\b/i, type: 'alola'  },
+    { re: /\bde alola\b/i,   type: 'alola'  },
+    { re: /\bde paldea\b/i,  type: 'paldea' },
+    { re: /\bd['']paldea\b/i,type: 'paldea' },
+    { re: /^mega[- ]/i,      type: 'mega'   },
+    { re: /\bmega[- ]/i,     type: 'mega'   },
+    { re: /\bgigamax\b/i,    type: 'gmax'   },
+    { re: /\bprimal\b/i,     type: 'primal' },
+  ];
+
+  const suffixRe = /\s*[-–]?\s*(ex|v|vmax|vstar|gx|lv\.?\s*x|radieux|obscur|brillant|delta|turbo|break|prime|legend|origine|couronné)\s*$/i;
+
+  const entries = new Set();
+
+  cardNames.forEach(raw => {
+    let cardName = raw.trim();
+    let formType = null;
+    let baseName = cardName;
+
+    for (const fp of formParticles) {
+      if (fp.re.test(cardName)) {
+        formType = fp.type;
+        baseName = cardName
+          .replace(/\bde hisui\b/gi, '').replace(/\bd['']hisui\b/gi, '')
+          .replace(/\bde galar\b/gi, '').replace(/\bd['']alola\b/gi, '').replace(/\bde alola\b/gi, '')
+          .replace(/\bde paldea\b/gi, '').replace(/\bd['']paldea\b/gi, '')
+          .replace(/^mega[- ]/gi, '').replace(/\bmega[- ]/gi, '')
+          .replace(/\bgigamax\b/gi, '').replace(/\bprimal\b/gi, '')
+          .trim();
+        break;
+      }
+    }
+
+    const cleanBase = nn(baseName.replace(suffixRe, '').replace(/-/g, ' '));
+    if (!cleanBase) return;
+
+    if (formType) {
+      entries.add(cleanBase + '|' + formType);
+      // Also add base name so the base Pokémon appears alongside its form
+      entries.add(cleanBase);
+    } else {
+      entries.add(cleanBase);
+    }
+  });
+
+  return entries;
+}
+
+async function _hydrateAllFrNames() {
+  const needed = _pkdx.all.filter(p => !p.isForm && !p.frName);
+  if (!needed.length) return;
+  const subtitle = document.getElementById('pokedex-subtitle');
+  const BATCH = 20;
+  for (let i = 0; i < needed.length; i += BATCH) {
+    await Promise.allSettled(needed.slice(i, i+BATCH).map(async p => {
+      try {
+        const poke = await _fetchPokemon(p.id);
+        const spec = await _fetchSpecies(poke.species.url);
+        if (spec) { const fr = spec.names?.find(n => n.language.name === 'fr'); if (fr) p.frName = fr.name; }
+      } catch(_) {}
+    }));
+    if (subtitle) subtitle.textContent = `⏳ Chargement : ${Math.min(i+BATCH, needed.length)} / ${needed.length}`;
+  }
+  if (subtitle) subtitle.textContent = `${_pkdx.all.filter(p=>!p.isForm).length} Pokémon — données via PokéAPI`;
+}
+
+
 function saveDisplayMode(){
   const sel=document.getElementById('settings-display-mode');
   if(!sel)return;
@@ -2315,19 +2681,20 @@ function _detectFormType(pokeName, baseName) {
 
 // ── State ──────────────────────────────────────────────────────────────────
 let _pkdx = {
-  all:          [],   // [{id, name, frName}] + formes {isForm, baseId, formMeta…}
-  filtered:     [],
-  frNames:      {},
-  specCache:    {},
-  pokeCache:    {},
-  page:         0,
-  pageSize:     48,
-  gen:          0,
-  query:        '',
-  showForms:    false,
-  formsLoaded:  false,
-  loading:      false,
-  initialized:  false,
+  all:            [],
+  filtered:       [],
+  frNames:        {},
+  specCache:      {},
+  pokeCache:      {},
+  page:           0,
+  pageSize:       45,
+  gen:            0,
+  query:          '',
+  showForms:      false,
+  formsLoaded:    false,
+  extFilterNames: null,
+  loading:        false,
+  initialized:    false,
 };
 
 function _pkdxGenForId(id) {
@@ -2438,7 +2805,10 @@ function _applyPokedexFilter() {
       _normalizeStr(p.name).includes(_pkdx.query) ||
       _normalizeStr(p.frName || '').includes(_pkdx.query) ||
       String(baseId).startsWith(_pkdx.query);
-    return genMatch && qMatch;
+    const extMatch = !_pkdxExtFilter || !_pkdx.extFilterNames
+      ? true
+      : _matchPkdxExtEntry(p);
+    return genMatch && qMatch && extMatch;
   });
   renderPokedexPage(true);
 }
@@ -2452,6 +2822,29 @@ function _buildPoolWithForms() {
     forms.filter(f => f.baseId === base.id).forEach(f => result.push(f));
   });
   return result;
+}
+
+// Match a Pokémon entry against extFilterNames (Set of "baseName" or "baseName|formType")
+function _matchPkdxExtEntry(p) {
+  const entries = _pkdx.extFilterNames;
+  if (!entries) return true;
+  const nn = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/-/g,' ').trim();
+
+  if (p.isForm) {
+    const formType = p.formType || _detectFormType(p.name, p.name.split('-')[0]) || null;
+    const baseFr = nn(p.frName || '').split(' ')[0];
+    const baseEn = nn(p.name  || '').split(' ')[0];
+    if (!formType) return false;
+    if (entries.has(baseFr + '|' + formType)) return true;
+    if (entries.has(baseEn + '|' + formType)) return true;
+    return false;
+  } else {
+    const nameFr = nn(p.frName || '');
+    const nameEn = nn(p.name  || '').split(' ')[0];
+    if (entries.has(nameFr)) return true;
+    if (entries.has(nameEn)) return true;
+    return false;
+  }
 }
 
 function togglePokedexForms(btn) {
@@ -2537,7 +2930,14 @@ async function renderPokedexPage(reset = false) {
     card.className = 'pkdx-card pkdx-loading-card' + (p.isForm ? ' pkdx-card-form' : '');
     card.id        = `pkdx-card-${cardKey}`;
     card.innerHTML = `<div class="pkdx-placeholder"></div>`;
-    card.onclick   = () => p.isForm ? openPokedexFormModal(p.name, p.frName || p.name) : openPokedexModal(p.id);
+    card.onclick   = () => {
+      if (p.isForm) {
+        const baseE = _pkdx.all.find(e => !e.isForm && e.id === p.baseId);
+        openPokedexFormModal(p.name, baseE?.frName || '');
+      } else {
+        openPokedexModal(p.id);
+      }
+    };
     frag.appendChild(card);
   });
 
@@ -2549,6 +2949,28 @@ async function renderPokedexPage(reset = false) {
 
   const hasMore = _pkdx.page * _pkdx.pageSize < _pkdx.filtered.length;
   document.getElementById('pokedex-load-more').style.display = hasMore ? 'block' : 'none';
+}
+
+
+// Build proper French name for a Pokémon form
+function _buildFormFrName(baseFr, formType, pokeName) {
+  if (!formType || !baseFr) return baseFr || '';
+  const en = (pokeName || '').toLowerCase();
+  switch (formType) {
+    case 'alola':   return baseFr + " d’Alola";
+    case 'galar':   return baseFr + ' de Galar';
+    case 'hisui':   return baseFr + ' de Hisui';
+    case 'paldea':  return baseFr + ' de Paldea';
+    case 'gmax':    return 'Gigamax ' + baseFr;
+    case 'primal':  return 'Primo-' + baseFr;
+    case 'mega-x':  return 'Méga-' + baseFr + ' X';
+    case 'mega-y':  return 'Méga-' + baseFr + ' Y';
+    case 'mega':
+      if (en.includes('-mega-x')) return 'Méga-' + baseFr + ' X';
+      if (en.includes('-mega-y')) return 'Méga-' + baseFr + ' Y';
+      return 'Méga-' + baseFr;
+    default: return baseFr;
+  }
 }
 
 async function _hydrateCard(p) {
@@ -2568,9 +2990,16 @@ async function _hydrateCard(p) {
       const spec = await _fetchSpecies(poke.species.url);
       if (spec) {
         if (isForm) {
-          // Use base Pokémon FR name if available
           const baseEntry = _pkdx.all.find(e => e.id === p.baseId && !e.isForm);
-          if (baseEntry?.frName) frName = baseEntry.frName;
+          let baseFr = baseEntry?.frName || '';
+          if (!baseFr) {
+            // Base not hydrated yet — fetch its species
+            try {
+              const fr2 = spec.names?.find(n => n.language.name === 'fr');
+              if (fr2) { baseFr = fr2.name; if (baseEntry) baseEntry.frName = fr2.name; }
+            } catch(_) {}
+          }
+          frName = _buildFormFrName(baseFr, p.formType, p.name);
           p.frName = frName;
         } else {
           const fr = spec.names?.find(n => n.language.name === 'fr');
@@ -2765,7 +3194,7 @@ async function openPokedexModal(id) {
         ${formsHtml}
         <div class="pkdx-modal-section pkdx-modal-full pkdx-tcg-section">
           <h4>Cartes TCG <span id="pkdx-tcg-count" style="font-size:.72rem;font-weight:400;color:var(--text2)"></span></h4>
-          <div id="pkdx-tcg-grid" class="pkdx-tcg-grid">
+          <div id="pkdx-tcg-grid" class="pkdx-tcg-groups">
             <div style="color:var(--text2);font-size:.82rem;padding:4px 0">Chargement…</div>
           </div>
         </div>
@@ -2777,30 +3206,157 @@ async function openPokedexModal(id) {
   }
 }
 
-async function _loadTcgCardsInModal(frName) {
+async function _loadTcgCardsInModal(frName, formType) {
   const grid  = document.getElementById('pkdx-tcg-grid');
   const count = document.getElementById('pkdx-tcg-count');
   if (!grid) return;
+
   const sbUrl = 'https://kfyphcestbcgtkzurvas.supabase.co';
   const sbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmeXBoY2VzdGJjZ3RrenVydmFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NTAwMzMsImV4cCI6MjA5ODIyNjAzM30.8sxe-_-uZdG4G0CGpUKViBMHE78RuReVaP_SsyLCaa8';
+
+  const nn = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  // Form card filters (on normalized card names)
+  const formFilters = {
+    alola:   [/\bd.alola\b/, /\bde alola\b/],
+    galar:   [/\bde galar\b/],
+    hisui:   [/\bde hisui\b/, /\bd.hisui\b/],
+    paldea:  [/\bde paldea\b/],
+    // mega-x/y: must have " x" or " y" suffix AND mega prefix, but NOT the other letter
+    'mega-x': [c => /^m.ga[- ]/.test(nn(c.name)) && /\bx\b/.test(nn(c.name)) && !/\by\b/.test(nn(c.name))],
+    'mega-y': [c => /^m.ga[- ]/.test(nn(c.name)) && /\by\b/.test(nn(c.name)) && !/\bx\b/.test(nn(c.name))],
+    mega:    [/^m.ga[- ]/, /\bm.ga[- ]/],
+    gmax:    [/\bgigamax\b/],
+    primal:  [/\bprimal\b/],
+  };
+  // "M Pokémon", "M-Pokémon" short formats
+  const megaShortPat = /^m[-\s][a-z]/;
+  const allFormPats = [/\bd.alola\b/, /\bde alola\b/, /\bde galar\b/, /\bde hisui\b/, /\bd.hisui\b/, /\bde paldea\b/, /^m.ga[- ]/, /\bm.ga[- ]/, /\bgigamax\b/, /\bprimal\b/, /^m[-\s][a-z]/];
+
   try {
-    const url = `${sbUrl}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_name.asc,number.asc&limit=500`;
+    const url = `${sbUrl}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
     const res = await fetch(url, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const cards = await res.json();
+    let cards = await res.json();
+
+    if (formType && formFilters[formType]) {
+      const filters = formFilters[formType];
+      cards = cards.filter(card => {
+        const n = nn(card.name);
+        return filters.some(f => typeof f === 'function' ? f(card) : f.test(n));
+      });
+      // Also include "M Pokémon" and "M-Pokémon" short formats for mega forms
+      if (formType === 'mega' || formType === 'mega-x' || formType === 'mega-y') {
+        const [extraSpace, extraDash] = await Promise.all([
+          (async () => { try { const r = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.M ${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=200`, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }); return r.ok ? r.json() : []; } catch(_) { return []; } })(),
+          (async () => { try { const r = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.M-${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=200`, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }); return r.ok ? r.json() : []; } catch(_) { return []; } })(),
+        ]);
+        const extra = [...extraSpace, ...extraDash].filter(card => {
+          const n = nn(card.name);
+          if (!megaShortPat.test(n)) return false;
+          if (formType === 'mega-x') return /\bx\b/.test(n) && !/\by\b/.test(n);
+          if (formType === 'mega-y') return /\by\b/.test(n) && !/\bx\b/.test(n);
+          return true;
+        });
+        const seen = new Set(cards.map(c => c.id));
+        extra.forEach(c => { if (!seen.has(c.id)) cards.push(c); });
+      }
+    } else if (!formType) {
+      // Base Pokémon: exclude all form cards
+      cards = cards.filter(c => {
+        const n = nn(c.name);
+        return !allFormPats.some(p => p.test(n));
+      });
+    }
     if (!document.getElementById('pkdx-tcg-grid')) return;
-    if (!cards.length) { grid.innerHTML = `<p style="color:var(--text3);font-size:.82rem">Aucune carte trouvée.</p>`; return; }
-    if (count) count.textContent = `— ${cards.length} carte${cards.length > 1 ? 's' : ''}`;
-    grid.innerHTML = cards.map(c => `
-      <div class="pkdx-tcg-card" title="${c.set_name || ''} — ${c.number || ''} — ${c.rarity || ''}">
-        ${c.image_url ? `<img src="${c.image_url}" alt="${c.name}" loading="lazy">` : `<div class="pkdx-tcg-placeholder">${c.name}</div>`}
-        <div class="pkdx-tcg-card-info">
-          <span class="pkdx-tcg-num">${c.number || ''}</span>
-          <span class="pkdx-tcg-set">${c.set_name || ''}</span>
-        </div>
-      </div>`).join('');
+    if (!cards.length) { grid.innerHTML = '<p style="color:var(--text3);font-size:.82rem">Aucune carte trouvée.</p>'; return; }
+    if (count) count.textContent = '— ' + cards.length + ' carte' + (cards.length > 1 ? 's' : '');
+
+    // Ensure mapping loaded
+    if (!_mapping.initialized) await initMappingView();
+
+    // Build ordered list of PTCG extensions for sorting
+    const allExts = getAllExtensions();
+    // Assign a sort index to each extension based on PTCG bloc+code order
+    const extOrder = {};
+    let idx = 0;
+    getBlocs().forEach(bloc => {
+      const builtIn = (bloc.extensions||[]).filter(e => {
+        const ov = (_D.ext_overrides||{})[e.id]||{};
+        return !ov._hidden && (!ov.bloc_id_override || ov.bloc_id_override === bloc.id);
+      }).map(e => { const ov=(_D.ext_overrides||{})[e.id]||{}; return {...e,...ov}; });
+      const moved = getBlocs().filter(b=>b._builtin&&b.id!==bloc.id).flatMap(b=>
+        (b.extensions||[]).filter(e=>{const ov=(_D.ext_overrides||{})[e.id]||{};return !ov._hidden&&ov.bloc_id_override===bloc.id;})
+          .map(e=>{const ov=(_D.ext_overrides||{})[e.id]||{};return{...e,...ov};})
+      );
+      const custom = (_D.custom_exts||[]).filter(e=>e.bloc_id===bloc.id);
+      sortExts([...builtIn,...moved,...custom]).forEach(e => { extOrder[e.id] = idx++; });
+    });
+
+    // Reverse mapping: tcgdex set_id → ptcg ext
+    const setIdToExt = {};
+    Object.entries(_mapping.mappings).forEach(([extId, m]) => {
+      const ext = allExts.find(e => e.id === extId);
+      if (ext) setIdToExt[m.set_id] = ext;
+    });
+
+    // Group by set_id
+    const groupMap = new Map();
+    cards.forEach(c => {
+      const key = c.set_id || '?';
+      if (!groupMap.has(key)) groupMap.set(key, { set_id: c.set_id, set_name: c.set_name, cards: [] });
+      groupMap.get(key).cards.push(c);
+    });
+
+    // Sort groups by PTCG bloc+code order
+    const groups = Array.from(groupMap.values()).sort((a, b) => {
+      const ea = setIdToExt[a.set_id];
+      const eb = setIdToExt[b.set_id];
+      if (!ea && !eb) return (a.set_name||'').localeCompare(b.set_name||'');
+      if (!ea) return 1;
+      if (!eb) return -1;
+      const oa = extOrder[ea.id] !== undefined ? extOrder[ea.id] : 9999;
+      const ob = extOrder[eb.id] !== undefined ? extOrder[eb.id] : 9999;
+      return oa - ob;
+    });
+
+    // Render: one full-width block per extension
+    let html = '';
+    groups.forEach(group => {
+      const ext      = setIdToExt[group.set_id];
+      const logoSrc  = ext ? (ext.logo  || '') : '';
+      const sigleSrc = ext ? (ext.sigle || '') : '';
+      const extName  = ext ? (ext.nom || ext.name || group.set_name) : (group.set_name || group.set_id || '?');
+      const extCode  = ext ? (ext.code || '') : '';
+
+      html += '<div class="pkdx-tcg-ext-group">'
+        + '<div class="pkdx-tcg-ext-header">'
+        + (logoSrc  ? '<img src="' + logoSrc  + '" alt="" class="pkdx-tcg-ext-logo"  onerror="this.style.display=\'none\'">' : '')
+        + (sigleSrc ? '<img src="' + sigleSrc + '" alt="" class="pkdx-tcg-ext-sigle" onerror="this.style.display=\'none\'">' : '')
+        + '<span class="pkdx-tcg-ext-name">' + extName + '</span>'
+        + (extCode  ? '<span class="pkdx-tcg-ext-code">' + extCode + '</span>' : '')
+        + '<span class="pkdx-tcg-ext-badge">' + group.cards.length + '</span>'
+        + '</div>'
+        + '<div class="pkdx-tcg-grid">';
+
+      group.cards.forEach(c => {
+        html += '<div class="pkdx-tcg-card" title="' + (c.set_name||'') + ' — ' + (c.number||'') + ' — ' + (c.rarity||'') + '">';
+        if (c.image_url) {
+          html += '<img src="' + c.image_url + '" alt="' + c.name + '" loading="lazy">';
+        } else {
+          html += '<div class="pkdx-tcg-placeholder">' + c.name + '</div>';
+        }
+        html += '<div class="pkdx-tcg-card-info">'
+          + '<span class="pkdx-tcg-num">' + (c.number||'') + '</span>'
+          + '<span class="pkdx-tcg-set">' + (c.rarity||'') + '</span>'
+          + '</div></div>';
+      });
+
+      html += '</div></div>';
+    });
+
+    grid.innerHTML = html;
   } catch(e) {
-    if (grid) grid.innerHTML = `<p style="color:var(--accent2);font-size:.82rem">Erreur : ${e.message}</p>`;
+    if (grid) grid.innerHTML = '<p style="color:var(--accent2);font-size:.82rem">Erreur : ' + e.message + '</p>';
   }
 }
 
@@ -2810,6 +3366,7 @@ async function openPokedexFormModal(pokeName, baseFrName) {
   const inner = document.getElementById('pkdx-modal-content');
   inner.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)">Chargement de la forme…</div>';
   modal.classList.add('open');
+
   try {
     const poke    = await _fetchPokemon(pokeName);
     const sprite  = poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '';
@@ -2818,8 +3375,15 @@ async function openPokedexFormModal(pokeName, baseFrName) {
 
     const formType = _detectFormType(pokeName, poke.species.name);
     const formMeta = formType ? FORM_LABELS[formType] : null;
-    let formLabel  = pokeName.replace(poke.species.name + '-', '').replace(/-/g,' ');
-    formLabel      = formMeta ? formMeta.fr : _capitalize(formLabel);
+    // Ensure baseFrName is populated
+    if (!baseFrName) {
+      try {
+        const spec2 = await _fetchSpecies(poke.species.url);
+        const fr2 = spec2?.names?.find(n => n.language.name === 'fr');
+        if (fr2) baseFrName = fr2.name;
+      } catch(_) {}
+    }
+    const fullFrName = _buildFormFrName(baseFrName, formType, pokeName);
 
     const abilitiesHtml = await Promise.all(poke.abilities.map(async a => {
       const frAbility = await _fetchAbilityFr(a.ability.url);
@@ -2846,13 +3410,13 @@ async function openPokedexFormModal(pokeName, baseFrName) {
     inner.innerHTML = `
       <div class="pkdx-modal-hero" style="--pkdx-color:${formMeta?.color || color}">
         <div class="pkdx-modal-hero-bg"></div>
-        ${sprite ? `<img src="${sprite}" alt="${formLabel}" class="pkdx-modal-sprite">` : ''}
+        ${sprite ? `<img src="${sprite}" alt="${fullFrName}" class="pkdx-modal-sprite">` : ''}
         <div class="pkdx-modal-hero-info">
           <button class="pkdx-back-btn" onclick="closeModal('modal-pokedex');setTimeout(()=>openPokedexModal(${specId}),150)">
             ← Forme de base
           </button>
           <div class="pkdx-modal-num">${baseFrName}</div>
-          <h2 class="pkdx-modal-name">${formMeta ? formMeta.fr : formLabel}</h2>
+          <h2 class="pkdx-modal-name">${fullFrName}</h2>
           ${formMeta ? `<div class="pkdx-modal-genus"><span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span></div>` : ''}
           <div class="pkdx-modal-types">
             ${types.map(t=>`<span class="pkdx-type pkdx-type-lg" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
@@ -2875,8 +3439,15 @@ async function openPokedexFormModal(pokeName, baseFrName) {
             ${statsHtml}
           </div>
         </div>
+        <div class="pkdx-modal-section pkdx-modal-full pkdx-tcg-section">
+          <h4>Cartes TCG <span id="pkdx-tcg-count" style="font-size:.72rem;font-weight:400;color:var(--text2)"></span></h4>
+          <div id="pkdx-tcg-grid" class="pkdx-tcg-groups">
+            <div style="color:var(--text2);font-size:.82rem;padding:4px 0">Chargement…</div>
+          </div>
+        </div>
       </div>
     `;
+    _loadTcgCardsInModal(baseFrName, formType);
   } catch(err) {
     inner.innerHTML = `<p style="color:var(--accent2);padding:24px">Erreur : ${err.message}</p>`;
   }

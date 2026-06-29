@@ -1073,10 +1073,13 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* Pokédex grid */
 .pkdx-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(9, 1fr);
   gap: 12px;
   padding: 4px 0 24px;
 }
+@media (max-width: 1400px) { .pkdx-grid { grid-template-columns: repeat(7, 1fr); } }
+@media (max-width: 1100px) { .pkdx-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 700px)  { .pkdx-grid { grid-template-columns: repeat(3, 1fr); } }
 
 /* Card */
 .pkdx-card {
@@ -1302,3 +1305,79 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   transition: background .15s, color .15s;
 }
 .pkdx-back-btn:hover { background: rgba(0,0,0,.5); color: var(--text); }
+
+/* ── Mapping TCG ──────────────────────────────────────────────────────────── */
+.mapping-header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+.mapping-filter-btn { border-radius:20px !important; }
+.mapping-filter-btn.active { background:var(--accent) !important; color:#fff !important; border-color:var(--accent) !important; }
+.mbloc { margin-bottom:12px; }
+.mbloc-header { display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--bg3); border-radius:var(--radius-sm); cursor:pointer; user-select:none; transition:background .12s; }
+.mbloc-header:hover { background:var(--border); }
+.mbloc-logo  { height:20px; max-width:80px; object-fit:contain; }
+.mbloc-sigle { height:18px; max-width:32px; object-fit:contain; }
+.mbloc-name  { font-size:.8rem; font-weight:700; }
+.mbloc-count { font-size:.7rem; color:var(--text3); margin-left:auto; margin-right:4px; }
+.mrow { display:grid; grid-template-columns:280px 1fr 52px; align-items:center; gap:10px; padding:5px 10px; border-radius:var(--radius-sm); transition:background .1s; }
+.mrow:hover { background:var(--bg3); }
+.mrow-ext { display:flex; align-items:center; gap:6px; min-width:0; }
+.mrow-logo { height:22px; max-width:72px; object-fit:contain; flex-shrink:0; }
+.mrow-sigle-img { height:18px; max-width:28px; object-fit:contain; flex-shrink:0; }
+.mrow-sigle-ph  { width:28px; height:18px; background:var(--bg3); border-radius:3px; font-size:.55rem; color:var(--text3); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:700; }
+.mrow-names { display:flex; flex-direction:column; min-width:0; }
+.mrow-name  { font-size:.78rem; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mrow-code  { font-size:.65rem; color:var(--text3); }
+.mrow-set { position:relative; }
+.mrow-set-wrap { position:relative; }
+.mrow-input { width:100%; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:4px 8px; font-size:.76rem; color:var(--text); outline:none; transition:border-color .15s; }
+.mrow-input:focus { border-color:var(--accent); }
+.mrow-dropdown { position:absolute; top:calc(100% + 3px); left:0; right:0; z-index:200; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow); max-height:200px; overflow-y:auto; }
+.mrow-drop-item { padding:6px 10px; font-size:.76rem; cursor:pointer; display:flex; align-items:center; color:var(--text); transition:background .1s; }
+.mrow-drop-item:hover { background:var(--bg3); }
+.mrow-status { display:flex; align-items:center; gap:4px; justify-content:flex-end; }
+.mbadge { font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:20px; }
+.mbadge-ok { background:rgba(6,214,160,.15); color:var(--green); }
+.mbadge-no { background:var(--bg3); color:var(--text3); }
+.mbadge-clear { background:none; border:none; color:var(--text3); cursor:pointer; font-size:.95rem; padding:0 2px; line-height:1; transition:color .15s; }
+.mbadge-clear:hover { color:var(--accent2); }
+
+/* ── Pokédex ext filter dropdown ─────────────────────────────────────────── */
+.pkdx-ext-dropdown { position:absolute; top:calc(100% + 6px); right:0; z-index:100; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow); min-width:220px; max-height:320px; overflow-y:auto; }
+.pkdx-ext-filter-item { padding:8px 14px; font-size:.8rem; cursor:pointer; color:var(--text2); transition:background .1s, color .1s; white-space:nowrap; }
+.pkdx-ext-filter-item:hover { background:var(--bg3); color:var(--text); }
+.pkdx-ext-filter-item.active { background:var(--accent); color:#fff; }
+.pkdx-ext-filter-item:first-child { border-bottom:1px solid var(--border); font-weight:600; color:var(--text); }
+
+/* ── TCG cards grouped by extension — full width per group ───────────────── */
+.pkdx-tcg-section { margin-top: 4px; }
+.pkdx-tcg-section h4 { margin-bottom: 8px; }
+/* Container for all extension groups — vertical stack, full width */
+.pkdx-tcg-groups {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.pkdx-tcg-ext-group {
+  width: 100%;
+  margin-bottom: 20px;
+}
+.pkdx-tcg-ext-header {
+  display: flex; align-items: center; gap: 8px;
+  padding-bottom: 8px; margin-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+  width: 100%;
+}
+.pkdx-tcg-ext-logo  { height: 24px; max-width: 90px; object-fit: contain; }
+.pkdx-tcg-ext-sigle { height: 20px; max-width: 30px; object-fit: contain; }
+.pkdx-tcg-ext-name  { font-size: .85rem; font-weight: 700; color: var(--text); }
+.pkdx-tcg-ext-code  { font-size: .7rem; color: var(--text3); }
+.pkdx-tcg-ext-badge { font-size: .65rem; font-weight: 700; background: var(--bg3); color: var(--text3); padding: 1px 7px; border-radius: 20px; margin-left: auto; }
+/* Inner card grid inside each group */
+.pkdx-tcg-ext-group .pkdx-tcg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+/* Full-width section wrapper */
+.pkdx-tcg-section { grid-column: 1 / -1; }
