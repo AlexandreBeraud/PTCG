@@ -1056,3 +1056,249 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   background-size: 300% 100%;
   animation: rainbow-shift 3s ease infinite;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   POKÉDEX
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* Generation filter buttons */
+.pkdx-gen-btn {
+  padding: 4px 10px; border-radius: 20px; font-size: .72rem; font-weight: 600;
+  background: var(--bg3); color: var(--text2); border: 1px solid var(--border);
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.pkdx-gen-btn:hover { background: var(--bg3); color: var(--text); border-color: var(--text3); }
+.pkdx-gen-btn.active { background: rgba(230,57,70,.15); color: var(--accent2); border-color: var(--accent); }
+
+/* Pokédex grid */
+.pkdx-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 4px 0 24px;
+}
+
+/* Card */
+.pkdx-card {
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 10px 10px;
+  cursor: pointer;
+  transition: transform .15s, border-color .2s, box-shadow .2s;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  position: relative; overflow: hidden;
+}
+.pkdx-card::before {
+  content:''; position:absolute; inset:0;
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--pkdx-color,#888) 15%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.pkdx-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--pkdx-color, var(--accent));
+  box-shadow: 0 6px 24px rgba(0,0,0,.4);
+}
+.pkdx-card-num { font-size: .65rem; color: var(--text3); font-weight: 600; align-self: flex-start; }
+.pkdx-card-img-wrap {
+  width: 88px; height: 88px; display: flex; align-items: center; justify-content: center;
+}
+.pkdx-sprite { width: 88px; height: 88px; object-fit: contain; image-rendering: auto; }
+.pkdx-no-sprite { width: 88px; height: 88px; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--text3); }
+.pkdx-card-name { font-size: .8rem; font-weight: 600; text-align: center; color: var(--text); }
+.pkdx-card-types { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+
+/* Loading placeholder */
+.pkdx-loading-card { cursor: default; }
+.pkdx-placeholder {
+  width: 100%; height: 130px; border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg3) 25%, var(--border) 50%, var(--bg3) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* Type badge */
+.pkdx-type {
+  font-size: .6rem; font-weight: 700; padding: 2px 7px; border-radius: 20px;
+  color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); letter-spacing: .04em;
+}
+.pkdx-type-lg { font-size: .72rem; padding: 3px 10px; }
+
+/* Pokédex Modal */
+.pkdx-modal {
+  max-width: 680px !important;
+  width: min(96vw, 680px) !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border-radius: var(--radius) !important;
+  position: relative;
+  display: flex; flex-direction: column; max-height: 88vh;
+}
+#pkdx-modal-content { overflow-y: auto; flex: 1; min-height: 0; }
+
+/* Formes toggle */
+.pkdx-forms-toggle-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg3); color: var(--text2);
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 5px 14px; font-size: .78rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.pkdx-forms-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pkdx-forms-toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.pkdx-card { position: relative; }
+.pkdx-card-form-badge {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  font-size: .52rem; font-weight: 800; letter-spacing: .06em;
+  padding: 2px 6px; border-radius: 20px; color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+
+/* TCG cards in modal */
+.pkdx-tcg-section { margin-top: 4px; }
+.pkdx-tcg-section h4 { margin-bottom: 12px; }
+.pkdx-tcg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.pkdx-tcg-card {
+  background: var(--bg3); border-radius: 10px; border: 1px solid var(--border);
+  overflow: hidden; transition: transform .15s, border-color .15s;
+}
+.pkdx-tcg-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+.pkdx-tcg-card img { width: 100%; aspect-ratio: 63/88; object-fit: contain; display: block; background: var(--bg2); }
+.pkdx-tcg-placeholder { aspect-ratio: 63/88; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: .72rem; text-align: center; padding: 8px; }
+.pkdx-tcg-card-info { padding: 5px 8px; display: flex; flex-direction: column; gap: 1px; }
+.pkdx-tcg-num { font-size: .65rem; color: var(--text3); font-weight: 600; }
+.pkdx-tcg-set { font-size: .66rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pkdx-modal-close {
+  position: absolute; top: 12px; right: 12px; z-index: 10;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(0,0,0,.4); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s;
+}
+.pkdx-modal-close:hover { background: rgba(0,0,0,.7); }
+
+.pkdx-modal-hero {
+  position: relative; min-height: 180px; display: flex; align-items: flex-end; gap: 16px;
+  padding: 24px 24px 20px; overflow: hidden;
+}
+.pkdx-modal-hero-bg {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 70% 50%, color-mix(in srgb, var(--pkdx-color,#888) 35%, transparent), transparent 70%),
+              var(--bg3);
+  z-index: 0;
+}
+.pkdx-modal-sprite {
+  width: 140px; height: 140px; object-fit: contain; position: relative; z-index: 1; flex-shrink: 0;
+  filter: drop-shadow(0 8px 20px rgba(0,0,0,.5));
+}
+.pkdx-modal-hero-info { position: relative; z-index: 1; flex: 1; }
+.pkdx-modal-num { font-size: .75rem; color: var(--text2); font-weight: 600; margin-bottom: 2px; }
+.pkdx-modal-name { font-size: 1.7rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px; }
+.pkdx-modal-genus { font-size: .78rem; color: var(--text2); margin-bottom: 10px; }
+.pkdx-modal-types { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.pkdx-modal-body { padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 18px; }
+.pkdx-modal-flavor { font-size: .82rem; color: var(--text2); font-style: italic; line-height: 1.5; border-left: 3px solid var(--border); padding-left: 12px; }
+.pkdx-modal-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width:560px) { .pkdx-modal-cols { grid-template-columns: 1fr; } }
+
+.pkdx-modal-section h4 { font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+.pkdx-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .8rem; align-items: start; }
+.pkdx-info-label { color: var(--text2); font-weight: 500; }
+
+/* Stat bars */
+.pkdx-stat-row { display: grid; grid-template-columns: 72px 32px 1fr; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pkdx-stat-name { font-size: .72rem; color: var(--text2); }
+.pkdx-stat-val { font-size: .78rem; font-weight: 700; text-align: right; }
+.pkdx-stat-bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.pkdx-stat-fill { height: 100%; border-radius: 3px; transition: width .6s ease; }
+
+/* Evo chain */
+.pkdx-evo-chain { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pkdx-evo-item {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  cursor: pointer; padding: 8px; border-radius: var(--radius-sm);
+  transition: background .15s; font-size: .7rem; color: var(--text2);
+}
+.pkdx-evo-item:hover { background: var(--bg3); }
+.pkdx-evo-arrow { color: var(--text3); font-size: 1.2rem; }
+
+/* ── Pokédex v2 additions ──────────────────────────────────────────────── */
+
+/* Gen separator — spans full grid width */
+.pkdx-gen-separator {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 14px;
+  padding: 18px 0 8px;
+}
+.pkdx-gen-separator::before,
+.pkdx-gen-separator::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.pkdx-gen-sep-label {
+  font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text3); white-space: nowrap; padding: 0 4px;
+}
+
+/* Ability chips */
+.pkdx-ability {
+  display: inline-block; font-size: .78rem;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 20px; padding: 2px 10px; color: var(--text);
+}
+.pkdx-ability-hidden {
+  border-style: dashed; color: var(--text2);
+}
+
+/* Full-width section inside modal */
+.pkdx-modal-full { grid-column: 1 / -1; }
+
+/* Evolution trigger label */
+.pkdx-evo-trigger {
+  display: block; font-size: .62rem; color: var(--text3); text-align: center;
+  margin-top: 2px; max-width: 60px; line-height: 1.2;
+}
+.pkdx-evo-num  { font-size: .65rem; color: var(--text3); }
+.pkdx-evo-name { font-size: .72rem; color: var(--text); font-weight: 600; text-align: center; }
+
+/* Special forms grid */
+.pkdx-forms-grid {
+  display: flex; flex-wrap: wrap; gap: 10px;
+}
+.pkdx-form-card {
+  background: var(--bg3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  cursor: pointer; transition: border-color .15s, transform .15s;
+  position: relative; min-width: 100px;
+}
+.pkdx-form-card::before {
+  content:''; position:absolute; inset:0; border-radius: inherit;
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--pkdx-color,#888) 18%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.pkdx-form-card:hover {
+  border-color: var(--pkdx-color, var(--accent));
+  transform: translateY(-2px);
+}
+.pkdx-form-badge {
+  font-size: .58rem; font-weight: 800; letter-spacing: .08em;
+  padding: 2px 7px; border-radius: 20px; color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.5); position: relative; z-index: 1;
+}
+.pkdx-form-label {
+  font-size: .75rem; font-weight: 600; color: var(--text); text-align: center;
+  position: relative; z-index: 1;
+}
+
+/* Back button in form modal */
+.pkdx-back-btn {
+  font-size: .72rem; color: var(--text2); background: rgba(0,0,0,.3);
+  border: 1px solid rgba(255,255,255,.1); border-radius: 20px;
+  padding: 3px 10px; margin-bottom: 8px; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.pkdx-back-btn:hover { background: rgba(0,0,0,.5); color: var(--text); }

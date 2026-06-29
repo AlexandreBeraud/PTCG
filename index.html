@@ -47,6 +47,15 @@
       <span>Statistiques</span>
     </button>
   </div>
+    <button class="nav-btn" onclick="switchView('pokedex',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M2 12h8M14 12h8M12 2v4M12 18v4"/>
+        <circle cx="12" cy="12" r="3" fill="currentColor"/>
+      </svg>
+      <span>Pokédex</span>
+    </button>
+  </div>
   <div class="nav-section">
     <div class="nav-section-label">Config</div>
     <button class="nav-btn" onclick="switchView('edition',this)">
@@ -306,6 +315,56 @@
             Réinitialiser
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Pokédex -->
+    <div id="view-pokedex" class="view">
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1>Pokédex</h1>
+          <p id="pokedex-subtitle">Tous les Pokémon — données via PokéAPI</p>
+        </div>
+        <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input type="text" id="pokedex-search" placeholder="Rechercher un Pokémon…" oninput="filterPokedex(this.value)" style="width:100%">
+          </div>
+          <div id="pokedex-gen-filter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          <button id="pkdx-forms-toggle" class="pkdx-forms-toggle-btn" onclick="togglePokedexForms(this)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            Formes
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading / error state -->
+      <div id="pokedex-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
+        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
+        <p>Chargement du Pokédex…</p>
+      </div>
+      <div id="pokedex-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
+
+      <!-- Grid -->
+      <div id="pokedex-grid" class="pkdx-grid"></div>
+
+      <!-- Load more -->
+      <div id="pokedex-load-more" style="text-align:center;padding:24px;display:none">
+        <button class="btn btn-secondary" onclick="pokedexLoadMore()">Charger plus</button>
+      </div>
+    </div>
+
+    <!-- Pokédex Detail Modal -->
+    <div class="modal-backdrop" id="modal-pokedex" onclick="if(event.target===this)closeModal('modal-pokedex')">
+      <div class="modal pkdx-modal" id="pkdx-modal-inner">
+        <button class="pkdx-modal-close" onclick="closeModal('modal-pokedex')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <div id="pkdx-modal-content">Chargement…</div>
       </div>
     </div>
 

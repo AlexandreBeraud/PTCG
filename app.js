@@ -2144,7 +2144,7 @@ function switchView(view,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   if(btn)btn.classList.add('active');
-  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres'};
+  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres',pokedex:'Pokédex'};
   document.getElementById('topbar-title').textContent=titles[view]||view;
   const showSearch=view==='extensions';
   const showToggle=['extensions','classeurs','boosters','edition'].includes(view);
@@ -2156,6 +2156,7 @@ function switchView(view,btn){
   if(view==='edition'){populateBlocSelect();renderEditionList();}
   if(view==='statistiques')renderStats();
   if(view==='parametres')initSettingsView();
+  if(view==='pokedex')initPokedex();
 }
 
 // ── Modals ─────────────────────────────────────────────────────────────────
@@ -2245,7 +2246,685 @@ async function syncCloud(){
   }catch(e){toast('Erreur sync : '+e.message,'error');}
 }
 
-// ── Misc ───────────────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  POKÉDEX — v2 (noms FR, talens FR, types FR, formes spéciales, séparateurs)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const POKEAPI = 'https://pokeapi.co/api/v2';
+
+// ── Générations & couleurs ─────────────────────────────────────────────────
+const POKEDEX_GENS = [
+  { id:1, label:'I',    name:'Kanto',   from:1,   to:151  },
+  { id:2, label:'II',   name:'Johto',   from:152, to:251  },
+  { id:3, label:'III',  name:'Hoenn',   from:252, to:386  },
+  { id:4, label:'IV',   name:'Sinnoh',  from:387, to:493  },
+  { id:5, label:'V',    name:'Unys',    from:494, to:649  },
+  { id:6, label:'VI',   name:'Kalos',   from:650, to:721  },
+  { id:7, label:'VII',  name:'Alola',   from:722, to:809  },
+  { id:8, label:'VIII', name:'Galar',   from:810, to:905  },
+  { id:9, label:'IX',   name:'Paldea',  from:906, to:1025 },
+];
+
+const TYPE_COLORS = {
+  normal:'#9099A1',fire:'#E8553D',water:'#4F91D6',electric:'#F4C832',
+  grass:'#5DB947',ice:'#74CEC0',fighting:'#CE4265',poison:'#9754C8',
+  ground:'#D4A244',flying:'#8FA9DC',psychic:'#E8527E',bug:'#90C22D',
+  rock:'#C5B789',ghost:'#5269AC',dragon:'#0A6DC4',dark:'#5A5165',
+  steel:'#5B8EA1',fairy:'#E685A8',
+};
+
+// Traductions françaises des types
+const TYPE_FR = {
+  normal:'Normal',fire:'Feu',water:'Eau',electric:'Électrik',
+  grass:'Plante',ice:'Glace',fighting:'Combat',poison:'Poison',
+  ground:'Sol',flying:'Vol',psychic:'Psy',bug:'Insecte',
+  rock:'Roche',ghost:'Spectre',dragon:'Dragon',dark:'Ténèbres',
+  steel:'Acier',fairy:'Fée',
+};
+
+// Labels des formes spéciales
+const FORM_LABELS = {
+  mega:      { fr:'Méga',      badge:'MÉGA',     color:'#7038F8' },
+  'mega-x':  { fr:'Méga X',    badge:'MÉGA X',   color:'#7038F8' },
+  'mega-y':  { fr:'Méga Y',    badge:'MÉGA Y',   color:'#C03028' },
+  gmax:      { fr:'Gigamax',   badge:'GIGAMAX',  color:'#E63946' },
+  alola:     { fr:'Alola',     badge:'ALOLA',    color:'#06D6A0' },
+  galar:     { fr:'Galar',     badge:'GALAR',    color:'#4A9EFF' },
+  hisui:     { fr:'Hisui',     badge:'HISUI',    color:'#C0984A' },
+  paldea:    { fr:'Paldea',    badge:'PALDEA',   color:'#A855F7' },
+  totem:     { fr:'Totem',     badge:'TOTEM',    color:'#FFD166' },
+  primal:    { fr:'Primo',     badge:'PRIMO',    color:'#E8553D' },
+};
+
+// Détecte le type de forme à partir du nom PokéAPI
+function _detectFormType(pokeName, baseName) {
+  const suffix = pokeName.replace(baseName + '-', '');
+  if (pokeName.includes('-mega-x'))  return 'mega-x';
+  if (pokeName.includes('-mega-y'))  return 'mega-y';
+  if (pokeName.includes('-mega'))    return 'mega';
+  if (pokeName.includes('-gmax'))    return 'gmax';
+  if (pokeName.includes('-alola'))   return 'alola';
+  if (pokeName.includes('-galar'))   return 'galar';
+  if (pokeName.includes('-hisui'))   return 'hisui';
+  if (pokeName.includes('-paldea'))  return 'paldea';
+  if (pokeName.includes('-totem'))   return 'totem';
+  if (pokeName.includes('-primal'))  return 'primal';
+  return null;
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+let _pkdx = {
+  all:          [],   // [{id, name, frName}] + formes {isForm, baseId, formMeta…}
+  filtered:     [],
+  frNames:      {},
+  specCache:    {},
+  pokeCache:    {},
+  page:         0,
+  pageSize:     48,
+  gen:          0,
+  query:        '',
+  showForms:    false,
+  formsLoaded:  false,
+  loading:      false,
+  initialized:  false,
+};
+
+function _pkdxGenForId(id) {
+  const g = POKEDEX_GENS.find(g => id >= g.from && id <= g.to);
+  return g ? g.id : 0;
+}
+
+// ── Fetch helpers (cached) ─────────────────────────────────────────────────
+async function _fetchPokemon(nameOrId) {
+  const key = String(nameOrId);
+  if (_pkdx.pokeCache[key]) return _pkdx.pokeCache[key];
+  const res  = await fetch(`${POKEAPI}/pokemon/${key}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  _pkdx.pokeCache[key] = data;
+  _pkdx.pokeCache[String(data.id)] = data; // also cache by id
+  return data;
+}
+
+async function _fetchSpecies(url) {
+  if (_pkdx.specCache[url]) return _pkdx.specCache[url];
+  const res  = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  _pkdx.specCache[url] = data;
+  return data;
+}
+
+async function _fetchAbilityFr(abilityUrl) {
+  try {
+    const res  = await fetch(abilityUrl);
+    const data = await res.json();
+    const fr   = data.names?.find(n => n.language.name === 'fr');
+    return fr ? fr.name : _capitalize(data.name.replace(/-/g,' '));
+  } catch(_) { return '—'; }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function initPokedex() {
+  if (_pkdx.initialized) return;
+  _pkdx.loading = true;
+  document.getElementById('pokedex-loading').style.display = 'block';
+  document.getElementById('pokedex-error').style.display   = 'none';
+
+  try {
+    const res  = await fetch(`${POKEAPI}/pokemon?limit=1025&offset=0`);
+    const data = await res.json();
+
+    _pkdx.all = data.results.map(p => {
+      const parts = p.url.split('/').filter(Boolean);
+      const id    = parseInt(parts[parts.length - 1], 10);
+      return { id, name: p.name, frName: '' };
+    }).filter(p => p.id >= 1 && p.id <= 1025)
+      .sort((a, b) => a.id - b.id);
+
+    _pkdx.filtered    = [..._pkdx.all];
+    _pkdx.initialized = true;
+    _pkdx.loading     = false;
+    document.getElementById('pokedex-loading').style.display = 'none';
+    document.getElementById('pokedex-subtitle').textContent  =
+      `${_pkdx.all.length} Pokémon — données via PokéAPI`;
+
+    _buildGenFilters();
+    _pkdx.page = 0;
+    await renderPokedexPage();
+  } catch(err) {
+    _pkdx.loading = false;
+    document.getElementById('pokedex-loading').style.display = 'none';
+    document.getElementById('pokedex-error').style.display   = 'block';
+    document.getElementById('pokedex-error').textContent     = 'Erreur : ' + err.message;
+  }
+}
+
+function _buildGenFilters() {
+  const wrap = document.getElementById('pokedex-gen-filter');
+  if (!wrap) return;
+  let html = `<button class="pkdx-gen-btn active" data-gen="0" onclick="setPokedexGen(0,this)">Tous</button>`;
+  POKEDEX_GENS.forEach(g => {
+    html += `<button class="pkdx-gen-btn" data-gen="${g.id}" onclick="setPokedexGen(${g.id},this)">Gén. ${g.label} — ${g.name}</button>`;
+  });
+  wrap.innerHTML = html;
+}
+
+function setPokedexGen(gen, btn) {
+  _pkdx.gen  = gen;
+  _pkdx.page = 0;
+  document.querySelectorAll('.pkdx-gen-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  _applyPokedexFilter();
+}
+
+function filterPokedex(q) {
+  _pkdx.query = q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  _pkdx.page  = 0;
+  _applyPokedexFilter();
+}
+
+function _normalizeStr(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+
+function _applyPokedexFilter() {
+  const pool = _pkdx.showForms ? _buildPoolWithForms() : _pkdx.all.filter(p => !p.isForm);
+  _pkdx.filtered = pool.filter(p => {
+    const baseId   = p.isForm ? p.baseId : p.id;
+    const genMatch = _pkdx.gen === 0 || _pkdxGenForId(baseId) === _pkdx.gen;
+    const qMatch   = !_pkdx.query ||
+      _normalizeStr(p.name).includes(_pkdx.query) ||
+      _normalizeStr(p.frName || '').includes(_pkdx.query) ||
+      String(baseId).startsWith(_pkdx.query);
+    return genMatch && qMatch;
+  });
+  renderPokedexPage(true);
+}
+
+function _buildPoolWithForms() {
+  const bases = _pkdx.all.filter(p => !p.isForm);
+  const forms  = _pkdx.all.filter(p =>  p.isForm);
+  const result = [];
+  bases.forEach(base => {
+    result.push(base);
+    forms.filter(f => f.baseId === base.id).forEach(f => result.push(f));
+  });
+  return result;
+}
+
+function togglePokedexForms(btn) {
+  _pkdx.showForms = !_pkdx.showForms;
+  btn.classList.toggle('active', _pkdx.showForms);
+  if (_pkdx.showForms && !_pkdx.formsLoaded) {
+    _loadFormsList();
+  } else {
+    _applyPokedexFilter();
+  }
+}
+
+async function _loadFormsList() {
+  try {
+    const res  = await fetch(`${POKEAPI}/pokemon?limit=1500&offset=0`);
+    const data = await res.json();
+    const formKeywords = ['-mega','-gmax','-alola','-galar','-hisui','-paldea',
+      '-origin','-crowned','-primal','-therian','-pirouette','-aria','-complete',
+      '-eternamax','-sky','-blade','-zen','-dusk','-dawn','-midday','-midnight',
+      '-heat','-wash','-frost','-fan','-mow','-altered','-land','-plant',
+      '-sandy','-trash','-hero','-hangry','-gorging','-noice','-busted',
+      '-school','-solo','-disguised','-black','-white','-50','-10'];
+    const bases = _pkdx.all.filter(p => !p.isForm);
+    data.results.forEach(p => {
+      if (!formKeywords.some(k => p.name.includes(k))) return;
+      const base = bases.find(b => p.name.startsWith(b.name + '-'));
+      if (!base) return;
+      if (_pkdx.all.find(e => e.name === p.name)) return; // no duplicates
+      const parts    = p.url.split('/').filter(Boolean);
+      const apiId    = parseInt(parts[parts.length - 1], 10);
+      const formType = _detectFormType(p.name, base.name);
+      const formMeta = formType ? FORM_LABELS[formType] : null;
+      _pkdx.all.push({ id: apiId, baseId: base.id, name: p.name, frName: '', formType, formMeta, isForm: true });
+    });
+    _pkdx.formsLoaded = true;
+    _applyPokedexFilter();
+  } catch(e) {
+    console.warn('Forms load error:', e);
+    _applyPokedexFilter();
+  }
+}
+
+
+async function renderPokedexPage(reset = false) {
+  const grid = document.getElementById('pokedex-grid');
+  if (!grid) return;
+  if (reset) { grid.innerHTML = ''; _pkdx.page = 0; }
+
+  const start = _pkdx.page * _pkdx.pageSize;
+  const slice = _pkdx.filtered.slice(start, start + _pkdx.pageSize);
+
+  if (slice.length === 0 && _pkdx.page === 0) {
+    grid.innerHTML = '<p style="padding:24px;color:var(--text2);text-align:center;grid-column:1/-1">Aucun Pokémon trouvé.</p>';
+    document.getElementById('pokedex-load-more').style.display = 'none';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+
+  // Determine if we need gen separators (only when showing all gens, no text search)
+  const showSeparators = _pkdx.gen === 0 && !_pkdx.query;
+
+  let lastGen = _pkdx.page === 0 ? -1 : _pkdxGenForId((_pkdx.filtered[start - 1] || {}).id);
+
+  slice.forEach(p => {
+    const displayId  = p.isForm ? p.baseId : p.id;
+    const currentGen = _pkdxGenForId(displayId);
+    const cardKey    = p.isForm ? `form-${p.name}` : String(p.id);
+
+    // Gen separator (main Pokémon only)
+    if (showSeparators && !p.isForm && currentGen !== lastGen) {
+      const genInfo  = POKEDEX_GENS.find(g => g.id === currentGen);
+      const sep      = document.createElement('div');
+      sep.className  = 'pkdx-gen-separator';
+      sep.innerHTML  = genInfo
+        ? `<span class="pkdx-gen-sep-label">Génération ${genInfo.label} — ${genInfo.name}</span>`
+        : '';
+      frag.appendChild(sep);
+      lastGen = currentGen;
+    }
+
+    const card     = document.createElement('div');
+    card.className = 'pkdx-card pkdx-loading-card' + (p.isForm ? ' pkdx-card-form' : '');
+    card.id        = `pkdx-card-${cardKey}`;
+    card.innerHTML = `<div class="pkdx-placeholder"></div>`;
+    card.onclick   = () => p.isForm ? openPokedexFormModal(p.name, p.frName || p.name) : openPokedexModal(p.id);
+    frag.appendChild(card);
+  });
+
+  grid.appendChild(frag);
+  _pkdx.page++;
+
+  const promises = slice.map(p => _hydrateCard(p));
+  await Promise.allSettled(promises);
+
+  const hasMore = _pkdx.page * _pkdx.pageSize < _pkdx.filtered.length;
+  document.getElementById('pokedex-load-more').style.display = hasMore ? 'block' : 'none';
+}
+
+async function _hydrateCard(p) {
+  const isForm  = p.isForm || false;
+  const fetchId = isForm ? p.name : p.id;
+  const cardKey = isForm ? `form-${p.name}` : String(p.id);
+  try {
+    const poke = await _fetchPokemon(fetchId);
+    const card = document.getElementById(`pkdx-card-${cardKey}`);
+    if (!card) return;
+
+    const displayId = isForm ? p.baseId : p.id;
+    const numStr    = '#' + String(displayId).padStart(4, '0');
+
+    let frName = _capitalize(poke.name.replace(/-/g, ' '));
+    try {
+      const spec = await _fetchSpecies(poke.species.url);
+      if (spec) {
+        if (isForm) {
+          // Use base Pokémon FR name if available
+          const baseEntry = _pkdx.all.find(e => e.id === p.baseId && !e.isForm);
+          if (baseEntry?.frName) frName = baseEntry.frName;
+          p.frName = frName;
+        } else {
+          const fr = spec.names?.find(n => n.language.name === 'fr');
+          if (fr) frName = fr.name;
+          const entry = _pkdx.all.find(e => e.id === p.id && !e.isForm);
+          if (entry) entry.frName = frName;
+        }
+      }
+    } catch(_) {}
+
+    const sprite   = poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '';
+    const types    = poke.types.map(t => t.type.name);
+    const formMeta = isForm ? p.formMeta : null;
+    const color    = formMeta ? formMeta.color : (TYPE_COLORS[types[0]] || '#888');
+
+    card.className = 'pkdx-card' + (isForm ? ' pkdx-card-form' : '');
+    card.style.setProperty('--pkdx-color', color);
+    card.innerHTML = `
+      <div class="pkdx-card-num">${numStr}</div>
+      ${formMeta ? `<span class="pkdx-card-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span>` : ''}
+      <div class="pkdx-card-img-wrap">
+        ${sprite ? `<img src="${sprite}" alt="${frName}" loading="lazy" class="pkdx-sprite">` : '<div class="pkdx-no-sprite">?</div>'}
+      </div>
+      <div class="pkdx-card-name">${frName}</div>
+      <div class="pkdx-card-types">
+        ${types.map(t => `<span class="pkdx-type" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
+      </div>
+    `;
+  } catch(e) { /* keep placeholder */ }
+}
+
+async function pokedexLoadMore() {
+  await renderPokedexPage(false);
+}
+
+// ── Detail Modal ───────────────────────────────────────────────────────────
+async function openPokedexModal(id) {
+  const modal = document.getElementById('modal-pokedex');
+  const inner = document.getElementById('pkdx-modal-content');
+  inner.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)"><div class="pokeball" style="width:36px;height:36px;margin:0 auto 10px;border-width:3px"></div>Chargement…</div>';
+  modal.classList.add('open');
+
+  try {
+    const poke = await _fetchPokemon(id);
+
+    // Species data (FR name, description, evos, varieties)
+    let frName = _capitalize(poke.name.replace(/-/g,' '));
+    let flavor = '', genus = '', evolutions = [], varieties = [];
+    let specData = null;
+
+    try {
+      specData = await _fetchSpecies(poke.species.url);
+      if (specData) {
+        const fr = specData.names?.find(n => n.language.name === 'fr');
+        if (fr) frName = fr.name;
+        const frFl = specData.flavor_text_entries?.filter(e => e.language.name === 'fr').pop();
+        if (frFl) flavor = frFl.flavor_text.replace(/[\n\f]/g,' ');
+        const frGen = specData.genera?.find(g => g.language.name === 'fr');
+        if (frGen) genus = frGen.genus;
+
+        // Evolution chain
+        if (specData.evolution_chain?.url) {
+          try {
+            const evoRes  = await fetch(specData.evolution_chain.url);
+            const evoData = await evoRes.json();
+            evolutions = await _buildEvoChain(evoData.chain);
+          } catch(_) {}
+        }
+
+        // Special forms (méga, régionales, gigamax…)
+        if (specData.varieties) {
+          varieties = specData.varieties.filter(v => !v.is_default);
+        }
+      }
+    } catch(_) {}
+
+    const sprite  = poke.sprites?.other?.['official-artwork']?.front_default ||
+                    poke.sprites?.front_default || '';
+    const types   = poke.types.map(t => t.type.name);
+    const color   = TYPE_COLORS[types[0]] || '#888';
+    const numStr  = '#' + String(poke.id).padStart(4,'0');
+
+    // French abilities (fetch in parallel)
+    const abilitiesHtml = await Promise.all(poke.abilities.map(async a => {
+      const frAbility = await _fetchAbilityFr(a.ability.url);
+      return a.is_hidden
+        ? `<span class="pkdx-ability pkdx-ability-hidden">${frAbility} <em>(cachée)</em></span>`
+        : `<span class="pkdx-ability">${frAbility}</span>`;
+    }));
+
+    // Stats
+    const statsHtml = poke.stats.map(s => {
+      const val = s.base_stat;
+      const pct = Math.min(100, Math.round(val / 255 * 100));
+      const col = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--gold)' : 'var(--accent)';
+      return `<div class="pkdx-stat-row">
+        <span class="pkdx-stat-name">${_statLabel(s.stat.name)}</span>
+        <span class="pkdx-stat-val">${val}</span>
+        <div class="pkdx-stat-bar"><div class="pkdx-stat-fill" style="width:${pct}%;background:${col}"></div></div>
+      </div>`;
+    }).join('');
+
+    // Evolution chain HTML
+    let evoHtml = '';
+    if (evolutions.length > 1) {
+      evoHtml = `<div class="pkdx-modal-section pkdx-modal-full">
+        <h4>Chaîne d'évolution</h4>
+        <div class="pkdx-evo-chain">
+          ${evolutions.map((e, i) => `
+            ${i > 0 ? `<div class="pkdx-evo-arrow">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              ${e.trigger ? `<span class="pkdx-evo-trigger">${e.trigger}</span>` : ''}
+            </div>` : ''}
+            <div class="pkdx-evo-item" onclick="closeModal('modal-pokedex');setTimeout(()=>openPokedexModal(${e.speciesId}),150)">
+              <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${e.speciesId}.png"
+                   alt="${e.frName}" onerror="this.style.display='none'" style="width:64px;height:64px;object-fit:contain">
+              <span class="pkdx-evo-num">#${String(e.speciesId).padStart(3,'0')}</span>
+              <span class="pkdx-evo-name">${e.frName}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    }
+
+    // Special forms HTML
+    let formsHtml = '';
+    if (varieties.length > 0) {
+      const formCards = await Promise.all(varieties.map(async v => {
+        try {
+          const formPoke   = await _fetchPokemon(v.pokemon.name);
+          const formSprite = formPoke.sprites?.other?.['official-artwork']?.front_default ||
+                             formPoke.sprites?.front_default || '';
+          const formTypes  = formPoke.types.map(t => t.type.name);
+          const formColor  = TYPE_COLORS[formTypes[0]] || '#888';
+          const formType   = _detectFormType(v.pokemon.name, poke.name);
+          const formMeta   = formType ? FORM_LABELS[formType] : null;
+
+          // Build display name
+          let formLabel = v.pokemon.name.replace(poke.name + '-', '').replace(/-/g,' ');
+          formLabel = formMeta ? formMeta.fr : _capitalize(formLabel);
+
+          return `<div class="pkdx-form-card" style="--pkdx-color:${formMeta?.color || formColor}" onclick="openPokedexFormModal('${v.pokemon.name}','${frName}')">
+            ${formMeta ? `<span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span>` : ''}
+            ${formSprite ? `<img src="${formSprite}" alt="${formLabel}" loading="lazy" style="width:72px;height:72px;object-fit:contain">` : '<div style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;color:var(--text3)">?</div>'}
+            <span class="pkdx-form-label">${formLabel}</span>
+            <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">
+              ${formTypes.map(t=>`<span class="pkdx-type" style="background:${TYPE_COLORS[t]||'#888'};font-size:.58rem;padding:1px 6px">${TYPE_FR[t]||t}</span>`).join('')}
+            </div>
+          </div>`;
+        } catch(_) { return ''; }
+      }));
+      const validCards = formCards.filter(Boolean);
+      if (validCards.length) {
+        formsHtml = `<div class="pkdx-modal-section pkdx-modal-full">
+          <h4>Formes spéciales</h4>
+          <div class="pkdx-forms-grid">${validCards.join('')}</div>
+        </div>`;
+      }
+    }
+
+    inner.innerHTML = `
+      <div class="pkdx-modal-hero" style="--pkdx-color:${color}">
+        <div class="pkdx-modal-hero-bg"></div>
+        ${sprite ? `<img src="${sprite}" alt="${frName}" class="pkdx-modal-sprite">` : ''}
+        <div class="pkdx-modal-hero-info">
+          <div class="pkdx-modal-num">${numStr}</div>
+          <h2 class="pkdx-modal-name">${frName}</h2>
+          ${genus ? `<div class="pkdx-modal-genus">${genus}</div>` : ''}
+          <div class="pkdx-modal-types">
+            ${types.map(t=>`<span class="pkdx-type pkdx-type-lg" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="pkdx-modal-body">
+        ${flavor ? `<p class="pkdx-modal-flavor">"${flavor}"</p>` : ''}
+        <div class="pkdx-modal-cols">
+          <div class="pkdx-modal-section">
+            <h4>Données</h4>
+            <div class="pkdx-info-grid">
+              <span class="pkdx-info-label">Taille</span><span>${(poke.height/10).toFixed(1)} m</span>
+              <span class="pkdx-info-label">Poids</span><span>${(poke.weight/10).toFixed(1)} kg</span>
+              <span class="pkdx-info-label">Talents</span>
+              <span style="display:flex;flex-direction:column;gap:4px">${abilitiesHtml.join('')}</span>
+            </div>
+          </div>
+          <div class="pkdx-modal-section">
+            <h4>Statistiques de base</h4>
+            ${statsHtml}
+          </div>
+        </div>
+        ${evoHtml}
+        ${formsHtml}
+        <div class="pkdx-modal-section pkdx-modal-full pkdx-tcg-section">
+          <h4>Cartes TCG <span id="pkdx-tcg-count" style="font-size:.72rem;font-weight:400;color:var(--text2)"></span></h4>
+          <div id="pkdx-tcg-grid" class="pkdx-tcg-grid">
+            <div style="color:var(--text2);font-size:.82rem;padding:4px 0">Chargement…</div>
+          </div>
+        </div>
+      </div>
+    `;
+    _loadTcgCardsInModal(frName);
+  } catch(err) {
+    inner.innerHTML = `<p style="color:var(--accent2);padding:24px">Erreur : ${err.message}</p>`;
+  }
+}
+
+async function _loadTcgCardsInModal(frName) {
+  const grid  = document.getElementById('pkdx-tcg-grid');
+  const count = document.getElementById('pkdx-tcg-count');
+  if (!grid) return;
+  const sbUrl = 'https://kfyphcestbcgtkzurvas.supabase.co';
+  const sbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmeXBoY2VzdGJjZ3RrenVydmFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NTAwMzMsImV4cCI6MjA5ODIyNjAzM30.8sxe-_-uZdG4G0CGpUKViBMHE78RuReVaP_SsyLCaa8';
+  try {
+    const url = `${sbUrl}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_name.asc,number.asc&limit=500`;
+    const res = await fetch(url, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const cards = await res.json();
+    if (!document.getElementById('pkdx-tcg-grid')) return;
+    if (!cards.length) { grid.innerHTML = `<p style="color:var(--text3);font-size:.82rem">Aucune carte trouvée.</p>`; return; }
+    if (count) count.textContent = `— ${cards.length} carte${cards.length > 1 ? 's' : ''}`;
+    grid.innerHTML = cards.map(c => `
+      <div class="pkdx-tcg-card" title="${c.set_name || ''} — ${c.number || ''} — ${c.rarity || ''}">
+        ${c.image_url ? `<img src="${c.image_url}" alt="${c.name}" loading="lazy">` : `<div class="pkdx-tcg-placeholder">${c.name}</div>`}
+        <div class="pkdx-tcg-card-info">
+          <span class="pkdx-tcg-num">${c.number || ''}</span>
+          <span class="pkdx-tcg-set">${c.set_name || ''}</span>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    if (grid) grid.innerHTML = `<p style="color:var(--accent2);font-size:.82rem">Erreur : ${e.message}</p>`;
+  }
+}
+
+// Open modal for a special form (by pokemon name)
+async function openPokedexFormModal(pokeName, baseFrName) {
+  const modal = document.getElementById('modal-pokedex');
+  const inner = document.getElementById('pkdx-modal-content');
+  inner.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)">Chargement de la forme…</div>';
+  modal.classList.add('open');
+  try {
+    const poke    = await _fetchPokemon(pokeName);
+    const sprite  = poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '';
+    const types   = poke.types.map(t => t.type.name);
+    const color   = TYPE_COLORS[types[0]] || '#888';
+
+    const formType = _detectFormType(pokeName, poke.species.name);
+    const formMeta = formType ? FORM_LABELS[formType] : null;
+    let formLabel  = pokeName.replace(poke.species.name + '-', '').replace(/-/g,' ');
+    formLabel      = formMeta ? formMeta.fr : _capitalize(formLabel);
+
+    const abilitiesHtml = await Promise.all(poke.abilities.map(async a => {
+      const frAbility = await _fetchAbilityFr(a.ability.url);
+      return a.is_hidden
+        ? `<span class="pkdx-ability pkdx-ability-hidden">${frAbility} <em>(cachée)</em></span>`
+        : `<span class="pkdx-ability">${frAbility}</span>`;
+    }));
+
+    const statsHtml = poke.stats.map(s => {
+      const val = s.base_stat;
+      const pct = Math.min(100, Math.round(val / 255 * 100));
+      const col = pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--gold)' : 'var(--accent)';
+      return `<div class="pkdx-stat-row">
+        <span class="pkdx-stat-name">${_statLabel(s.stat.name)}</span>
+        <span class="pkdx-stat-val">${val}</span>
+        <div class="pkdx-stat-bar"><div class="pkdx-stat-fill" style="width:${pct}%;background:${col}"></div></div>
+      </div>`;
+    }).join('');
+
+    // Back button to base form
+    const specParts = poke.species.url.split('/').filter(Boolean);
+    const specId    = parseInt(specParts[specParts.length - 1], 10);
+
+    inner.innerHTML = `
+      <div class="pkdx-modal-hero" style="--pkdx-color:${formMeta?.color || color}">
+        <div class="pkdx-modal-hero-bg"></div>
+        ${sprite ? `<img src="${sprite}" alt="${formLabel}" class="pkdx-modal-sprite">` : ''}
+        <div class="pkdx-modal-hero-info">
+          <button class="pkdx-back-btn" onclick="closeModal('modal-pokedex');setTimeout(()=>openPokedexModal(${specId}),150)">
+            ← Forme de base
+          </button>
+          <div class="pkdx-modal-num">${baseFrName}</div>
+          <h2 class="pkdx-modal-name">${formMeta ? formMeta.fr : formLabel}</h2>
+          ${formMeta ? `<div class="pkdx-modal-genus"><span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span></div>` : ''}
+          <div class="pkdx-modal-types">
+            ${types.map(t=>`<span class="pkdx-type pkdx-type-lg" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="pkdx-modal-body">
+        <div class="pkdx-modal-cols">
+          <div class="pkdx-modal-section">
+            <h4>Données</h4>
+            <div class="pkdx-info-grid">
+              <span class="pkdx-info-label">Taille</span><span>${(poke.height/10).toFixed(1)} m</span>
+              <span class="pkdx-info-label">Poids</span><span>${(poke.weight/10).toFixed(1)} kg</span>
+              <span class="pkdx-info-label">Talents</span>
+              <span style="display:flex;flex-direction:column;gap:4px">${abilitiesHtml.join('')}</span>
+            </div>
+          </div>
+          <div class="pkdx-modal-section">
+            <h4>Statistiques de base</h4>
+            ${statsHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch(err) {
+    inner.innerHTML = `<p style="color:var(--accent2);padding:24px">Erreur : ${err.message}</p>`;
+  }
+}
+
+// ── Evolution chain builder ────────────────────────────────────────────────
+async function _buildEvoChain(chainNode, result = [], triggerLabel = '') {
+  const parts     = chainNode.species.url.split('/').filter(Boolean);
+  const speciesId = parseInt(parts[parts.length - 1], 10);
+  let frName      = chainNode.species.name;
+
+  try {
+    const spec = await _fetchSpecies(chainNode.species.url);
+    if (spec) {
+      const fr = spec.names?.find(n => n.language.name === 'fr');
+      if (fr) frName = fr.name;
+    }
+  } catch(_) {}
+
+  result.push({ speciesId, frName: frName, trigger: triggerLabel });
+
+  for (const evo of (chainNode.evolves_to || [])) {
+    // Build trigger label
+    const det = evo.evolution_details?.[0];
+    let trig  = '';
+    if (det) {
+      if (det.trigger?.name === 'level-up' && det.min_level) trig = `Niv. ${det.min_level}`;
+      else if (det.trigger?.name === 'use-item' && det.item) trig = _capitalize(det.item.name.replace(/-/g,' '));
+      else if (det.trigger?.name === 'trade')                trig = 'Échange';
+      else if (det.trigger?.name === 'level-up')             trig = 'Montée niv.';
+    }
+    await _buildEvoChain(evo, result, trig);
+  }
+  return result;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function _capitalize(str) {
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function _statLabel(s) {
+  return {
+    'hp':'PV', 'attack':'Attaque', 'defense':'Défense',
+    'special-attack':'Att. Sp.', 'special-defense':'Déf. Sp.', 'speed':'Vitesse'
+  }[s] || s;
+}
+
 function setDefaultDate(){
   const f=document.getElementById('illus-date');if(f)f.value=new Date().toISOString().slice(0,10);
 }
