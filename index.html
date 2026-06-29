@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PTCG Collection</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="loading"><div class="pokeball"></div><p>Chargement…</p></div>
+
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <circle cx="14" cy="14" r="13" stroke="#e63946" stroke-width="2"/>
+      <path d="M1 14h26M14 1v5M14 22v5" stroke="#e63946" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="14" cy="14" r="4" fill="#e63946"/><circle cx="14" cy="14" r="2" fill="#0f1117"/>
+    </svg>
+    <span>PTCG</span>
+  </div>
+  <div class="nav-section">
+    <div class="nav-section-label">Collection</div>
+    <button class="nav-btn active" onclick="switchView('extensions',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      <span>Extensions</span><span class="nav-badge" id="nb-ext">0</span>
+    </button>
+    <button class="nav-btn" onclick="switchView('classeurs',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+      </svg>
+      <span>Classeurs</span><span class="nav-badge" id="nb-classeurs">0</span>
+    </button>
+    <button class="nav-btn" onclick="switchView('boosters',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+      </svg>
+      <span>Boosters</span><span class="nav-badge" id="nb-boosters">0</span>
+    </button>
+    <button class="nav-btn" onclick="switchView('statistiques',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+      <span>Statistiques</span>
+    </button>
+  </div>
+  <div class="nav-section">
+    <div class="nav-section-label">Config</div>
+    <button class="nav-btn" onclick="switchView('edition',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+      <span>Édition</span>
+    </button>
+    <button class="nav-btn" onclick="switchView('parametres',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+      </svg>
+      <span>Paramètres</span>
+    </button>
+  </div>
+  <div class="sidebar-footer">
+    <button class="nav-btn btn-ghost" onclick="syncCloud()">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+      </svg>
+      <span>Synchroniser</span>
+    </button>
+  </div>
+</nav>
+
+<div id="main">
+  <header id="topbar">
+    <span class="topbar-title" id="topbar-title">Extensions</span>
+    <span class="topbar-sep"></span>
+    <div class="topbar-search" id="topbar-search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input type="text" placeholder="Rechercher…" oninput="filterExtensions(this.value)">
+    </div>
+    <button class="btn btn-secondary btn-sm" id="topbar-sort-btn" onclick="toggleSortDir()" title="Trier par code" style="gap:4px">
+      <span>Code</span><span id="sort-icon">↑</span>
+    </button>
+    <div class="view-toggle" id="topbar-view-toggle">
+      <button class="active" title="Grille" onclick="setViewMode('grid',this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+      </button>
+      <button title="Liste" onclick="setViewMode('list',this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-progress-wrap" id="global-progress-wrap">
+        <div class="topbar-progress-label"><span>Progression</span><span id="global-pct">0%</span></div>
+        <div class="topbar-progress-bar"><div class="topbar-progress-fill" id="global-fill" style="width:0%"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <main id="content">
+
+    <!-- Extensions -->
+    <div id="view-extensions" class="view active">
+      <div class="page-header">
+        <div class="page-header-left">
+          <h1>Extensions</h1>
+          <p id="ext-subtitle">Toutes les extensions du Pokémon TCG</p>
+        </div>
+        <div class="page-header-right">
+
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card" style="--accent-color:var(--accent)"><div class="val" id="stat-total-ext">0</div><div class="lbl">Extensions</div><div class="sub" id="stat-sorties-ext"></div></div>
+        <div class="stat-card" style="--accent-color:var(--gold)"><div class="val" id="stat-total-cartes">0</div><div class="lbl">Cartes au total</div></div>
+        <div class="stat-card" style="--accent-color:var(--green)"><div class="val" id="stat-cartes-owned">0</div><div class="lbl">Cartes possédées</div></div>
+        <div class="stat-card" style="--accent-color:var(--blue)"><div class="val" id="stat-pct-global">0%</div><div class="lbl">Complétion</div></div>
+      </div>
+      <div id="blocs-container"></div>
+    </div>
+
+    <!-- Classeurs -->
+    <div id="view-classeurs" class="view">
+      <div class="page-header">
+        <div class="page-header-left"><h1>Classeurs</h1><p>Gérez vos classeurs · drag &amp; drop pour déplacer une extension</p></div>
+        <div class="page-header-right">
+          <button class="btn btn-primary" onclick="openAddClasseurModal()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Nouveau classeur
+          </button>
+        </div>
+      </div>
+      <div class="classeurs-grid" id="classeurs-grid">
+        <button class="add-new-card" onclick="openAddClasseurModal()">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+          <span>Nouveau classeur</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Boosters -->
+    <div id="view-boosters" class="view">
+      <div class="page-header">
+        <div class="page-header-left"><h1>Boosters / Illustrations</h1><p>Suivez vos illustrations et leur statut d'obtention</p></div>
+      </div>
+      <div class="booster-filter-bar">
+        <button class="booster-filter-btn active" onclick="setBoosterFilter('all',this)">Tous</button>
+        <button class="booster-filter-btn" onclick="setBoosterFilter('booster',this)">Boosters</button>
+        <button class="booster-filter-btn" onclick="setBoosterFilter('deck',this)">Decks</button>
+        <button class="booster-filter-btn" onclick="setBoosterFilter('etb',this)">ETB</button>
+        <button class="booster-filter-btn" onclick="setBoosterFilter('premium',this)">Premium</button>
+      </div>
+      <div class="boosters-layout">
+        <div id="boosters-main"></div>
+        <div class="booster-right-col">
+          <div id="booster-detail-panel" class="booster-detail-panel">
+            <div style="padding:20px;color:var(--text3);font-size:.8rem;text-align:center">
+              Cliquez sur une extension pour voir les détails
+            </div>
+          </div>
+          <div class="booster-stat-panel">
+          <h3>Statistiques</h3>
+          <div class="bs-global-wrap">
+            <div class="bs-global-label"><span>Obtention globale</span><span id="bs-global-pct">0%</span></div>
+            <div class="bs-global-bar"><div class="bs-global-fill" id="bs-global-bar-fill" style="width:0%"></div></div>
+          </div>
+          <div class="bstat-row"><span class="lbl">Illustrations</span><span class="val" id="bs-total">0</span></div>
+          <div class="bstat-row"><span class="lbl">Extensions trackées</span><span class="val" id="bs-exts">0</span></div>
+          <div class="bstat-row"><span class="lbl">Favorite</span><span class="val" id="bs-fav">—</span></div>
+          <div class="bstat-row"><span class="lbl">Dernière obtention</span><span class="val" id="bs-last">—</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div id="view-statistiques" class="view">
+      <div class="page-header"><div class="page-header-left"><h1>Statistiques</h1><p>Vue d'ensemble de votre collection</p></div></div>
+      <div id="stats-container"></div>
+    </div>
+
+    <!-- Édition -->
+    <div id="view-edition" class="view">
+      <div class="page-header">
+        <div class="page-header-left"><h1>Édition</h1><p>Blocs, extensions intégrées et custom</p></div>
+        <div class="page-header-right">
+          <button class="btn btn-primary" id="edition-new-btn" onclick="resetEditionForm()">+ Nouveau bloc</button>
+        </div>
+      </div>
+      <div class="edition-layout">
+        <div>
+          <div class="edition-tabs">
+            <button class="edition-tab active" data-tab="blocs" onclick="switchEditionTab('blocs')">Blocs</button>
+            <button class="edition-tab" data-tab="exts" onclick="switchEditionTab('exts')">Extensions</button>
+          </div>
+          <div class="edition-ext-list" id="edition-list"></div>
+        </div>
+        <div class="edition-form-card">
+          <h3 id="edition-form-title">Nouveau bloc</h3>
+          <div class="edition-preview" id="edition-preview"><span>Aperçu</span></div>
+          <div class="field"><label id="edit-code-lbl">Sigle / Code</label>
+            <input type="text" id="edit-code" placeholder="EV, SL, EV07…" maxlength="12"></div>
+          <div class="field"><label>Nom complet</label>
+            <input type="text" id="edit-nom" placeholder="Écarlate et Violet…"></div>
+          <div class="field" id="edit-nb-field"><label>Nombre de cartes</label>
+            <input type="number" id="edit-nb" placeholder="175" min="0"></div>
+          <div class="field" id="edit-bloc-field" style="display:none"><label>Bloc</label>
+            <select id="edit-bloc"><option value="">— Choisir —</option></select></div>
+          <div class="field" id="edit-logo-field"><label>URL image / logo</label>
+            <input type="url" id="edit-logo" placeholder="https://…" oninput="previewEditionImg(this.value)"></div>
+          <div class="field"><label>URL sigle (image affichée à côté des extensions)</label>
+            <input type="url" id="edit-sigle" placeholder="https://… (sigle ou icône)"></div>
+          <div class="field" id="edit-stat-mode-field"><label>Compte dans les statistiques</label>
+            <select id="edit-stat-mode">
+              <option value="all">Tout (cartes + boosters)</option>
+              <option value="cards_only">Seulement complétion cartes / classeurs</option>
+              <option value="boosters_only">Seulement boosters / illustrations</option>
+            </select>
+          </div>
+          <div class="field"><label>Couleur accent</label>
+            <input type="color" id="edit-couleur" value="#e63946"></div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveEditionItem()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/></svg>
+              <span id="edit-save-lbl">Créer</span>
+            </button>
+            <button class="btn btn-ghost" id="edit-cancel-btn" style="display:none" onclick="resetEditionForm()">Annuler</button>
+          </div>
+          <p class="form-hint" id="edit-form-hint">Blocs intégrés : surcharge nom/sigle/couleur. Blocs custom : création libre.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paramètres -->
+    <div id="view-parametres" class="view">
+      <div class="page-header"><div class="page-header-left"><h1>Paramètres</h1><p>Export, import et sync cloud</p></div></div>
+      <div class="settings-grid">
+        <div class="settings-card">
+          <h3>Affichage</h3>
+          <div class="settings-display-row">
+            <label>Taille de l'interface :</label>
+            <input type="range" id="settings-ui-scale" min="0.7" max="1.4" step="0.05" value="1"
+              style="flex:1;accent-color:var(--accent)" oninput="applyUiScale(this.value)">
+            <button class="btn btn-primary btn-sm" onclick="saveUiScale()">Sauvegarder</button>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>Export / Import</h3>
+          <div class="settings-field"><label>Exporter</label>
+            <div class="settings-actions">
+              <button class="btn btn-secondary" onclick="exportData()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Télécharger JSON
+              </button>
+            </div>
+          </div>
+          <div class="settings-field"><label>Importer</label>
+            <textarea id="import-json" placeholder="Collez votre JSON ici…"></textarea>
+            <div class="settings-actions" style="margin-top:8px">
+              <button class="btn btn-success" onclick="importData()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Importer
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>Synchronisation Cloud</h3>
+          <div class="settings-field"><label>Supabase URL</label>
+            <input type="text" id="cfg-url" placeholder="https://xxx.supabase.co"></div>
+          <div class="settings-field"><label>Clé anonyme</label>
+            <input type="text" id="cfg-key" placeholder="eyJ…"></div>
+          <div class="settings-actions">
+            <button class="btn btn-secondary" onclick="saveCloudConfig()">Sauvegarder</button>
+            <button class="btn btn-secondary" onclick="syncCloud()">Synchroniser</button>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>Zone de danger</h3>
+          <p style="font-size:.78rem;color:var(--text2);margin-bottom:14px">Irréversible.</p>
+          <button class="btn btn-danger" onclick="resetData()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            Réinitialiser
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Detail Panel -->
+<div class="detail-backdrop" id="detail-backdrop" onclick="closeDetail()"></div>
+<aside id="detail-panel">
+  <div id="d-logo-area"></div>
+  <div class="detail-header">
+    <div class="detail-header-info">
+      <div class="d-code" id="d-code"></div>
+      <div class="d-name" id="d-name">—</div>
+      <div class="d-meta" id="d-meta"></div>
+    </div>
+    <button class="btn btn-icon" onclick="closeDetail()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+  <div class="detail-progress-area">
+    <div class="detail-nums">
+      <span class="big" id="d-owned">0</span>
+      <span class="slash">/</span>
+      <span class="total" id="d-total">0</span>
+      <span class="pct" id="d-pct">0%</span>
+    </div>
+    <div class="detail-prog-bar"><div class="detail-prog-fill" id="d-fill" style="width:0%"></div></div>
+  </div>
+  <div class="detail-body">
+    <p class="detail-section-title">Cartes possédées</p>
+    <div class="detail-manual-wrap">
+      <input type="number" id="d-manual-owned" min="0" value="0" placeholder="0">
+      <span class="detail-manual-total" id="d-manual-total">/ 0</span>
+      <button class="btn btn-primary btn-sm" onclick="setManualOwned()">Enregistrer</button>
+    </div>
+    <p class="detail-section-title" style="margin-top:14px">Actions rapides</p>
+    <div class="detail-actions">
+      <button class="btn btn-secondary btn-sm" onclick="markAllOwned()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/></svg>
+        Tout posséder
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="clearExtension()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Réinitialiser
+      </button>
+    </div>
+    <p class="detail-section-title" style="margin-top:14px">Informations</p>
+    <div id="d-infos"></div>
+  </div>
+</aside>
+
+<!-- Modal: Classeur -->
+<div class="modal-backdrop" id="modal-classeur">
+  <div class="modal">
+    <h2 id="modal-classeur-title">Nouveau classeur</h2>
+    <div class="settings-field"><label>Nom</label>
+      <input type="text" id="classeur-name-input" placeholder="Mon classeur EV"></div>
+    <div class="settings-field">
+      <label>Nombre de pages</label>
+      <input type="number" id="classeur-pages-input" value="40" min="1" max="400"
+             oninput="syncClasseurInputs('pages')">
+    </div>
+    <div class="settings-field">
+      <label>— ou — Nombre de cartes total</label>
+      <input type="number" id="classeur-cartes-input" value="720" min="1"
+             oninput="syncClasseurInputs('cartes')">
+    </div>
+    <div class="settings-field"><label>Slots par page</label>
+      <select id="classeur-slots-select" onchange="syncClasseurInputs('slots')">
+        <option value="9">9 (3×3)</option>
+        <option value="12">12 (4×3)</option>
+        <option value="18" selected>18 (6×3)</option>
+      </select>
+    </div>
+    <input type="hidden" id="classeur-input-mode" value="pages">
+    <div class="settings-field"><label>Bloc associé (pour le tri)</label>
+      <select id="classeur-bloc-select">
+        <option value="">— Aucun bloc —</option>
+      </select>
+    </div>
+    <div class="settings-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="classeur-complete" style="width:auto;accent-color:var(--green)">
+        Marquer comme complet (même si pas 100%)
+      </label>
+    </div>
+    <div class="settings-field"><label>Image de couverture (URL)</label>
+      <input type="url" id="classeur-image-input" placeholder="https://…" oninput="previewClasseurImage(this.value)">
+      <div class="classeur-image-preview" id="classeur-image-preview">
+        <span style="font-size:.7rem;color:var(--text3)">Aperçu</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-classeur')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveClasseur()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Ajouter ext au classeur -->
+<div class="modal-backdrop" id="modal-add-ext-classeur">
+  <div class="modal">
+    <h2>Ajouter une extension au classeur</h2>
+    <div class="settings-field"><label>Extension</label>
+      <select id="add-ext-classeur-select"><option value="">— Choisir —</option></select></div>
+    <div class="settings-field"><label>Pages dédiées</label>
+      <input type="number" id="add-ext-classeur-pages" value="10" min="1" max="200"
+             oninput="syncAddExtInputs('pages')"></div>
+    <div class="settings-field"><label>— ou — Nombre de cartes</label>
+      <input type="number" id="add-ext-classeur-cartes" value="180" min="1"
+             oninput="syncAddExtInputs('cartes')"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-ext-classeur')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmAddExtToClasseur()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Illustration (add + edit) -->
+<div class="modal-backdrop" id="modal-add-illus">
+  <div class="modal">
+    <h2 id="modal-illus-title">Ajouter une illustration</h2>
+    <p style="font-size:.78rem;color:var(--text2);margin-bottom:14px" id="modal-illus-ext-name"></p>
+    <div class="settings-field"><label>Description / Nom</label>
+      <input type="text" id="illus-desc" placeholder="Pikachu — Illus. Ken Sugimori"></div>
+    <div class="settings-field"><label>URL image (optionnel)</label>
+      <input type="url" id="illus-img" placeholder="https://…"></div>
+    <div class="settings-field"><label>Type de produit</label>
+      <select id="illus-product-type">
+        <option value="booster">Booster</option>
+        <option value="deck">Deck</option>
+        <option value="etb">ETB (Elite Trainer Box)</option>
+        <option value="premium">Pack Premium</option>
+      </select>
+    </div>
+    <div class="settings-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="illus-obtained" style="width:auto;accent-color:var(--green)"
+               onchange="toggleIllusDate(this.checked)">
+        Illustration obtenue
+      </label>
+    </div>
+    <div class="settings-field" id="illus-date-field" style="display:none"><label>Date d'obtention</label>
+      <input type="date" id="illus-date"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-illus')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmAddIllus()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script>
+// One-time migration: clear localStorage if it still has old built-in blocs data
+// (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
+(function(){
+  try {
+    const raw = localStorage.getItem('ptcg_collection');
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    // Old data had bloc_overrides with keys like 'SV','SWSH','SM' etc.
+    // or ext_overrides with keys like 'SV01', 'SWSH01' etc.
+    // If any such key exists AND template blocs are now empty, clear everything
+    // except user data (classeurs, custom_exts, custom_blocs, boosters_data, collection)
+    const tplEmpty = window.__PC_DATA__.blocs.length === 0;
+    if (tplEmpty) {
+      // Keep only data the user explicitly created; discard built-in overrides
+      const clean = {
+        _v: d._v || 1,
+        _ts: d._ts || 0,
+        collection:    d.collection    || {},
+        classeurs:     d.classeurs     || [],
+        boosters_data: d.boosters_data || {},
+        custom_exts:   d.custom_exts   || [],
+        custom_blocs:  d.custom_blocs  || [],
+        bloc_overrides:{},  // discard — referenced old built-in IDs
+        ext_overrides: {},  // discard — referenced old built-in IDs
+        settings:      d.settings      || { display_mode: 'logo' }
+      };
+      // Also clear classeurs ext references that pointed to old built-in exts
+      // (keep only refs that match custom_exts IDs)
+      const customExtIds = new Set((clean.custom_exts||[]).map(e=>e.id));
+      clean.classeurs = (clean.classeurs||[]).map(cl => ({
+        ...cl,
+        extensions: (cl.extensions||[]).filter(ce => customExtIds.has(ce.ext_id))
+      }));
+      localStorage.setItem('ptcg_collection', JSON.stringify(clean));
+    }
+  } catch(e) { /* ignore */ }
+})();
+</script>
+<script src="app.js"></script>
+</body>
+</html>
