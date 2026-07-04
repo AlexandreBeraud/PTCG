@@ -95,6 +95,7 @@ function loadData() {
       ext_overrides: {},
       bloc_overrides:{},
       custom_blocs:  [],
+      form_label_overrides: {},
       settings:      { display_mode: 'logo' }
     };
   };
@@ -114,6 +115,7 @@ function loadData() {
       if (!_D.custom_exts)    _D.custom_exts    = [];
       if (!_D.ext_overrides)  _D.ext_overrides  = {};
       if (!_D.bloc_overrides) _D.bloc_overrides = {};
+      if (!_D.form_label_overrides) _D.form_label_overrides = {};
       if (!_D.settings)       _D.settings       = { display_mode: 'logo' };
       // Discard old ext_overrides and bloc_overrides that referenced built-in IDs
       // (they're meaningless now that template is empty)
@@ -128,6 +130,10 @@ function loadData() {
   } catch(err) {
     console.error('[PTCG] renderAll crashed:', err);
   }
+  _pullLabelOverridesFromCloud().then(() => {
+    renderLabelsList();
+    _refreshPokedexAfterLabelChange();
+  }).catch(() => {});
 }
 
 function saveData() {
@@ -1842,19 +1848,32 @@ function switchEditionTab(tab) {
 
   const mainLayout   = document.getElementById('edition-layout-main');
   const mappingPanel = document.getElementById('edition-mapping-panel');
+  const labelsPanel  = document.getElementById('edition-labels-panel');
   const newBtn       = document.getElementById('edition-new-btn');
   const tabsRow      = document.getElementById('edition-tabs-row');
 
   if (tab === 'mapping') {
     if (mainLayout)   mainLayout.style.display  = 'none';
     if (mappingPanel) mappingPanel.style.display = '';
+    if (labelsPanel)  labelsPanel.style.display  = 'none';
     if (newBtn)       newBtn.style.display       = 'none';
     initMappingView();
     return;
   }
 
+  if (tab === 'labels') {
+    if (mainLayout)   mainLayout.style.display  = 'none';
+    if (mappingPanel) mappingPanel.style.display = 'none';
+    if (labelsPanel)  labelsPanel.style.display  = '';
+    if (newBtn)       newBtn.style.display       = 'none';
+    renderLabelsList();
+    _pullLabelOverridesFromCloud().then(renderLabelsList);
+    return;
+  }
+
   if (mainLayout)   mainLayout.style.display  = '';
   if (mappingPanel) mappingPanel.style.display = 'none';
+  if (labelsPanel)  labelsPanel.style.display  = 'none';
   if (newBtn)       newBtn.style.display       = '';
 
   resetEditionForm();
@@ -2375,6 +2394,192 @@ async function clearMapping(extId) {
   } catch(e) { toast('Erreur : ' + e.message, 'error'); }
 }
 
+// ── Labels de formes spéciales (Édition › Labels) ───────────────────────────
+let _labelsQuery = '';
+
+function filterLabelsList(q) { _labelsQuery = q; renderLabelsList(); }
+
+function renderLabelsList() {
+  const el = document.getElementById('labels-list');
+  if (!el) return;
+  const q = _nnLbl(_labelsQuery||'');
+  const grouped = new Set();
+  let html = '', totalShown = 0;
+
+  const rowsForTypes = types => types.map(type => {
+    if (!FORM_LABELS[type]) return '';
+    grouped.add(type);
+    const cfg = getFormLabelConfig(type);
+    if (q && !_nnLbl(type + ' ' + cfg.fr).includes(q)) return '';
+    totalShown++;
+    return _renderLabelRow(type, cfg);
+  }).filter(Boolean).join('');
+
+  FORM_LABEL_GROUPS.forEach(group => {
+    const rows = rowsForTypes(group.types);
+    if (!rows) return;
+    html += `<div class="lbl-group">
+      <div class="lbl-group-header">${group.label}</div>
+      <div class="lbl-group-cols">
+        <span>Label</span><span>Nom affiché</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span></span>
+      </div>
+      ${rows}
+    </div>`;
+  });
+
+  const leftovers = Object.keys(FORM_LABELS).filter(t => !grouped.has(t));
+  const leftoverRows = rowsForTypes(leftovers);
+  if (leftoverRows) {
+    html += `<div class="lbl-group">
+      <div class="lbl-group-header">Non classés</div>
+      <div class="lbl-group-cols">
+        <span>Label</span><span>Nom affiché</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span></span>
+      </div>
+      ${leftoverRows}
+    </div>`;
+  }
+
+  const counter = document.getElementById('labels-counter');
+  if (counter) counter.textContent = `${totalShown} label${totalShown>1?'s':''}`;
+  el.innerHTML = html || `<p style="color:var(--text2);font-size:.82rem;padding:16px 0">Aucun résultat.</p>`;
+}
+
+function _renderLabelRow(type, cfg) {
+  const safe    = type.replace(/'/g,"\\'");
+  const base    = FORM_LABELS[type];
+  const esc     = s => (s||'').replace(/"/g,'&quot;');
+  const isOv    = !!(_D.form_label_overrides||{})[type];
+  return `<div class="lbl-row" id="lblrow-${type}">
+    <div class="lbl-badge-cell"><span class="pkdx-forms-type-badge" style="background:${base.color}">${base.badge}</span></div>
+    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.fr)}" placeholder="${esc(base.fr)}"
+      oninput="_setLabelOverrideValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-toggle-cell"><label class="lbl-switch">
+      <input type="checkbox" ${cfg.enabled!==false?'checked':''} onchange="updateLabelToggle('${safe}',this.checked)">
+      <span class="lbl-switch-track"></span></label></div>
+    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc((cfg.prefixes||[]).join(', '))}" placeholder="ex : Méga-, M "
+      oninput="_setLabelOverrideValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc((cfg.suffixes||[]).join(', '))}" placeholder="ex : VMAX, X"
+      oninput="_setLabelOverrideValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-reset-cell">${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">×</button>` : ''}</div>
+  </div>`;
+}
+
+function _refreshPokedexAfterLabelChange() {
+  if (typeof _pkdx === 'undefined' || !_pkdx.formsLoaded) return;
+  try { _applyPokedexFilter(); } catch(_) {}
+  const fp = document.getElementById('pkdx-forms-panel');
+  if (fp && fp.style.display !== 'none') { try { _buildFormTypeFilterList(); } catch(_) {} }
+}
+
+// Sauvegarde immédiate à chaque frappe (aucun re-rendu de la liste ici, pour ne
+// pas faire perdre le focus du champ en cours d'édition). C'est cette fonction
+// qui garantit qu'une actualisation de page ne perd jamais la saisie, même si
+// l'utilisateur n'a pas encore quitté le champ (onblur).
+function _setLabelOverrideValue(type, field, value) {
+  if (!_D.form_label_overrides) _D.form_label_overrides = {};
+  const ov = { ...(_D.form_label_overrides[type] || {}) };
+  if (field === 'fr') {
+    const base = FORM_LABELS[type];
+    if (!value.trim() || value.trim() === base.fr) delete ov.fr; else ov.fr = value;
+  } else if (field === 'prefixes' || field === 'suffixes') {
+    const list = value.split(',').map(s=>s.trim()).filter(Boolean);
+    const dflt = (DEFAULT_FORM_CARD_PATTERNS[type]||{})[field] || [];
+    const same = list.length === dflt.length && list.every((v,i)=>v===dflt[i]);
+    if (same) delete ov[field]; else ov[field] = list;
+  }
+  if (Object.keys(ov).length === 0) delete _D.form_label_overrides[type];
+  else _D.form_label_overrides[type] = ov;
+  saveData();
+}
+
+// Appelé en quittant un champ texte : pousse la valeur vers Supabase, rafraîchit
+// le Pokédex (si déjà ouvert) et redessine la liste (bouton "réinitialiser").
+function commitLabelEdit(type) {
+  _pushLabelOverrideToCloud(type);
+  _refreshPokedexAfterLabelChange();
+  renderLabelsList();
+}
+
+function updateLabelToggle(type, checked) {
+  if (!_D.form_label_overrides) _D.form_label_overrides = {};
+  const ov = { ...(_D.form_label_overrides[type] || {}) };
+  if (checked === true) delete ov.enabled; else ov.enabled = false;
+  if (Object.keys(ov).length === 0) delete _D.form_label_overrides[type];
+  else _D.form_label_overrides[type] = ov;
+  saveData();
+  _pushLabelOverrideToCloud(type);
+  _refreshPokedexAfterLabelChange();
+  renderLabelsList();
+  toast('Label mis à jour.', 'success');
+}
+
+function resetLabelOverride(type) {
+  if (_D.form_label_overrides) delete _D.form_label_overrides[type];
+  saveData();
+  _pushLabelOverrideToCloud(type);
+  _refreshPokedexAfterLabelChange();
+  renderLabelsList();
+  toast('Label réinitialisé.', 'success');
+}
+
+// ── Sync cloud des labels (table Supabase dédiée form_label_overrides) ─────
+// Chaque ligne = un couple (user_id, form_type) avec la surcharge éventuelle.
+// Contrairement au blob JSON complet de "Synchroniser" (Paramètres), ce sync
+// est automatique : chaque modification est poussée immédiatement, et les
+// données cloud sont récupérées une fois au chargement de l'application.
+let _labelCloudPulled = false;
+
+function _labelUserId() {
+  return (window.__PC_CLOUD_CONFIG__ && window.__PC_CLOUD_CONFIG__.user_id) || 'default';
+}
+
+async function _pullLabelOverridesFromCloud() {
+  if (_labelCloudPulled) return;
+  _labelCloudPulled = true;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/form_label_overrides?user_id=eq.${encodeURIComponent(_labelUserId())}`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    if (!res.ok) return; // table absente ou policy manquante : on reste en local
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return;
+    if (!_D.form_label_overrides) _D.form_label_overrides = {};
+    rows.forEach(r => {
+      const ov = {};
+      if (r.fr) ov.fr = r.fr;
+      if (r.enabled === false) ov.enabled = false;
+      if (Array.isArray(r.prefixes) && r.prefixes.length) ov.prefixes = r.prefixes;
+      if (Array.isArray(r.suffixes) && r.suffixes.length) ov.suffixes = r.suffixes;
+      if (Object.keys(ov).length) _D.form_label_overrides[r.form_type] = ov;
+      else delete _D.form_label_overrides[r.form_type];
+    });
+    saveData();
+  } catch(e) { console.warn('[PTCG] pull labels cloud error:', e.message); }
+}
+
+async function _pushLabelOverrideToCloud(type) {
+  const ov = (_D.form_label_overrides||{})[type];
+  try {
+    if (!ov) {
+      await fetch(`${SB_URL}/rest/v1/form_label_overrides?user_id=eq.${encodeURIComponent(_labelUserId())}&form_type=eq.${encodeURIComponent(type)}`,
+        { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+      return;
+    }
+    await fetch(`${SB_URL}/rest/v1/form_label_overrides`, {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify({
+        user_id:    _labelUserId(),
+        form_type:  type,
+        fr:         ov.fr || null,
+        enabled:    ov.enabled === false ? false : null,
+        prefixes:   ov.prefixes || null,
+        suffixes:   ov.suffixes || null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  } catch(e) { console.warn('[PTCG] push label cloud error:', e.message); }
+}
+
 function filterMappingList(q) { _mapping.query = q; renderMappingList(); }
 function setMappingFilter(filter, btn) {
   _mapping.filter = filter;
@@ -2815,6 +3020,88 @@ const FORM_LABELS = {
   'normal-silvally': { fr:'Type Aigüe',       badge:'AIGÜE',     color:'#9CA3AF' },
 };
 
+// Groupes de labels (utilisés par le filtre Pokédex ET l'onglet Édition › Labels)
+const FORM_LABEL_GROUPS = [
+  { label: 'Régionales',          types: ['alola','galar','hisui','paldea'] },
+  { label: 'Méga',                types: ['mega','mega-x','mega-y','mega-z'] },
+  { label: 'Gigamax / Primo',     types: ['gmax','primal','eternamax'] },
+  { label: 'Légendaires',         types: ['origin','altered','sky','land','therian','incarnate','crowned','black','white','dusk-mane','dawn-wings','ultra','confined','unbound','complete','10','50','battle-bond','ash','teal-mask','wellspring-mask','hearthflame-mask','cornerstone-mask','stellar','terastal','original','original-color','ice-rider','shadow-rider'] },
+  { label: 'Combat / Mécanique',  types: ['blade','shield','zen','galar-zen','pirouette','aria','resolute','ordinary','busted','disguised','school','solo','hangry','full-belly','hero','noice','amped','low-key','single-strike','rapid-strike','gulping','gorging','neutral','zero','dada','two-segment','three-segment','three-family'] },
+  { label: 'Rotom',               types: ['heat','wash','frost','fan','mow'] },
+  { label: 'Morphéo (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
+  { label: 'Formes météo',        types: ['overcast','sunshine','rainy','snowy','midday','midnight','dusk','dawn'] },
+  { label: 'Formes saisonnières', types: ['spring','summer','autumn','winter'] },
+  { label: 'Cheniti/Cheniselle',  types: ['plant','sandy','trash'] },
+  { label: 'Flabébé / Florges',   types: ['red','yellow','orange','blue','white','eternal-flower'] },
+  { label: 'Pikachu spéciaux',    types: ['cap','cosplay','rock-star','belle','pop-star','phd','libre'] },
+  { label: 'Tauros Paldea',       types: ['aqua-breed','blaze-breed','combat-breed'] },
+  { label: 'Couafarel',           types: ['natural','heart','star','diamond','debutante','matron','dandy','la-reine','kabuki','pharaoh'] },
+  { label: 'Autres',              types: ['totem','attack','defense','speed','small','large','super','average','curly','droopy','stretchy','phony','antique','red-striped','blue-striped','white-striped','male','female','own','east-sea','west-sea','active','chest','roaming','full-power','bloodmoon','standard','normal'] },
+];
+
+// Motifs par défaut (préfixe / suffixe dans le nom de carte TCG) permettant de
+// relier une forme spéciale à ses cartes. Seuls les types ayant un réel
+// équivalent carte ont des motifs par défaut ; les autres labels restent
+// éditables mais ne filtrent rien tant qu'aucun motif n'est renseigné.
+const DEFAULT_FORM_CARD_PATTERNS = {
+  mega:     { prefixes: ['Méga-', 'Méga ', 'M '], suffixes: [] },
+  'mega-x': { prefixes: ['Méga-', 'Méga ', 'M '], suffixes: ['X'] },
+  'mega-y': { prefixes: ['Méga-', 'Méga ', 'M '], suffixes: ['Y'] },
+  gmax:     { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
+  primal:   { prefixes: ['Primo-', 'Primo '], suffixes: [] },
+  alola:    { prefixes: [], suffixes: ["d'Alola", 'de Alola', 'Alola'] },
+  galar:    { prefixes: [], suffixes: ['de Galar'] },
+  hisui:    { prefixes: [], suffixes: ['de Hisui', "d'Hisui"] },
+  paldea:   { prefixes: [], suffixes: ['de Paldea'] },
+};
+
+// Fusionne la définition statique d'un label avec la surcharge utilisateur
+// (nom affiché, visibilité, préfixes/suffixes de rattachement carte).
+function getFormLabelConfig(type) {
+  const base = FORM_LABELS[type] || { fr: type, badge: (type||'').toUpperCase(), color: '#888' };
+  const ov   = (_D.form_label_overrides || {})[type] || {};
+  const dflt = DEFAULT_FORM_CARD_PATTERNS[type] || { prefixes: [], suffixes: [] };
+  return {
+    fr:       ov.fr      !== undefined ? ov.fr      : base.fr,
+    badge:    base.badge,
+    color:    base.color,
+    enabled:  ov.enabled !== undefined ? ov.enabled : true,
+    prefixes: Array.isArray(ov.prefixes) ? ov.prefixes.slice() : dflt.prefixes.slice(),
+    suffixes: Array.isArray(ov.suffixes) ? ov.suffixes.slice() : dflt.suffixes.slice(),
+  };
+}
+
+function _nnLbl(s) {
+  return (s||'')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')  // accents
+    .replace(/[\u2018\u2019\u02BC\u00B4`]/g, "'")       // apostrophes typographiques → apostrophe droite
+    .trim();
+}
+function _escRe(s)  { return (s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+
+// Un nom de carte TCG correspond-il au label `formType` (via ses préfixes/suffixes) ?
+function _cardMatchesFormType(cardName, formType) {
+  const cfg = getFormLabelConfig(formType);
+  if (!cfg.enabled) return false;
+  const n = _nnLbl(cardName);
+  const prefixes = (cfg.prefixes||[]).map(_nnLbl).filter(Boolean);
+  const suffixes = (cfg.suffixes||[]).map(_nnLbl).filter(Boolean);
+  if (!prefixes.length && !suffixes.length) return false;
+  const test = p => new RegExp('\\b'+_escRe(p)+'\\b').test(n);
+  const prefixOk = !prefixes.length || prefixes.some(test);
+  const suffixOk = !suffixes.length || suffixes.some(test);
+  return prefixOk && suffixOk;
+}
+
+// Liste des types de forme ayant au moins un motif de carte configuré (actif)
+function _allLinkedFormTypes() {
+  return Object.keys(FORM_LABELS).filter(t => {
+    const c = getFormLabelConfig(t);
+    return c.enabled && ((c.prefixes||[]).length || (c.suffixes||[]).length);
+  });
+}
+
 // Détecte le type de forme à partir du nom PokéAPI
 function _detectFormType(pokeName, baseName) {
   // Exact overrides for PokéAPI names that need special handling
@@ -3164,7 +3451,8 @@ function _applyPokedexFilter() {
     const extMatch = !_pkdxExtFilter || !_pkdx.extFilterNames
       ? true
       : _matchPkdxExtEntry(p);
-    return genMatch && qMatch && extMatch;
+    const enabledMatch = !p.isForm || !p.formType || getFormLabelConfig(p.formType).enabled;
+    return genMatch && qMatch && extMatch && enabledMatch;
   });
   renderPokedexPage(true);
 }
@@ -3228,24 +3516,8 @@ function _buildFormTypeFilterList() {
   if (!el) return;
   const typesPresent = new Set(_pkdx.all.filter(p => p.isForm && p.formType).map(p => p.formType));
   const countOf = type => _pkdx.all.filter(p => p.isForm && p.formType === type).length;
-  const totalForms = _pkdx.all.filter(p => p.isForm).length;
-  const GROUPS = [
-    { label: 'Régionales',          types: ['alola','galar','hisui','paldea'] },
-    { label: 'Méga',                types: ['mega','mega-x','mega-y','mega-z'] },
-    { label: 'Gigamax / Primo',     types: ['gmax','primal','eternamax'] },
-    { label: 'Légendaires',         types: ['origin','altered','sky','land','therian','incarnate','crowned','black','white','dusk-mane','dawn-wings','ultra','confined','unbound','complete','10','50','battle-bond','ash','teal-mask','wellspring-mask','hearthflame-mask','cornerstone-mask','stellar','terastal','original','original-color','ice-rider','shadow-rider'] },
-    { label: 'Combat / Mécanique',  types: ['blade','shield','zen','galar-zen','pirouette','aria','resolute','ordinary','busted','disguised','school','solo','hangry','full-belly','hero','noice','amped','low-key','single-strike','rapid-strike','gulping','gorging','neutral','zero','dada','two-segment','three-segment','three-family'] },
-    { label: 'Rotom',               types: ['heat','wash','frost','fan','mow'] },
-    { label: 'Morphéo (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
-    { label: 'Formes météo',        types: ['overcast','sunshine','rainy','snowy','midday','midnight','dusk','dawn'] },
-    { label: 'Formes saisonnières', types: ['spring','summer','autumn','winter'] },
-    { label: 'Cheniti/Cheniselle',  types: ['plant','sandy','trash'] },
-    { label: 'Flabébé / Florges',   types: ['red','yellow','orange','blue','white','eternal-flower'] },
-    { label: 'Pikachu spéciaux',    types: ['cap','cosplay','rock-star','belle','pop-star','phd','libre'] },
-    { label: 'Tauros Paldea',       types: ['aqua-breed','blaze-breed','combat-breed'] },
-    { label: 'Couafarel',           types: ['natural','heart','star','diamond','debutante','matron','dandy','la-reine','kabuki','pharaoh'] },
-    { label: 'Autres',              types: ['totem','attack','defense','speed','small','large','super','average','curly','droopy','stretchy','phony','antique','red-striped','blue-striped','white-striped','male','female','own','east-sea','west-sea','active','chest','roaming','full-power','bloodmoon','standard','normal'] },
-  ];
+  const totalForms = _pkdx.all.filter(p => p.isForm && getFormLabelConfig(p.formType).enabled).length;
+  const GROUPS = FORM_LABEL_GROUPS;
   const mode = _pkdx.formMode || 'all';
   const filter = _pkdx.formTypeFilter;
   let html = '<div class="pkdx-forms-panel-inner">';
@@ -3262,11 +3534,11 @@ function _buildFormTypeFilterList() {
     <span class="pkdx-forms-count">${totalForms}</span>
   </div>`;
   GROUPS.forEach(group => {
-    const present = group.types.filter(t => typesPresent.has(t));
+    const present = group.types.filter(t => typesPresent.has(t) && getFormLabelConfig(t).enabled);
     if (!present.length) return;
     html += `<div class="pkdx-forms-group-label">${group.label}</div>`;
     present.forEach(type => {
-      const label = FORM_LABELS[type];
+      const label = getFormLabelConfig(type);
       if (!label) return;
       const active = mode === 'filter' && filter?.has(type) ? 'active' : '';
       html += `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
@@ -3647,7 +3919,8 @@ async function openPokedexModal(id) {
           const formTypes  = formPoke.types.map(t => t.type.name);
           const formColor  = TYPE_COLORS[formTypes[0]] || '#888';
           const formType   = _detectFormType(v.pokemon.name, poke.name);
-          const formMeta   = formType ? FORM_LABELS[formType] : null;
+          const formMeta   = formType ? getFormLabelConfig(formType) : null;
+          if (formMeta && !formMeta.enabled) return '';
 
           // Build display name
           let formLabel = v.pokemon.name.replace(poke.name + '-', '').replace(/-/g,' ');
@@ -3726,23 +3999,9 @@ async function _loadTcgCardsInModal(frName, formType) {
   const sbUrl = 'https://kfyphcestbcgtkzurvas.supabase.co';
   const sbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmeXBoY2VzdGJjZ3RrenVydmFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NTAwMzMsImV4cCI6MjA5ODIyNjAzM30.8sxe-_-uZdG4G0CGpUKViBMHE78RuReVaP_SsyLCaa8';
 
-  const nn = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
-  // Form card filters (on normalized card names)
-  const formFilters = {
-    alola:   [/\bd.alola\b/, /\bde alola\b/],
-    galar:   [/\bde galar\b/],
-    hisui:   [/\bde hisui\b/, /\bd.hisui\b/],
-    paldea:  [/\bde paldea\b/],
-    // mega-x/y: must have " x" or " y" suffix AND mega prefix, but NOT the other letter
-    'mega-x': [c => /^m.ga[- ]/.test(nn(c.name)) && /\bx\b/.test(nn(c.name)) && !/\by\b/.test(nn(c.name))],
-    'mega-y': [c => /^m.ga[- ]/.test(nn(c.name)) && /\by\b/.test(nn(c.name)) && !/\bx\b/.test(nn(c.name))],
-    mega:    [/^m.ga[- ]/, /\bm.ga[- ]/],
-    gmax:    [/\bgigamax\b/],
-    primal:  [/\bprimal\b/],
-  };
-  // Also: "M Florizarre EX" pattern — just "m " prefix
-  const megaShortPat = /^m [a-z]/;
-  const allFormPats = [/\bd.alola\b/, /\bde alola\b/, /\bde galar\b/, /\bde hisui\b/, /\bd.hisui\b/, /\bde paldea\b/, /^m.ga[- ]/, /\bm.ga[- ]/, /\bgigamax\b/, /\bprimal\b/];
+  // Types de forme ayant un lien carte actif (préfixes/suffixes configurés dans
+  // Édition › Labels), utilisés pour exclure ces cartes de la vue "forme de base".
+  const linkedTypes = _allLinkedFormTypes();
 
   try {
     const url = `${sbUrl}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
@@ -3750,36 +4009,33 @@ async function _loadTcgCardsInModal(frName, formType) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let cards = await res.json();
 
-    if (formType && formFilters[formType]) {
-      const filters = formFilters[formType];
-      cards = cards.filter(card => {
-        const n = nn(card.name);
-        return filters.some(f => typeof f === 'function' ? f(card) : f.test(n));
-      });
-      // Also include "M Pokémon" short format for mega forms
-      if (formType === 'mega' || formType === 'mega-x' || formType === 'mega-y') {
-        const extra = (await (async () => {
-          try {
-            const r2 = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.M ${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=200`,
-              { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
-            return r2.ok ? await r2.json() : [];
-          } catch(_) { return []; }
-        })()).filter(card => {
-          const n = nn(card.name);
-          if (formType === 'mega-x') return megaShortPat.test(n) && /\bx\b/.test(n) && !/\by\b/.test(n);
-          if (formType === 'mega-y') return megaShortPat.test(n) && /\by\b/.test(n) && !/\bx\b/.test(n);
-          return megaShortPat.test(n);
-        });
-        // Merge, dedup by id
-        const seen = new Set(cards.map(c => c.id));
-        extra.forEach(c => { if (!seen.has(c.id)) cards.push(c); });
+    if (formType && linkedTypes.includes(formType)) {
+      cards = cards.filter(card => _cardMatchesFormType(card.name, formType));
+      // Certaines cartes au format court ("M Dracaufeu") peuvent se trouver hors
+      // de la fenêtre limit=500 de la requête principale. On détecte les
+      // préfixes réduits à une seule lettre (ex. "M", "M ", "M-" désignent
+      // tous la même lettre "M") et on refait une recherche dédiée pour
+      // chacun, quelle que soit la façon dont l'utilisateur les a saisis.
+      const cfg = getFormLabelConfig(formType);
+      const shortLetters = [...new Set(
+        (cfg.prefixes||[])
+          .map(p => _nnLbl(p).replace(/[-\s]/g, ''))
+          .filter(p => p.length === 1)
+      )];
+      for (const letter of shortLetters) {
+        try {
+          const r2 = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.${encodeURIComponent(letter + ' ' + frName)}*&order=set_id.asc,number.asc&limit=200`,
+            { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
+          const extra = r2.ok ? await r2.json() : [];
+          const seen = new Set(cards.map(c => c.id));
+          extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
+            if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
+          });
+        } catch(_) {}
       }
     } else if (!formType) {
-      // Base Pokémon: exclude form cards
-      cards = cards.filter(c => {
-        const n = nn(c.name);
-        return !allFormPats.some(p => p.test(n)) && !megaShortPat.test(n);
-      });
+      // Base Pokémon : exclure les cartes qui appartiennent à une forme spéciale liée
+      cards = cards.filter(c => !linkedTypes.some(t => _cardMatchesFormType(c.name, t)));
     }
     if (!document.getElementById('pkdx-tcg-grid')) return;
     if (!cards.length) { grid.innerHTML = '<p style="color:var(--text3);font-size:.82rem">Aucune carte trouvée.</p>'; return; }
@@ -3888,7 +4144,7 @@ async function openPokedexFormModal(pokeName, baseFrName) {
     const color   = TYPE_COLORS[types[0]] || '#888';
 
     const formType = _detectFormType(pokeName, poke.species.name);
-    const formMeta = formType ? FORM_LABELS[formType] : null;
+    const formMeta = formType ? getFormLabelConfig(formType) : null;
     // Ensure baseFrName is populated
     if (!baseFrName) {
       try {
@@ -3931,7 +4187,7 @@ async function openPokedexFormModal(pokeName, baseFrName) {
           </button>
           <div class="pkdx-modal-num">${baseFrName}</div>
           <h2 class="pkdx-modal-name">${fullFrName}</h2>
-          ${formMeta ? `<div class="pkdx-modal-genus"><span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span></div>` : ''}
+          ${formMeta && formMeta.enabled ? `<div class="pkdx-modal-genus"><span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span></div>` : ''}
           <div class="pkdx-modal-types">
             ${types.map(t=>`<span class="pkdx-type pkdx-type-lg" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
           </div>

@@ -219,6 +219,7 @@
         <button class="edition-tab active" data-tab="blocs" onclick="switchEditionTab('blocs')">Blocs</button>
         <button class="edition-tab" data-tab="exts" onclick="switchEditionTab('exts')">Extensions</button>
         <button class="edition-tab" data-tab="mapping" onclick="switchEditionTab('mapping')">Mapping TCG</button>
+        <button class="edition-tab" data-tab="labels" onclick="switchEditionTab('labels')">Labels</button>
       </div>
       <div class="edition-layout" id="edition-layout-main">
         <div>
@@ -273,6 +274,17 @@
           <span id="mapping-counter" style="font-size:.78rem;color:var(--text2)"></span>
         </div>
         <div id="mapping-list"></div>
+      </div>
+      <div id="edition-labels-panel" style="display:none">
+        <div class="mapping-header">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 10px;display:flex;align-items:center;gap:6px;width:260px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" id="labels-search" placeholder="Filtrer un label…" oninput="filterLabelsList(this.value)" style="width:100%;background:none;border:none;outline:none;font-size:.8rem;color:var(--text)">
+          </div>
+          <span id="labels-counter" style="font-size:.78rem;color:var(--text2)"></span>
+        </div>
+        <p class="form-hint" style="margin-bottom:14px">Nom affiché sur le badge de la forme spéciale, visibilité dans le Pokédex, et préfixes/suffixes (séparés par des virgules) utilisés pour retrouver les cartes TCG correspondantes (ex : <code>Méga-, M </code> pour Méga, <code>VMAX, Gigamax</code> pour Gigamax).</p>
+        <div id="labels-list"></div>
       </div>
     </div>
 
