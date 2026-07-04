@@ -1418,3 +1418,15 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   border-radius: 10px; color: #fff; flex-shrink: 0; white-space: nowrap;
 }
 .pkdx-forms-count { margin-left: auto; font-size: .68rem; color: var(--text3); }
+
+/* ── Pokédex sticky header ────────────────────────────────────────────────── */
+.pkdx-sticky-header {
+  position: sticky;
+  top: -24px;       /* compensate #content padding */
+  z-index: 60;
+  background: var(--bg);
+  margin: -24px -24px 20px -24px;   /* bleed over #content padding */
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+}
