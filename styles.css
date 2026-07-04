@@ -1381,3 +1381,40 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 }
 /* Full-width section wrapper */
 .pkdx-tcg-section { grid-column: 1 / -1; }
+
+/* ── Pokédex forms dropdown ───────────────────────────────────────────────── */
+.pkdx-forms-dropdown {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  width: 270px; max-height: 440px; overflow-y: auto;
+}
+.pkdx-forms-panel-inner { padding: 4px 0 8px; }
+.pkdx-forms-modes {
+  display: flex; gap: 4px; padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.pkdx-forms-mode-btn {
+  flex: 1; text-align: center; padding: 5px 4px; font-size: .75rem;
+  font-weight: 600; cursor: pointer; border-radius: 6px; color: var(--text2);
+  background: var(--bg3); transition: background .12s, color .12s;
+}
+.pkdx-forms-mode-btn:hover { background: var(--border); color: var(--text); }
+.pkdx-forms-mode-btn.active { background: var(--accent); color: #fff; }
+.pkdx-forms-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.pkdx-forms-group-label {
+  padding: 5px 12px 2px; font-size: .65rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--text3);
+}
+.pkdx-forms-type-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 12px; cursor: pointer; font-size: .78rem;
+  color: var(--text2); transition: background .1s;
+}
+.pkdx-forms-type-item:hover { background: var(--bg3); color: var(--text); }
+.pkdx-forms-type-item.active { background: rgba(74,158,255,.12); color: var(--text); }
+.pkdx-forms-type-badge {
+  font-size: .56rem; font-weight: 800; padding: 1px 5px;
+  border-radius: 10px; color: #fff; flex-shrink: 0; white-space: nowrap;
+}
+.pkdx-forms-count { margin-left: auto; font-size: .68rem; color: var(--text3); }

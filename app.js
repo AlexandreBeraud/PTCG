@@ -2665,19 +2665,204 @@ const FORM_LABELS = {
 
 // Détecte le type de forme à partir du nom PokéAPI
 function _detectFormType(pokeName, baseName) {
-  const suffix = pokeName.replace(baseName + '-', '');
-  if (pokeName.includes('-mega-x'))  return 'mega-x';
-  if (pokeName.includes('-mega-y'))  return 'mega-y';
-  if (pokeName.includes('-mega'))    return 'mega';
-  if (pokeName.includes('-gmax'))    return 'gmax';
-  if (pokeName.includes('-alola'))   return 'alola';
-  if (pokeName.includes('-galar'))   return 'galar';
-  if (pokeName.includes('-hisui'))   return 'hisui';
-  if (pokeName.includes('-paldea'))  return 'paldea';
-  if (pokeName.includes('-totem'))   return 'totem';
-  if (pokeName.includes('-primal'))  return 'primal';
+  // Exact overrides for PokéAPI names that need special handling
+  const exact = {
+    'necrozma-dusk':'dusk-mane','necrozma-dawn':'dawn-wings','necrozma-ultra':'ultra',
+    'kyurem-black':'black','kyurem-white':'white',
+    'oricorio-baile':'baile','oricorio-pom-pom':'pom-pom','oricorio-pau':'pau','oricorio-sensu':'sensu',
+    'toxtricity-amped':'amped','toxtricity-low-key':'low-key',
+    'darmanitan-galar-standard':'galar','darmanitan-galar-zen':'galar-zen',
+    'darmanitan-standard':'standard','darmanitan-zen':'zen',
+    'castform-rainy':'rainy','castform-snowy':'snowy','castform-sunny':'sunshine',
+    'tauros-paldea-combat-breed':'combat-breed','tauros-paldea-blaze-breed':'blaze-breed','tauros-paldea-aqua-breed':'aqua-breed',
+    'toxtricity-amped-gmax':'amped-gmax','toxtricity-low-key-gmax':'low-key-gmax',
+    'urshifu-single-strike-gmax':'single-strike-gmax','urshifu-rapid-strike-gmax':'rapid-strike-gmax',
+    'greninja-ash':'ash','greninja-battle-bond':'battle-bond',
+    'calyrex-ice':'ice-rider','calyrex-shadow':'shadow-rider',
+    'eiscue-ice':'ice','eiscue-noice':'noice',
+    'basculegion-male':'male','basculegion-female':'female',
+    'indeedee-male':'male','indeedee-female':'female',
+    'zarude-dada':'dada','palafin-zero':'zero','palafin-hero':'hero',
+    'dialga-origin':'origin','palkia-origin':'origin',
+    'giratina-origin':'origin','giratina-altered':'altered',
+    'shaymin-sky':'sky','shaymin-land':'land',
+    'keldeo-ordinary':'ordinary','keldeo-resolute':'resolute',
+    'meloetta-aria':'aria','meloetta-pirouette':'pirouette',
+    'aegislash-shield':'shield','aegislash-blade':'blade',
+    'morpeko-full-belly':'full-belly','morpeko-hangry':'hangry',
+    'mimikyu-disguised':'disguised','mimikyu-busted':'busted',
+    'xerneas-active':'active','xerneas-neutral':'neutral',
+    'wishiwashi-solo':'solo','wishiwashi-school':'school',
+    'cramorant-gulping':'gulping','cramorant-gorging':'gorging',
+    'gimmighoul-chest':'chest','gimmighoul-roaming':'roaming',
+    'terapagos-normal':'terapagos-normal','terapagos-terastal':'terastal','terapagos-stellar':'stellar',
+    'rotom-heat':'heat','rotom-wash':'wash','rotom-frost':'frost','rotom-fan':'fan','rotom-mow':'mow',
+    'deoxys-attack':'attack','deoxys-defense':'defense','deoxys-speed':'speed',
+    'wormadam-plant':'plant','wormadam-sandy':'sandy','wormadam-trash':'trash',
+    'tornadus-incarnate':'incarnate','tornadus-therian':'therian',
+    'thundurus-incarnate':'incarnate','thundurus-therian':'therian',
+    'landorus-incarnate':'incarnate','landorus-therian':'therian',
+    'enamorus-incarnate':'incarnate','enamorus-therian':'therian',
+    'flabebe-red':'red','flabebe-yellow':'yellow','flabebe-orange':'orange','flabebe-blue':'blue','flabebe-white':'white',
+    'floette-red':'red','floette-yellow':'yellow','floette-orange':'orange','floette-blue':'blue','floette-white':'white','floette-eternal':'eternal-flower',
+    'florges-red':'red','florges-yellow':'yellow','florges-orange':'orange','florges-blue':'blue','florges-white':'white',
+    'pumpkaboo-small':'small','pumpkaboo-average':'average','pumpkaboo-large':'large','pumpkaboo-super':'super',
+    'gourgeist-small':'small','gourgeist-average':'average','gourgeist-large':'large','gourgeist-super':'super',
+    'zygarde-50':'50','zygarde-10':'10','zygarde-complete':'complete',
+    'hoopa-confined':'confined','hoopa-unbound':'unbound',
+    'lycanroc-midday':'midday','lycanroc-midnight':'midnight','lycanroc-dusk':'dusk',
+    'silvally-normal':'normal-silvally',
+    'mimikyu-disguised':'disguised','mimikyu-busted':'busted',
+    'necrozma-dusk-mane':'dusk-mane','necrozma-dawn-wings':'dawn-wings',
+    'sinistea-phony':'phony','sinistea-antique':'antique',
+    'polteageist-phony':'phony','polteageist-antique':'antique',
+    'basculin-red-striped':'red-striped','basculin-blue-striped':'blue-striped','basculin-white-striped':'white-striped',
+    'dudunsparce-two-segment':'two-segment','dudunsparce-three-segment':'three-segment',
+    'tatsugiri-curly':'curly','tatsugiri-droopy':'droopy','tatsugiri-stretchy':'stretchy',
+    'ogerpon-teal-mask':'teal-mask','ogerpon-wellspring-mask':'wellspring-mask','ogerpon-hearthflame-mask':'hearthflame-mask','ogerpon-cornerstone-mask':'cornerstone-mask',
+    'magearna-original':'original',
+    'pikachu-original-cap':'cap','pikachu-hoenn-cap':'cap','pikachu-sinnoh-cap':'cap',
+    'pikachu-unova-cap':'cap','pikachu-kalos-cap':'cap','pikachu-alola-cap':'cap',
+    'pikachu-partner-cap':'cap','pikachu-world-cap':'cap',
+    'pikachu-cosplay':'cosplay','pikachu-rock-star':'rock-star','pikachu-belle':'belle',
+    'pikachu-pop-star':'pop-star','pikachu-phd':'phd','pikachu-libre':'libre',
+    'furfrou-natural':'natural',
+  };
+  if (exact[pokeName]) return exact[pokeName];
+
+  // Ordered suffix checks (most specific first)
+  if (pokeName.includes('-mega-x'))    return 'mega-x';
+  if (pokeName.includes('-mega-y'))    return 'mega-y';
+  if (pokeName.includes('-mega-z'))    return 'mega-z';
+  if (pokeName.includes('-mega'))      return 'mega';
+  if (pokeName.includes('-gmax'))      return 'gmax';
+  if (pokeName.includes('-alola'))     return 'alola';
+  if (pokeName.includes('-galar'))     return 'galar';
+  if (pokeName.includes('-hisui'))     return 'hisui';
+  if (pokeName.includes('-paldea'))    return 'paldea';
+  if (pokeName.includes('-primal'))    return 'primal';
+  if (pokeName.includes('-totem'))     return 'totem';
+  if (pokeName.includes('-eternamax')) return 'eternamax';
+  if (pokeName.includes('-single-strike')) return 'single-strike';
+  if (pokeName.includes('-rapid-strike'))  return 'rapid-strike';
+  if (pokeName.includes('-original-color')) return 'original-color';
+  if (pokeName.includes('-original'))  return 'original';
+  if (pokeName.includes('-cap'))       return 'cap';
+  if (pokeName.includes('-crowned'))   return 'crowned';
+  if (pokeName.includes('-amped'))     return 'amped';
+  if (pokeName.includes('-low-key'))   return 'low-key';
+  if (pokeName.includes('-aqua-breed')) return 'aqua-breed';
+  if (pokeName.includes('-blaze-breed')) return 'blaze-breed';
+  if (pokeName.includes('-combat-breed')) return 'combat-breed';
+  if (pokeName.includes('-battle-bond')) return 'battle-bond';
+  if (pokeName.includes('-full-power')) return 'full-power';
+  if (pokeName.includes('-full-belly')) return 'full-belly';
+  if (pokeName.includes('-teal-mask')) return 'teal-mask';
+  if (pokeName.includes('-wellspring-mask')) return 'wellspring-mask';
+  if (pokeName.includes('-hearthflame-mask')) return 'hearthflame-mask';
+  if (pokeName.includes('-cornerstone-mask')) return 'cornerstone-mask';
+  if (pokeName.includes('-red-striped')) return 'red-striped';
+  if (pokeName.includes('-blue-striped')) return 'blue-striped';
+  if (pokeName.includes('-white-striped')) return 'white-striped';
+  if (pokeName.includes('-two-segment')) return 'two-segment';
+  if (pokeName.includes('-three-segment')) return 'three-segment';
+  if (pokeName.includes('-dusk-mane')) return 'dusk-mane';
+  if (pokeName.includes('-dawn-wings')) return 'dawn-wings';
+  if (pokeName.includes('-eternal-flower')) return 'eternal-flower';
+  if (pokeName.includes('-own-tempo')) return 'own';
+  if (pokeName.includes('-rock-star')) return 'rock-star';
+  if (pokeName.includes('-pop-star'))  return 'pop-star';
+  if (pokeName.includes('-pom-pom'))   return 'pom-pom';
+  if (pokeName.includes('-origin'))    return 'origin';
+  if (pokeName.includes('-therian'))   return 'therian';
+  if (pokeName.includes('-incarnate')) return 'incarnate';
+  if (pokeName.includes('-stellar'))   return 'stellar';
+  if (pokeName.includes('-terastal'))  return 'terastal';
+  if (pokeName.includes('-complete'))  return 'complete';
+  if (pokeName.includes('-unbound'))   return 'unbound';
+  if (pokeName.includes('-confined'))  return 'confined';
+  if (pokeName.includes('-pirouette')) return 'pirouette';
+  if (pokeName.includes('-eternamax')) return 'eternamax';
+  if (pokeName.includes('-ultra'))     return 'ultra';
+  if (pokeName.includes('-altered'))   return 'altered';
+  if (pokeName.includes('-resolute'))  return 'resolute';
+  if (pokeName.includes('-ordinary'))  return 'ordinary';
+  if (pokeName.includes('-disguised')) return 'disguised';
+  if (pokeName.includes('-busted'))    return 'busted';
+  if (pokeName.includes('-hangry'))    return 'hangry';
+  if (pokeName.includes('-gorging'))   return 'gorging';
+  if (pokeName.includes('-gulping'))   return 'gulping';
+  if (pokeName.includes('-noice'))     return 'noice';
+  if (pokeName.includes('-school'))    return 'school';
+  if (pokeName.includes('-midday'))    return 'midday';
+  if (pokeName.includes('-midnight'))  return 'midnight';
+  if (pokeName.includes('-crowned'))   return 'crowned';
+  if (pokeName.includes('-blade'))     return 'blade';
+  if (pokeName.includes('-shield'))    return 'shield';
+  if (pokeName.includes('-attack'))    return 'attack';
+  if (pokeName.includes('-defense'))   return 'defense';
+  if (pokeName.includes('-speed'))     return 'speed';
+  if (pokeName.includes('-cosplay'))   return 'cosplay';
+  if (pokeName.includes('-belle'))     return 'belle';
+  if (pokeName.includes('-libre'))     return 'libre';
+  if (pokeName.includes('-phd'))       return 'phd';
+  if (pokeName.includes('-curly'))     return 'curly';
+  if (pokeName.includes('-droopy'))    return 'droopy';
+  if (pokeName.includes('-stretchy'))  return 'stretchy';
+  if (pokeName.includes('-phony'))     return 'phony';
+  if (pokeName.includes('-antique'))   return 'antique';
+  if (pokeName.includes('-dusk'))      return 'dusk';
+  if (pokeName.includes('-dawn'))      return 'dawn';
+  if (pokeName.includes('-sky'))       return 'sky';
+  if (pokeName.includes('-land'))      return 'land';
+  if (pokeName.includes('-zen'))       return 'zen';
+  if (pokeName.includes('-aria'))      return 'aria';
+  if (pokeName.includes('-heat'))      return 'heat';
+  if (pokeName.includes('-wash'))      return 'wash';
+  if (pokeName.includes('-frost'))     return 'frost';
+  if (pokeName.includes('-fan'))       return 'fan';
+  if (pokeName.includes('-mow'))       return 'mow';
+  if (pokeName.includes('-plant'))     return 'plant';
+  if (pokeName.includes('-sandy'))     return 'sandy';
+  if (pokeName.includes('-trash'))     return 'trash';
+  if (pokeName.includes('-spring'))    return 'spring';
+  if (pokeName.includes('-summer'))    return 'summer';
+  if (pokeName.includes('-autumn'))    return 'autumn';
+  if (pokeName.includes('-winter'))    return 'winter';
+  if (pokeName.includes('-baile'))     return 'baile';
+  if (pokeName.includes('-pau'))       return 'pau';
+  if (pokeName.includes('-sensu'))     return 'sensu';
+  if (pokeName.includes('-overcast'))  return 'overcast';
+  if (pokeName.includes('-sunshine'))  return 'sunshine';
+  if (pokeName.includes('-rainy'))     return 'rainy';
+  if (pokeName.includes('-snowy'))     return 'snowy';
+  if (pokeName.includes('-natural'))   return 'natural';
+  if (pokeName.includes('-black'))     return 'black';
+  if (pokeName.includes('-white'))     return 'white';
+  if (pokeName.includes('-red'))       return 'red';
+  if (pokeName.includes('-yellow'))    return 'yellow';
+  if (pokeName.includes('-orange'))    return 'orange';
+  if (pokeName.includes('-blue'))      return 'blue';
+  if (pokeName.includes('-neutral'))   return 'neutral';
+  if (pokeName.includes('-hero'))      return 'hero';
+  if (pokeName.includes('-zero'))      return 'zero';
+  if (pokeName.includes('-ash'))       return 'ash';
+  if (pokeName.includes('-dada'))      return 'dada';
+  if (pokeName.includes('-male'))      return 'male';
+  if (pokeName.includes('-female'))    return 'female';
+  if (pokeName.includes('-small'))     return 'small';
+  if (pokeName.includes('-large'))     return 'large';
+  if (pokeName.includes('-super'))     return 'super';
+  if (pokeName.includes('-average'))   return 'average';
+  if (pokeName.includes('-chest'))     return 'chest';
+  if (pokeName.includes('-roaming'))   return 'roaming';
+  if (pokeName.includes('-shadow'))    return 'shadow';
+  if (pokeName.includes('-ice'))       return 'ice';
+  if (pokeName.includes('-50'))        return '50';
+  if (pokeName.includes('-10'))        return '10';
   return null;
 }
+
 
 // ── State ──────────────────────────────────────────────────────────────────
 let _pkdx = {
@@ -2859,30 +3044,70 @@ function togglePokedexForms(btn) {
 
 async function _loadFormsList() {
   try {
-    const res  = await fetch(`${POKEAPI}/pokemon?limit=1500&offset=0`);
+    // Fetch ALL Pokémon entries (base + forms) from PokéAPI
+    const res  = await fetch(`${POKEAPI}/pokemon?limit=2000&offset=0`);
     const data = await res.json();
-    const formKeywords = ['-mega','-gmax','-alola','-galar','-hisui','-paldea',
-      '-origin','-crowned','-primal','-therian','-pirouette','-aria','-complete',
-      '-eternamax','-sky','-blade','-zen','-dusk','-dawn','-midday','-midnight',
-      '-heat','-wash','-frost','-fan','-mow','-altered','-land','-plant',
-      '-sandy','-trash','-hero','-hangry','-gorging','-noice','-busted',
-      '-school','-solo','-disguised','-black','-white','-50','-10'];
-    const bases = _pkdx.all.filter(p => !p.isForm);
+
+    // Base Pokémon already loaded (PokéAPI English names)
+    const bases      = _pkdx.all.filter(p => !p.isForm);
+    // Fast lookup: english name → entry
+    const baseByName = Object.fromEntries(bases.map(b => [b.name, b]));
+
+    // Known forms whose PokéAPI name doesn't start with their base's name
+    const exactParent = {
+      'annihilape':          'primeape',
+      'clodsire':            'wooper',
+      'sneasler':            'sneasel',
+      'overqwil':            'qwilfish',
+      'ursaluna':            'ursaring',
+      'ursaluna-bloodmoon':  'ursaring',
+      'basculegion-male':    'basculin',
+      'basculegion-female':  'basculin',
+    };
+
+    let added = 0;
     data.results.forEach(p => {
-      if (!formKeywords.some(k => p.name.includes(k))) return;
-      const base = bases.find(b => p.name.startsWith(b.name + '-'));
+      if (_pkdx.all.find(e => e.name === p.name)) return; // already loaded
+
+      const parts = p.url.split('/').filter(Boolean);
+      const apiId = parseInt(parts[parts.length - 1], 10);
+
+      // Find base: exactParent first, then longest prefix match
+      let base = null;
+      if (exactParent[p.name]) {
+        base = baseByName[exactParent[p.name]] || null;
+      }
+      if (!base) {
+        // Try all base names as prefix — longest match wins
+        let bestLen = 0;
+        for (const b of bases) {
+          const prefix = b.name + '-';
+          if (p.name.startsWith(prefix) && b.name.length > bestLen) {
+            base    = b;
+            bestLen = b.name.length;
+          }
+        }
+      }
       if (!base) return;
-      if (_pkdx.all.find(e => e.name === p.name)) return; // no duplicates
-      const parts    = p.url.split('/').filter(Boolean);
-      const apiId    = parseInt(parts[parts.length - 1], 10);
+
       const formType = _detectFormType(p.name, base.name);
-      const formMeta = formType ? FORM_LABELS[formType] : null;
-      _pkdx.all.push({ id: apiId, baseId: base.id, name: p.name, frName: '', formType, formMeta, isForm: true });
+      if (!formType) return; // skip unrecognised forms
+
+      _pkdx.all.push({
+        id: apiId, baseId: base.id, name: p.name,
+        frName: '', formType, formMeta: FORM_LABELS[formType] || null, isForm: true
+      });
+      added++;
     });
+
     _pkdx.formsLoaded = true;
+    _pkdx.showForms   = true;
     _applyPokedexFilter();
+    const fp = document.getElementById('pkdx-forms-panel');
+    if (fp && fp.style.display !== 'none') _buildFormTypeFilterList();
   } catch(e) {
     console.warn('Forms load error:', e);
+    _pkdx.formsLoaded = true;
     _applyPokedexFilter();
   }
 }
@@ -3228,9 +3453,9 @@ async function _loadTcgCardsInModal(frName, formType) {
     gmax:    [/\bgigamax\b/],
     primal:  [/\bprimal\b/],
   };
-  // "M Pokémon", "M-Pokémon" short formats
-  const megaShortPat = /^m[-\s][a-z]/;
-  const allFormPats = [/\bd.alola\b/, /\bde alola\b/, /\bde galar\b/, /\bde hisui\b/, /\bd.hisui\b/, /\bde paldea\b/, /^m.ga[- ]/, /\bm.ga[- ]/, /\bgigamax\b/, /\bprimal\b/, /^m[-\s][a-z]/];
+  // Also: "M Florizarre EX" pattern — just "m " prefix
+  const megaShortPat = /^m [a-z]/;
+  const allFormPats = [/\bd.alola\b/, /\bde alola\b/, /\bde galar\b/, /\bde hisui\b/, /\bd.hisui\b/, /\bde paldea\b/, /^m.ga[- ]/, /\bm.ga[- ]/, /\bgigamax\b/, /\bprimal\b/];
 
   try {
     const url = `${sbUrl}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
@@ -3244,27 +3469,29 @@ async function _loadTcgCardsInModal(frName, formType) {
         const n = nn(card.name);
         return filters.some(f => typeof f === 'function' ? f(card) : f.test(n));
       });
-      // Also include "M Pokémon" and "M-Pokémon" short formats for mega forms
+      // Also include "M Pokémon" short format for mega forms
       if (formType === 'mega' || formType === 'mega-x' || formType === 'mega-y') {
-        const [extraSpace, extraDash] = await Promise.all([
-          (async () => { try { const r = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.M ${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=200`, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }); return r.ok ? r.json() : []; } catch(_) { return []; } })(),
-          (async () => { try { const r = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.M-${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=200`, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }); return r.ok ? r.json() : []; } catch(_) { return []; } })(),
-        ]);
-        const extra = [...extraSpace, ...extraDash].filter(card => {
+        const extra = (await (async () => {
+          try {
+            const r2 = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.M ${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=200`,
+              { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
+            return r2.ok ? await r2.json() : [];
+          } catch(_) { return []; }
+        })()).filter(card => {
           const n = nn(card.name);
-          if (!megaShortPat.test(n)) return false;
-          if (formType === 'mega-x') return /\bx\b/.test(n) && !/\by\b/.test(n);
-          if (formType === 'mega-y') return /\by\b/.test(n) && !/\bx\b/.test(n);
-          return true;
+          if (formType === 'mega-x') return megaShortPat.test(n) && /\bx\b/.test(n) && !/\by\b/.test(n);
+          if (formType === 'mega-y') return megaShortPat.test(n) && /\by\b/.test(n) && !/\bx\b/.test(n);
+          return megaShortPat.test(n);
         });
+        // Merge, dedup by id
         const seen = new Set(cards.map(c => c.id));
         extra.forEach(c => { if (!seen.has(c.id)) cards.push(c); });
       }
     } else if (!formType) {
-      // Base Pokémon: exclude all form cards
+      // Base Pokémon: exclude form cards
       cards = cards.filter(c => {
         const n = nn(c.name);
-        return !allFormPats.some(p => p.test(n));
+        return !allFormPats.some(p => p.test(n)) && !megaShortPat.test(n);
       });
     }
     if (!document.getElementById('pkdx-tcg-grid')) return;
