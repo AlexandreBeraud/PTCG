@@ -283,7 +283,13 @@
           </div>
           <span id="labels-counter" style="font-size:.78rem;color:var(--text2)"></span>
         </div>
-        <p class="form-hint" style="margin-bottom:14px">Nom affiché sur le badge de la forme spéciale, visibilité dans le Pokédex, et préfixes/suffixes (séparés par des virgules) utilisés pour retrouver les cartes TCG correspondantes (ex : <code>Méga-, M </code> pour Méga, <code>VMAX, Gigamax</code> pour Gigamax).</p>
+        <p class="form-hint" style="margin-bottom:14px">Nom affiché sur le badge de la forme spéciale, visibilité dans le Pokédex, et préfixes/suffixes (séparés par des virgules) utilisés pour retrouver les cartes TCG correspondantes (ex : <code>Méga-, M </code> pour Méga, <code>VMAX, Gigamax</code> pour Gigamax). Chaque label peut être modifié ou supprimé définitivement ; les labels intégrés supprimés restent restaurables en bas de liste.</p>
+        <div class="lbl-new-form">
+          <input type="text" id="new-label-fr" placeholder="Nom du nouveau label (ex : Forme Alpha)" style="flex:1">
+          <input type="text" id="new-label-badge" placeholder="Badge (ex : ALPHA)" maxlength="10" style="width:120px">
+          <input type="color" id="new-label-color" value="#7038F8">
+          <button class="btn btn-primary" onclick="addCustomLabel()">+ Nouveau label</button>
+        </div>
         <div id="labels-list"></div>
       </div>
     </div>

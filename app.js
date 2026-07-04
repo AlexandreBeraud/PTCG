@@ -96,6 +96,9 @@ function loadData() {
       bloc_overrides:{},
       custom_blocs:  [],
       form_label_overrides: {},
+      custom_labels: {},
+      deleted_labels: [],
+      pokemon_label_assignments: {},
       settings:      { display_mode: 'logo' }
     };
   };
@@ -116,6 +119,9 @@ function loadData() {
       if (!_D.ext_overrides)  _D.ext_overrides  = {};
       if (!_D.bloc_overrides) _D.bloc_overrides = {};
       if (!_D.form_label_overrides) _D.form_label_overrides = {};
+      if (!_D.custom_labels) _D.custom_labels = {};
+      if (!_D.deleted_labels) _D.deleted_labels = [];
+      if (!_D.pokemon_label_assignments) _D.pokemon_label_assignments = {};
       if (!_D.settings)       _D.settings       = { display_mode: 'logo' };
       // Discard old ext_overrides and bloc_overrides that referenced built-in IDs
       // (they're meaningless now that template is empty)
@@ -2404,10 +2410,15 @@ function renderLabelsList() {
   if (!el) return;
   const q = _nnLbl(_labelsQuery||'');
   const grouped = new Set();
+  const deletedSet = new Set(_D.deleted_labels||[]);
   let html = '', totalShown = 0;
 
+  const colsHtml = `<div class="lbl-group-cols">
+    <span>Label</span><span>Nom affiché</span><span>Badge</span><span>Couleur</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span></span>
+  </div>`;
+
   const rowsForTypes = types => types.map(type => {
-    if (!FORM_LABELS[type]) return '';
+    if (!FORM_LABELS[type] || deletedSet.has(type)) return '';
     grouped.add(type);
     const cfg = getFormLabelConfig(type);
     if (q && !_nnLbl(type + ' ' + cfg.fr).includes(q)) return '';
@@ -2420,23 +2431,51 @@ function renderLabelsList() {
     if (!rows) return;
     html += `<div class="lbl-group">
       <div class="lbl-group-header">${group.label}</div>
-      <div class="lbl-group-cols">
-        <span>Label</span><span>Nom affiché</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span></span>
-      </div>
+      ${colsHtml}
       ${rows}
     </div>`;
   });
 
-  const leftovers = Object.keys(FORM_LABELS).filter(t => !grouped.has(t));
+  const leftovers = Object.keys(FORM_LABELS).filter(t => !grouped.has(t) && !deletedSet.has(t));
   const leftoverRows = rowsForTypes(leftovers);
   if (leftoverRows) {
     html += `<div class="lbl-group">
       <div class="lbl-group-header">Non classés</div>
-      <div class="lbl-group-cols">
-        <span>Label</span><span>Nom affiché</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span></span>
-      </div>
+      ${colsHtml}
       ${leftoverRows}
     </div>`;
+  }
+
+  // Labels personnalisés (créés via "+ Nouveau label")
+  const customTypes = Object.keys(_D.custom_labels||{});
+  const customRows = customTypes.map(type => {
+    const cfg = getFormLabelConfig(type);
+    if (q && !_nnLbl(type + ' ' + cfg.fr).includes(q)) return '';
+    totalShown++;
+    return _renderLabelRow(type, cfg);
+  }).filter(Boolean).join('');
+  if (customTypes.length) {
+    html += `<div class="lbl-group">
+      <div class="lbl-group-header">Labels personnalisés</div>
+      ${customTypes.length && customRows ? colsHtml : ''}
+      ${customRows || `<p style="color:var(--text3);font-size:.74rem;padding:4px 10px">Aucun résultat.</p>`}
+    </div>`;
+  }
+
+  // Labels supprimés définitivement (repliable, avec restauration possible)
+  const deletedTypes = [...deletedSet].filter(t => FORM_LABELS[t]);
+  if (deletedTypes.length) {
+    html += `<details class="lbl-deleted-group">
+      <summary>Labels supprimés (${deletedTypes.length})</summary>
+      ${deletedTypes.map(type => {
+        const base = FORM_LABELS[type];
+        return `<div class="lbl-deleted-row">
+          <span class="pkdx-forms-type-badge" style="background:${base.color};opacity:.5">${base.badge}</span>
+          <span>${base.fr}</span>
+          <button class="btn btn-secondary" style="padding:3px 10px;font-size:.72rem" onclick="restoreDeletedLabel('${type.replace(/'/g,"\\'")}')">Restaurer</button>
+        </div>`;
+      }).join('')}
+    </details>`;
   }
 
   const counter = document.getElementById('labels-counter');
@@ -2446,13 +2485,21 @@ function renderLabelsList() {
 
 function _renderLabelRow(type, cfg) {
   const safe    = type.replace(/'/g,"\\'");
-  const base    = FORM_LABELS[type];
+  const isCustom = cfg.isCustom;
+  const base    = FORM_LABELS[type] || { fr: type, badge: cfg.badge, color: cfg.color };
   const esc     = s => (s||'').replace(/"/g,'&quot;');
-  const isOv    = !!(_D.form_label_overrides||{})[type];
+  const isOv    = !isCustom && !!(_D.form_label_overrides||{})[type];
+  const deleteBtn = isCustom
+    ? `<button class="mbadge-clear" title="Supprimer" onclick="deleteLabelPermanently('${safe}')">🗑</button>`
+    : `<button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>`;
   return `<div class="lbl-row" id="lblrow-${type}">
-    <div class="lbl-badge-cell"><span class="pkdx-forms-type-badge" style="background:${base.color}">${base.badge}</span></div>
+    <div class="lbl-badge-cell"><span class="pkdx-forms-type-badge" style="background:${cfg.color}">${cfg.badge}</span></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.fr)}" placeholder="${esc(base.fr)}"
       oninput="_setLabelOverrideValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="${esc(base.badge)}" maxlength="10"
+      oninput="_setLabelOverrideValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-color-cell"><input type="color" class="lbl-color" value="${(cfg.color||'#888888').slice(0,7)}"
+      onchange="_setLabelOverrideValue('${safe}','color',this.value);commitLabelEdit('${safe}')"></div>
     <div class="lbl-toggle-cell"><label class="lbl-switch">
       <input type="checkbox" ${cfg.enabled!==false?'checked':''} onchange="updateLabelToggle('${safe}',this.checked)">
       <span class="lbl-switch-track"></span></label></div>
@@ -2460,7 +2507,10 @@ function _renderLabelRow(type, cfg) {
       oninput="_setLabelOverrideValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc((cfg.suffixes||[]).join(', '))}" placeholder="ex : VMAX, X"
       oninput="_setLabelOverrideValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
-    <div class="lbl-reset-cell">${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">×</button>` : ''}</div>
+    <div class="lbl-reset-cell">
+      ${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">↺</button>` : ''}
+      ${deleteBtn}
+    </div>
   </div>`;
 }
 
@@ -2476,11 +2526,25 @@ function _refreshPokedexAfterLabelChange() {
 // qui garantit qu'une actualisation de page ne perd jamais la saisie, même si
 // l'utilisateur n'a pas encore quitté le champ (onblur).
 function _setLabelOverrideValue(type, field, value) {
+  if (_isCustomLabelType(type)) {
+    // Un label personnalisé n'a pas de "défaut" : on édite directement sa définition.
+    const c = _D.custom_labels[type];
+    if (field === 'prefixes' || field === 'suffixes') {
+      c[field] = value.split(',').map(s=>s.trim()).filter(Boolean);
+    } else if (field === 'fr' || field === 'badge' || field === 'color') {
+      c[field] = value;
+    }
+    saveData();
+    return;
+  }
   if (!_D.form_label_overrides) _D.form_label_overrides = {};
   const ov = { ...(_D.form_label_overrides[type] || {}) };
-  if (field === 'fr') {
+  if (field === 'fr' || field === 'badge') {
     const base = FORM_LABELS[type];
-    if (!value.trim() || value.trim() === base.fr) delete ov.fr; else ov.fr = value;
+    if (!value.trim() || value.trim() === base[field]) delete ov[field]; else ov[field] = value;
+  } else if (field === 'color') {
+    const base = FORM_LABELS[type];
+    if (!value || value === base.color) delete ov.color; else ov.color = value;
   } else if (field === 'prefixes' || field === 'suffixes') {
     const list = value.split(',').map(s=>s.trim()).filter(Boolean);
     const dflt = (DEFAULT_FORM_CARD_PATTERNS[type]||{})[field] || [];
@@ -2501,11 +2565,15 @@ function commitLabelEdit(type) {
 }
 
 function updateLabelToggle(type, checked) {
-  if (!_D.form_label_overrides) _D.form_label_overrides = {};
-  const ov = { ...(_D.form_label_overrides[type] || {}) };
-  if (checked === true) delete ov.enabled; else ov.enabled = false;
-  if (Object.keys(ov).length === 0) delete _D.form_label_overrides[type];
-  else _D.form_label_overrides[type] = ov;
+  if (_isCustomLabelType(type)) {
+    _D.custom_labels[type].enabled = checked;
+  } else {
+    if (!_D.form_label_overrides) _D.form_label_overrides = {};
+    const ov = { ...(_D.form_label_overrides[type] || {}) };
+    if (checked === true) delete ov.enabled; else ov.enabled = false;
+    if (Object.keys(ov).length === 0) delete _D.form_label_overrides[type];
+    else _D.form_label_overrides[type] = ov;
+  }
   saveData();
   _pushLabelOverrideToCloud(type);
   _refreshPokedexAfterLabelChange();
@@ -2522,11 +2590,98 @@ function resetLabelOverride(type) {
   toast('Label réinitialisé.', 'success');
 }
 
+// Suppression définitive : pour un label personnalisé, il est effacé ; pour un
+// label intégré, il est marqué "supprimé" (restaurable via la section dédiée)
+// et disparaît de toute l'application (badges, filtres, rattachement carte).
+function deleteLabelPermanently(type) {
+  if (!confirm(`Supprimer définitivement le label "${getFormLabelConfig(type)?.fr || type}" ?`)) return;
+  if (_isCustomLabelType(type)) {
+    delete _D.custom_labels[type];
+  } else {
+    if (!_D.deleted_labels) _D.deleted_labels = [];
+    if (!_D.deleted_labels.includes(type)) _D.deleted_labels.push(type);
+  }
+  if (_D.form_label_overrides) delete _D.form_label_overrides[type];
+  saveData();
+  _pushLabelOverrideToCloud(type);
+  _refreshPokedexAfterLabelChange();
+  renderLabelsList();
+  toast('Label supprimé définitivement.', 'success');
+}
+
+function restoreDeletedLabel(type) {
+  _D.deleted_labels = (_D.deleted_labels||[]).filter(t => t !== type);
+  saveData();
+  _pushLabelOverrideToCloud(type);
+  _refreshPokedexAfterLabelChange();
+  renderLabelsList();
+  toast('Label restauré.', 'success');
+}
+
+// Crée un nouveau label personnalisé (aucun équivalent hardcodé).
+function addCustomLabel() {
+  const frInput    = document.getElementById('new-label-fr');
+  const badgeInput = document.getElementById('new-label-badge');
+  const colorInput = document.getElementById('new-label-color');
+  const fr = (frInput?.value||'').trim();
+  if (!fr) { toast('Indique un nom pour le nouveau label.', 'error'); return; }
+  const badge = (badgeInput?.value||'').trim().toUpperCase() || fr.toUpperCase().slice(0, 8);
+  const color = colorInput?.value || '#7038F8';
+
+  let slug = _nnLbl(fr).replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
+  if (!slug) slug = 'label';
+  let type = 'custom-' + slug, i = 2;
+  while (FORM_LABELS[type] || (_D.custom_labels||{})[type]) { type = `custom-${slug}-${i++}`; }
+
+  if (!_D.custom_labels) _D.custom_labels = {};
+  _D.custom_labels[type] = { fr, badge, color, prefixes: [], suffixes: [] };
+  saveData();
+  _pushLabelOverrideToCloud(type);
+  if (frInput) frInput.value = '';
+  if (badgeInput) badgeInput.value = '';
+  renderLabelsList();
+  toast('Label créé.', 'success');
+}
+
+// ── Assignation manuelle d'un label à un Pokémon précis ─────────────────────
+// Construit les <option> du sélecteur d'assignation, en marquant l'option
+// actuellement sélectionnée pour ce Pokémon (slug PokéAPI).
+function _buildLabelAssignOptions(slug) {
+  const assigned = (_D.pokemon_label_assignments||{})[slug];
+  const autoSel    = assigned === undefined ? 'selected' : '';
+  const noneSel    = assigned === '' ? 'selected' : '';
+  let opts = `<option value="" ${autoSel}>Auto (détection)</option>
+    <option value="__clear__" ${noneSel}>Aucun label</option>`;
+  _allLabelTypes().forEach(type => {
+    const cfg = getFormLabelConfig(type);
+    if (!cfg) return;
+    const sel = assigned === type ? 'selected' : '';
+    opts += `<option value="${type}" ${sel}>${(cfg.fr||type)}</option>`;
+  });
+  return opts;
+}
+
+// value: '' → retour à l'auto-détection, '__clear__' → forcer "aucun label",
+// sinon → type de label assigné. reopenType/A/B permettent de rouvrir la même
+// fiche juste après pour refléter le changement immédiatement.
+async function assignPokemonLabel(slug, value, reopenType, reopenA, reopenB) {
+  if (!_D.pokemon_label_assignments) _D.pokemon_label_assignments = {};
+  if (value === '') delete _D.pokemon_label_assignments[slug];
+  else if (value === '__clear__') _D.pokemon_label_assignments[slug] = '';
+  else _D.pokemon_label_assignments[slug] = value;
+  saveData();
+  toast('Label du Pokémon mis à jour.', 'success');
+  try { await _loadFormsList(); } catch(_) {}
+  if (reopenType === 'base') openPokedexModal(reopenA);
+  else if (reopenType === 'form') openPokedexFormModal(reopenA, reopenB);
+}
+
 // ── Sync cloud des labels (table Supabase dédiée form_label_overrides) ─────
-// Chaque ligne = un couple (user_id, form_type) avec la surcharge éventuelle.
-// Contrairement au blob JSON complet de "Synchroniser" (Paramètres), ce sync
-// est automatique : chaque modification est poussée immédiatement, et les
-// données cloud sont récupérées une fois au chargement de l'application.
+// Chaque ligne = un couple (user_id, form_type) : surcharge d'un label
+// intégré, définition d'un label personnalisé, ou marqueur de suppression
+// définitive. Contrairement au blob JSON complet de "Synchroniser"
+// (Paramètres), ce sync est automatique : chaque modification est poussée
+// immédiatement, et les données cloud sont récupérées une fois au chargement.
 let _labelCloudPulled = false;
 
 function _labelUserId() {
@@ -2543,9 +2698,26 @@ async function _pullLabelOverridesFromCloud() {
     const rows = await res.json();
     if (!Array.isArray(rows) || !rows.length) return;
     if (!_D.form_label_overrides) _D.form_label_overrides = {};
+    if (!_D.custom_labels)       _D.custom_labels = {};
+    if (!_D.deleted_labels)      _D.deleted_labels = [];
     rows.forEach(r => {
+      if (r.is_deleted) {
+        if (!_D.deleted_labels.includes(r.form_type)) _D.deleted_labels.push(r.form_type);
+        return;
+      }
+      if (r.is_custom) {
+        _D.custom_labels[r.form_type] = {
+          fr: r.fr || r.form_type, badge: r.badge || '?', color: r.color || '#888',
+          prefixes: Array.isArray(r.prefixes) ? r.prefixes : [],
+          suffixes: Array.isArray(r.suffixes) ? r.suffixes : [],
+          enabled: r.enabled !== false,
+        };
+        return;
+      }
       const ov = {};
-      if (r.fr) ov.fr = r.fr;
+      if (r.fr)    ov.fr    = r.fr;
+      if (r.badge) ov.badge = r.badge;
+      if (r.color) ov.color = r.color;
       if (r.enabled === false) ov.enabled = false;
       if (Array.isArray(r.prefixes) && r.prefixes.length) ov.prefixes = r.prefixes;
       if (Array.isArray(r.suffixes) && r.suffixes.length) ov.suffixes = r.suffixes;
@@ -2557,25 +2729,46 @@ async function _pullLabelOverridesFromCloud() {
 }
 
 async function _pushLabelOverrideToCloud(type) {
-  const ov = (_D.form_label_overrides||{})[type];
   try {
-    if (!ov) {
+    const isCustom  = _isCustomLabelType(type);
+    const isDeleted = (_D.deleted_labels||[]).includes(type);
+    const custom    = isCustom ? _D.custom_labels[type] : null;
+    const ov        = (_D.form_label_overrides||{})[type];
+
+    if (isCustom && !custom) {
+      // Label personnalisé supprimé → ligne cloud supprimée
       await fetch(`${SB_URL}/rest/v1/form_label_overrides?user_id=eq.${encodeURIComponent(_labelUserId())}&form_type=eq.${encodeURIComponent(type)}`,
         { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
       return;
     }
+    if (!isCustom && !isDeleted && !ov) {
+      // Label intégré revenu à sa valeur par défaut → ligne cloud supprimée
+      await fetch(`${SB_URL}/rest/v1/form_label_overrides?user_id=eq.${encodeURIComponent(_labelUserId())}&form_type=eq.${encodeURIComponent(type)}`,
+        { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+      return;
+    }
+    const payload = isCustom ? {
+      user_id: _labelUserId(), form_type: type, is_custom: true, is_deleted: false,
+      fr: custom.fr || null, badge: custom.badge || null, color: custom.color || null,
+      enabled: custom.enabled === false ? false : null,
+      prefixes: custom.prefixes?.length ? custom.prefixes : null,
+      suffixes: custom.suffixes?.length ? custom.suffixes : null,
+      updated_at: new Date().toISOString(),
+    } : isDeleted ? {
+      user_id: _labelUserId(), form_type: type, is_custom: false, is_deleted: true,
+      fr: null, badge: null, color: null, enabled: null, prefixes: null, suffixes: null,
+      updated_at: new Date().toISOString(),
+    } : {
+      user_id: _labelUserId(), form_type: type, is_custom: false, is_deleted: false,
+      fr: ov.fr || null, badge: ov.badge || null, color: ov.color || null,
+      enabled: ov.enabled === false ? false : null,
+      prefixes: ov.prefixes || null, suffixes: ov.suffixes || null,
+      updated_at: new Date().toISOString(),
+    };
     await fetch(`${SB_URL}/rest/v1/form_label_overrides`, {
       method: 'POST',
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({
-        user_id:    _labelUserId(),
-        form_type:  type,
-        fr:         ov.fr || null,
-        enabled:    ov.enabled === false ? false : null,
-        prefixes:   ov.prefixes || null,
-        suffixes:   ov.suffixes || null,
-        updated_at: new Date().toISOString(),
-      }),
+      body: JSON.stringify(payload),
     });
   } catch(e) { console.warn('[PTCG] push label cloud error:', e.message); }
 }
@@ -3055,20 +3248,48 @@ const DEFAULT_FORM_CARD_PATTERNS = {
   paldea:   { prefixes: [], suffixes: ['de Paldea'] },
 };
 
-// Fusionne la définition statique d'un label avec la surcharge utilisateur
-// (nom affiché, visibilité, préfixes/suffixes de rattachement carte).
+// Fusionne la définition statique d'un label (ou sa version personnalisée)
+// avec la surcharge utilisateur (nom, badge, couleur, visibilité, préfixes/
+// suffixes). Si le label a été supprimé définitivement, il est neutralisé.
 function getFormLabelConfig(type) {
-  const base = FORM_LABELS[type] || { fr: type, badge: (type||'').toUpperCase(), color: '#888' };
-  const ov   = (_D.form_label_overrides || {})[type] || {};
-  const dflt = DEFAULT_FORM_CARD_PATTERNS[type] || { prefixes: [], suffixes: [] };
+  if (!type) return null;
+  if ((_D.deleted_labels||[]).includes(type)) {
+    return { fr:type, badge:'', color:'#555', enabled:false, prefixes:[], suffixes:[], isCustom:false, isDeleted:true };
+  }
+  const custom = (_D.custom_labels||{})[type];
+  const base   = custom || FORM_LABELS[type] || { fr: type, badge: (type||'').toUpperCase(), color: '#888' };
+  const ov     = (_D.form_label_overrides || {})[type] || {};
+  const dflt   = DEFAULT_FORM_CARD_PATTERNS[type] || { prefixes: [], suffixes: [] };
   return {
-    fr:       ov.fr      !== undefined ? ov.fr      : base.fr,
-    badge:    base.badge,
-    color:    base.color,
-    enabled:  ov.enabled !== undefined ? ov.enabled : true,
-    prefixes: Array.isArray(ov.prefixes) ? ov.prefixes.slice() : dflt.prefixes.slice(),
-    suffixes: Array.isArray(ov.suffixes) ? ov.suffixes.slice() : dflt.suffixes.slice(),
+    fr:       ov.fr       !== undefined ? ov.fr       : base.fr,
+    badge:    ov.badge    !== undefined ? ov.badge    : base.badge,
+    color:    ov.color    !== undefined ? ov.color    : base.color,
+    enabled:  ov.enabled !== undefined ? ov.enabled : (custom && custom.enabled !== undefined ? custom.enabled : true),
+    prefixes: Array.isArray(ov.prefixes) ? ov.prefixes.slice() : (custom ? (custom.prefixes||[]).slice() : dflt.prefixes.slice()),
+    suffixes: Array.isArray(ov.suffixes) ? ov.suffixes.slice() : (custom ? (custom.suffixes||[]).slice() : dflt.suffixes.slice()),
+    isCustom: !!custom,
+    isDeleted:false,
   };
+}
+
+// Un type de label existe-t-il en tant que label personnalisé (créé par l'utilisateur) ?
+function _isCustomLabelType(type) { return !!(_D.custom_labels||{})[type]; }
+
+// Tous les types de labels actuellement disponibles (hors supprimés définitivement)
+function _allLabelTypes() {
+  const deleted = new Set(_D.deleted_labels||[]);
+  const builtins = Object.keys(FORM_LABELS).filter(t => !deleted.has(t));
+  const customs  = Object.keys(_D.custom_labels||{});
+  return [...builtins, ...customs];
+}
+
+// Détermine le type de forme d'un Pokémon : une assignation manuelle prend
+// toujours le pas sur la détection automatique par motif de nom PokéAPI.
+// Une assignation à chaîne vide ('') force explicitement "aucun label".
+function _resolveFormType(pokeApiSlug, baseName) {
+  const assigned = (_D.pokemon_label_assignments||{})[pokeApiSlug];
+  if (assigned !== undefined) return assigned || null;
+  return _detectFormType(pokeApiSlug, baseName);
 }
 
 function _nnLbl(s) {
@@ -3096,9 +3317,9 @@ function _cardMatchesFormType(cardName, formType) {
 
 // Liste des types de forme ayant au moins un motif de carte configuré (actif)
 function _allLinkedFormTypes() {
-  return Object.keys(FORM_LABELS).filter(t => {
+  return _allLabelTypes().filter(t => {
     const c = getFormLabelConfig(t);
-    return c.enabled && ((c.prefixes||[]).length || (c.suffixes||[]).length);
+    return c && c.enabled && ((c.prefixes||[]).length || (c.suffixes||[]).length);
   });
 }
 
@@ -3475,7 +3696,7 @@ function _matchPkdxExtEntry(p) {
   const nn = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/-/g,' ').trim();
 
   if (p.isForm) {
-    const formType = p.formType || _detectFormType(p.name, p.name.split('-')[0]) || null;
+    const formType = p.formType || _resolveFormType(p.name, p.name.split('-')[0]) || null;
     const baseFr = nn(p.frName || '').split(' ')[0];
     const baseEn = nn(p.name  || '').split(' ')[0];
     if (!formType) return false;
@@ -3548,6 +3769,21 @@ function _buildFormTypeFilterList() {
       </div>`;
     });
   });
+  // Types présents mais absents de FORM_LABEL_GROUPS (labels personnalisés notamment)
+  const grouped = new Set(GROUPS.flatMap(g => g.types));
+  const extra = [...typesPresent].filter(t => !grouped.has(t) && getFormLabelConfig(t)?.enabled);
+  if (extra.length) {
+    html += `<div class="pkdx-forms-group-label">Personnalisés</div>`;
+    extra.forEach(type => {
+      const label = getFormLabelConfig(type);
+      const active = mode === 'filter' && filter?.has(type) ? 'active' : '';
+      html += `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
+        <span class="pkdx-forms-type-badge" style="background:${label.color}">${label.badge}</span>
+        <span>${label.fr}</span>
+        <span class="pkdx-forms-count">${countOf(type)}</span>
+      </div>`;
+    });
+  }
   html += '</div>';
   el.innerHTML = html;
 }
@@ -3613,8 +3849,6 @@ async function _loadFormsList() {
 
     let added = 0;
     data.results.forEach(p => {
-      if (_pkdx.all.find(e => e.name === p.name)) return; // already loaded
-
       const parts = p.url.split('/').filter(Boolean);
       const apiId = parseInt(parts[parts.length - 1], 10);
 
@@ -3648,13 +3882,30 @@ async function _loadFormsList() {
         if (candidates.length === 1) base = candidates[0];
       }
       if (!base) return;
+      // Certains Pokémon ont un nom PokéAPI par défaut qui porte déjà un
+      // suffixe de forme (aegislash-shield, meowstic-male, lycanroc-midday…) :
+      // ce Pokémon EST sa propre base, il ne faut jamais le traiter comme une
+      // forme de lui-même (sinon il disparaît de la grille principale).
+      if (p.name === base.name) return;
 
-      const formType = _detectFormType(p.name, base.name);
-      if (!formType) return; // skip unrecognised forms
+      // Une assignation manuelle (Édition/fiche Pokémon) prend le pas sur la
+      // détection automatique — elle peut aussi bien "récupérer" une forme non
+      // reconnue que corriger une détection automatique erronée.
+      const formType = _resolveFormType(p.name, base.name);
+
+      const existing = _pkdx.all.find(e => e.name === p.name);
+      if (existing) {
+        // Ré-appliquer un éventuel changement d'assignation manuelle sur une
+        // entrée déjà chargée, sans dupliquer la ligne, et sans jamais
+        // reconvertir une base existante (isForm déjà false) en forme.
+        if (formType && existing.isForm) { existing.formType = formType; existing.baseId = base.id; }
+        return;
+      }
+      if (!formType) return; // toujours pas de label reconnu ni assigné manuellement
 
       _pkdx.all.push({
         id: apiId, baseId: base.id, name: p.name,
-        frName: '', formType, formMeta: FORM_LABELS[formType] || null, isForm: true
+        frName: '', formType, isForm: true
       });
       added++;
     });
@@ -3796,14 +4047,14 @@ async function _hydrateCard(p) {
 
     const sprite   = poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '';
     const types    = poke.types.map(t => t.type.name);
-    const formMeta = isForm ? p.formMeta : null;
-    const color    = formMeta ? formMeta.color : (TYPE_COLORS[types[0]] || '#888');
+    const formMeta = isForm ? getFormLabelConfig(p.formType) : null;
+    const color    = (formMeta && formMeta.enabled) ? formMeta.color : (TYPE_COLORS[types[0]] || '#888');
 
     card.className = 'pkdx-card' + (isForm ? ' pkdx-card-form' : '');
     card.style.setProperty('--pkdx-color', color);
     card.innerHTML = `
       <div class="pkdx-card-num">${numStr}</div>
-      ${formMeta ? `<span class="pkdx-card-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span>` : ''}
+      ${formMeta && formMeta.enabled ? `<span class="pkdx-card-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span>` : ''}
       <div class="pkdx-card-img-wrap">
         ${sprite ? `<img src="${sprite}" alt="${frName}" loading="lazy" class="pkdx-sprite">` : '<div class="pkdx-no-sprite">?</div>'}
       </div>
@@ -3918,7 +4169,7 @@ async function openPokedexModal(id) {
                              formPoke.sprites?.front_default || '';
           const formTypes  = formPoke.types.map(t => t.type.name);
           const formColor  = TYPE_COLORS[formTypes[0]] || '#888';
-          const formType   = _detectFormType(v.pokemon.name, poke.name);
+          const formType   = _resolveFormType(v.pokemon.name, poke.name);
           const formMeta   = formType ? getFormLabelConfig(formType) : null;
           if (formMeta && !formMeta.enabled) return '';
 
@@ -3955,6 +4206,12 @@ async function openPokedexModal(id) {
           ${genus ? `<div class="pkdx-modal-genus">${genus}</div>` : ''}
           <div class="pkdx-modal-types">
             ${types.map(t=>`<span class="pkdx-type pkdx-type-lg" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
+          </div>
+          <div class="pkdx-label-assign">
+            <span>Label</span>
+            <select onchange="assignPokemonLabel('${poke.name}',this.value,'base',${poke.id})">
+              ${_buildLabelAssignOptions(poke.name)}
+            </select>
           </div>
         </div>
       </div>
@@ -4143,7 +4400,7 @@ async function openPokedexFormModal(pokeName, baseFrName) {
     const types   = poke.types.map(t => t.type.name);
     const color   = TYPE_COLORS[types[0]] || '#888';
 
-    const formType = _detectFormType(pokeName, poke.species.name);
+    const formType = _resolveFormType(pokeName, poke.species.name);
     const formMeta = formType ? getFormLabelConfig(formType) : null;
     // Ensure baseFrName is populated
     if (!baseFrName) {
@@ -4190,6 +4447,12 @@ async function openPokedexFormModal(pokeName, baseFrName) {
           ${formMeta && formMeta.enabled ? `<div class="pkdx-modal-genus"><span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span></div>` : ''}
           <div class="pkdx-modal-types">
             ${types.map(t=>`<span class="pkdx-type pkdx-type-lg" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
+          </div>
+          <div class="pkdx-label-assign">
+            <span>Label</span>
+            <select onchange="assignPokemonLabel('${pokeName}',this.value,'form','${pokeName}','${(baseFrName||'').replace(/'/g,"\\'")}')">
+              ${_buildLabelAssignOptions(pokeName)}
+            </select>
           </div>
         </div>
       </div>
