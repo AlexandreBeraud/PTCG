@@ -99,6 +99,7 @@ function loadData() {
       custom_labels: {},
       deleted_labels: [],
       pokemon_label_assignments: {},
+      label_local_ts: {},
       settings:      { display_mode: 'logo' }
     };
   };
@@ -122,6 +123,7 @@ function loadData() {
       if (!_D.custom_labels) _D.custom_labels = {};
       if (!_D.deleted_labels) _D.deleted_labels = [];
       if (!_D.pokemon_label_assignments) _D.pokemon_label_assignments = {};
+      if (!_D.label_local_ts) _D.label_local_ts = {};
       if (!_D.settings)       _D.settings       = { display_mode: 'logo' };
       // Discard old ext_overrides and bloc_overrides that referenced built-in IDs
       // (they're meaningless now that template is empty)
@@ -146,7 +148,15 @@ function saveData() {
   _D._ts = Date.now();
   const s = { ..._D };
   delete s._tpl_blocs; delete s.blocs;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  } catch(e) {
+    // Une erreur ici (quota dépassé, storage désactivé…) était jusqu'ici
+    // totalement silencieuse : la donnée semblait enregistrée en mémoire mais
+    // ne survivait à aucune actualisation. On la rend visible.
+    console.error('[PTCG] saveData a échoué :', e);
+    toast('Échec de la sauvegarde locale : ' + e.message, 'error');
+  }
 }
 
 function renderAll() {
@@ -212,6 +222,21 @@ function getAllExtensions() {
 }
 
 function getExt(id) { return getAllExtensions().find(e => e.id === id); }
+
+// Canonical display order of extensions: bloc order (getBlocs), then sorted by
+// code within each bloc (sortExts) — the same grouping used by the Pokédex
+// extension filter and the Extensions tab. Used to insert newly-added
+// extensions into a classeur at the right spot instead of always appending
+// at the end (which broke sorting and made new entries hard to find).
+function extCanonicalOrder() {
+  const order = [];
+  const all = getAllExtensions();
+  getBlocs().forEach(bloc => {
+    sortExts(all.filter(e => getBlocForExt(e.id)?.id === bloc.id)).forEach(e => order.push(e.id));
+  });
+  all.forEach(e => { if (!order.includes(e.id)) order.push(e.id); });
+  return order;
+}
 
 function getBlocForExt(extId) {
   // Check if a bloc override exists for this built-in ext
@@ -847,6 +872,7 @@ function buildCerList(container, cl, spp) {
           <div class="cer-name">${extObj?extObj.nom:'—'}</div>
         </div>
         <div class="cer-mini-bar">
+          <div class="cer-slots-txt">${filled}/${slotsExt}</div>
           <div class="cer-bar"><div class="cer-bar-fill" style="width:${pct}%;background:${pctBg(pct)}"></div></div>
           <div class="cer-pct" style="color:${pctTxt(pct)}">${pct}%</div>
         </div>
@@ -1141,18 +1167,75 @@ function deleteClasseur(id) {
 function openAddExtToClasseur(classeurId) {
   _targetClasseurId = classeurId;
   const cl = _D.classeurs.find(c=>c.id===classeurId);
-  const existingIds = (cl.extensions||[]).map(e=>e.ext_id);
-  const sel = document.getElementById('add-ext-classeur-select');
-  sel.innerHTML = '<option value="">— Choisir —</option>';
-  let lastBloc = '';
-  getAllExtensions().filter(e=>(e.sorti||e._custom)&&!existingIds.includes(e.id)).forEach(e=>{
-    const b=getBlocForExt(e.id); const bName=b?b.nom:'Custom';
-    if (bName!==lastBloc) { sel.appendChild(Object.assign(document.createElement('optgroup'),{label:bName})); lastBloc=bName; }
-    sel.lastChild.appendChild(Object.assign(document.createElement('option'),{value:e.id,textContent:`${e.code} – ${e.nom}`}));
-  });
+  document.getElementById('add-ext-classeur-select').value = '';
+  document.getElementById('add-ext-classeur-label').textContent = '— Choisir —';
+  document.getElementById('add-ext-classeur-panel').style.display = 'none';
   document.getElementById('add-ext-classeur-pages').value  = 10;
   document.getElementById('add-ext-classeur-cartes').value = 10*(cl.slots_par_page||18);
   document.getElementById('modal-add-ext-classeur').classList.add('open');
+}
+
+// Same grouped-by-bloc, sorted-by-code dropdown used by the Pokédex extension
+// filter (button + panel), instead of a plain <select>. Building it this way
+// (getBlocs() order, then sortExts within each bloc, de-duplicated by id)
+// fixes the duplicate/badly-sorted entries the old <optgroup> select could show.
+function toggleAddExtClasseurPanel(btn) {
+  const panel = document.getElementById('add-ext-classeur-panel');
+  const open  = panel && panel.style.display !== 'none';
+  if (open) { panel.style.display = 'none'; return; }
+  _buildAddExtClasseurList();
+  panel.style.display = '';
+}
+
+function _buildAddExtClasseurList() {
+  const el = document.getElementById('add-ext-classeur-list');
+  if (!el) return;
+  const cl = _D.classeurs.find(c=>c.id===_targetClasseurId);
+  const existingIds = (cl?.extensions||[]).map(e=>e.ext_id);
+
+  // De-duplicate by id defensively, then filter to released/custom exts not
+  // already in this classeur.
+  const seen = new Set();
+  const available = getAllExtensions().filter(e => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return (e.sorti||e._custom) && !existingIds.includes(e.id);
+  });
+
+  if (!available.length) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:.8rem;padding:8px 12px">Aucune extension disponible.</div>';
+    return;
+  }
+
+  let html = '';
+  getBlocs().forEach(bloc => {
+    const inBloc = sortExts(available.filter(e => getBlocForExt(e.id)?.id === bloc.id));
+    if (!inBloc.length) return;
+    html += `<div class="pkdx-ext-filter-bloc-label">${bloc.nom||'—'}</div>`;
+    html += inBloc.map(e => {
+      const sigleSrc = e.sigle || bloc.sigle || '';
+      return `<div class="pkdx-ext-filter-item" onclick="selectAddExtClasseurItem('${e.id}')">
+        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${e.code||''}</span>`}
+        <span>${e.nom}</span>
+      </div>`;
+    }).join('');
+  });
+  // Extensions with no matching bloc (shouldn't normally happen) still show up, grouped at the end.
+  const noBloc = available.filter(e => !getBlocForExt(e.id));
+  if (noBloc.length) {
+    html += `<div class="pkdx-ext-filter-bloc-label">Custom</div>`;
+    html += sortExts(noBloc).map(e => `<div class="pkdx-ext-filter-item" onclick="selectAddExtClasseurItem('${e.id}')">
+      <span class="pkdx-ext-filter-code">${e.code||''}</span><span>${e.nom}</span>
+    </div>`).join('');
+  }
+  el.innerHTML = html;
+}
+
+function selectAddExtClasseurItem(extId) {
+  const ext = getExt(extId);
+  document.getElementById('add-ext-classeur-select').value = extId;
+  document.getElementById('add-ext-classeur-label').textContent = ext ? `${ext.code} – ${ext.nom}` : extId;
+  document.getElementById('add-ext-classeur-panel').style.display = 'none';
 }
 
 function syncAddExtInputs(field) {
@@ -1173,7 +1256,21 @@ function confirmAddExtToClasseur() {
   if (!extId) { toast('Choisissez une extension.','error'); return; }
   const cl = _D.classeurs.find(c=>c.id===_targetClasseurId); if (!cl) return;
   if (!cl.extensions) cl.extensions=[];
-  cl.extensions.push({ ext_id:extId, pages, filled:0 });
+
+  // Insert at the correct sorted position (bloc order, then order within bloc)
+  // instead of always appending at the end, so the new extension lands right
+  // next to its neighbours instead of being buried at the bottom of the list.
+  const order = extCanonicalOrder();
+  const newPos = order.indexOf(extId);
+  let insertAt = cl.extensions.length;
+  if (newPos !== -1) {
+    for (let i = 0; i < cl.extensions.length; i++) {
+      const pos = order.indexOf(cl.extensions[i].ext_id);
+      if (pos === -1 || pos > newPos) { insertAt = i; break; }
+    }
+  }
+  cl.extensions.splice(insertAt, 0, { ext_id:extId, pages, filled:0 });
+
   saveData(); renderAll(); closeModal('modal-add-ext-classeur'); toast('Extension ajoutée !','success');
 }
 
@@ -2409,56 +2506,55 @@ function renderLabelsList() {
   const el = document.getElementById('labels-list');
   if (!el) return;
   const q = _nnLbl(_labelsQuery||'');
-  const grouped = new Set();
   const deletedSet = new Set(_D.deleted_labels||[]);
   let html = '', totalShown = 0;
 
   const colsHtml = `<div class="lbl-group-cols">
-    <span>Label</span><span>Nom affiché</span><span>Badge</span><span>Couleur</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span></span>
+    <span>Label</span><span>Nom affiché</span><span>Badge</span><span>Couleur</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span>Catégorie</span><span></span>
   </div>`;
 
+  const allTypes = [
+    ...Object.keys(FORM_LABELS).filter(t => !deletedSet.has(t)),
+    ...Object.keys(_D.custom_labels||{}),
+  ];
+
   const rowsForTypes = types => types.map(type => {
-    if (!FORM_LABELS[type] || deletedSet.has(type)) return '';
-    grouped.add(type);
     const cfg = getFormLabelConfig(type);
     if (q && !_nnLbl(type + ' ' + cfg.fr).includes(q)) return '';
     totalShown++;
     return _renderLabelRow(type, cfg);
   }).filter(Boolean).join('');
 
-  FORM_LABEL_GROUPS.forEach(group => {
-    const rows = rowsForTypes(group.types);
-    if (!rows) return;
+  getLabelCategories().forEach(cat => {
+    const typesInCat = allTypes.filter(t => _labelCategoryOf(t) === cat.id);
+    const rows = rowsForTypes(typesInCat);
+    if (!rows) {
+      // Catégorie vide (ou entièrement filtrée par la recherche) : on ne la
+      // garde visible que si elle est personnalisée et qu'aucune recherche
+      // n'est active, pour pouvoir toujours la réorganiser/renommer/supprimer
+      // ou y glisser des labels par la suite.
+      if (!cat._custom || q) return;
+      html += `<div class="lbl-group">
+        ${_labelCategoryHeaderHtml(cat)}
+        <p style="color:var(--text3);font-size:.74rem;padding:2px 10px 10px">Catégorie vide — assigne-lui des labels via le menu « Catégorie » ci-dessous.</p>
+      </div>`;
+      return;
+    }
     html += `<div class="lbl-group">
-      <div class="lbl-group-header">${group.label}</div>
+      ${_labelCategoryHeaderHtml(cat)}
       ${colsHtml}
       ${rows}
     </div>`;
   });
 
-  const leftovers = Object.keys(FORM_LABELS).filter(t => !grouped.has(t) && !deletedSet.has(t));
-  const leftoverRows = rowsForTypes(leftovers);
-  if (leftoverRows) {
+  // Non classés (aucune catégorie par défaut ni assignée)
+  const unclassified = allTypes.filter(t => _labelCategoryOf(t) === null);
+  const unclassifiedRows = rowsForTypes(unclassified);
+  if (unclassifiedRows) {
     html += `<div class="lbl-group">
-      <div class="lbl-group-header">Non classés</div>
+      <div class="lbl-group-header lbl-group-header-static">Non classés</div>
       ${colsHtml}
-      ${leftoverRows}
-    </div>`;
-  }
-
-  // Labels personnalisés (créés via "+ Nouveau label")
-  const customTypes = Object.keys(_D.custom_labels||{});
-  const customRows = customTypes.map(type => {
-    const cfg = getFormLabelConfig(type);
-    if (q && !_nnLbl(type + ' ' + cfg.fr).includes(q)) return '';
-    totalShown++;
-    return _renderLabelRow(type, cfg);
-  }).filter(Boolean).join('');
-  if (customTypes.length) {
-    html += `<div class="lbl-group">
-      <div class="lbl-group-header">Labels personnalisés</div>
-      ${customTypes.length && customRows ? colsHtml : ''}
-      ${customRows || `<p style="color:var(--text3);font-size:.74rem;padding:4px 10px">Aucun résultat.</p>`}
+      ${unclassifiedRows}
     </div>`;
   }
 
@@ -2478,9 +2574,42 @@ function renderLabelsList() {
     </details>`;
   }
 
+  // Catégories intégrées masquées (repliable, avec restauration possible)
+  const hiddenCats = FORM_LABEL_GROUPS.filter(g => (_D.label_category_overrides||{})[g.id]?._hidden);
+  if (hiddenCats.length) {
+    html += `<details class="lbl-deleted-group">
+      <summary>Catégories masquées (${hiddenCats.length})</summary>
+      ${hiddenCats.map(g => {
+        const name = (_D.label_category_overrides||{})[g.id]?.name ?? g.label;
+        return `<div class="lbl-deleted-row">
+          <span>${_escHtml(name)}</span>
+          <button class="btn btn-secondary" style="padding:3px 10px;font-size:.72rem" onclick="restoreLabelCategory('${_escJs(g.id)}')">Restaurer</button>
+        </div>`;
+      }).join('')}
+    </details>`;
+  }
+
   const counter = document.getElementById('labels-counter');
   if (counter) counter.textContent = `${totalShown} label${totalShown>1?'s':''}`;
   el.innerHTML = html || `<p style="color:var(--text2);font-size:.82rem;padding:16px 0">Aucun résultat.</p>`;
+}
+
+// En-tête de catégorie : glisser-déposer pour réorganiser, renommer et
+// supprimer/masquer — disponible pour toutes les catégories, intégrées comme
+// personnalisées (une catégorie intégrée est masquée plutôt que supprimée,
+// et reste restaurable).
+function _labelCategoryHeaderHtml(cat) {
+  const safe = _escJs(cat.id);
+  return `<div class="lbl-group-header" draggable="true" data-cat-id="${_escHtml(cat.id)}"
+      ondragstart="onLabelCatDragStart(event)" ondragover="onLabelCatDragOver(event)"
+      ondragleave="this.classList.remove('drag-target')" ondrop="onLabelCatDrop(event)">
+    <span class="lbl-cat-handle" title="Glisser pour réorganiser">⠿</span>
+    <span class="lbl-cat-name">${_escHtml(cat.name)}</span>
+    <span class="lbl-cat-actions">
+      <button class="mbadge-clear" title="Renommer" onclick="renameLabelCategory('${safe}')">✎</button>
+      <button class="mbadge-clear" title="${cat._custom ? 'Supprimer la catégorie' : 'Masquer la catégorie'}" onclick="deleteLabelCategory('${safe}')">🗑</button>
+    </span>
+  </div>`;
 }
 
 function _renderLabelRow(type, cfg) {
@@ -2489,6 +2618,9 @@ function _renderLabelRow(type, cfg) {
   const base    = FORM_LABELS[type] || { fr: type, badge: cfg.badge, color: cfg.color };
   const esc     = s => (s||'').replace(/"/g,'&quot;');
   const isOv    = !isCustom && !!(_D.form_label_overrides||{})[type];
+  const currentCat = _labelCategoryOf(type);
+  const catOptions = `<option value="" ${!currentCat?'selected':''}>Non classé</option>`
+    + getLabelCategories().map(cat => `<option value="${_escHtml(cat.id)}" ${currentCat===cat.id?'selected':''}>${_escHtml(cat.name)}</option>`).join('');
   const deleteBtn = isCustom
     ? `<button class="mbadge-clear" title="Supprimer" onclick="deleteLabelPermanently('${safe}')">🗑</button>`
     : `<button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>`;
@@ -2507,6 +2639,7 @@ function _renderLabelRow(type, cfg) {
       oninput="_setLabelOverrideValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc((cfg.suffixes||[]).join(', '))}" placeholder="ex : VMAX, X"
       oninput="_setLabelOverrideValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-field"><select class="lbl-input" onchange="setLabelCategory('${safe}',this.value)">${catOptions}</select></div>
     <div class="lbl-reset-cell">
       ${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">↺</button>` : ''}
       ${deleteBtn}
@@ -2692,15 +2825,37 @@ async function _pullLabelOverridesFromCloud() {
   if (_labelCloudPulled) return;
   _labelCloudPulled = true;
   try {
-    const res = await fetch(`${SB_URL}/rest/v1/form_label_overrides?user_id=eq.${encodeURIComponent(_labelUserId())}`,
+    // Tri explicite par date de mise à jour décroissante : sans lui, l'ordre
+    // renvoyé par PostgREST n'est pas garanti, et une éventuelle ligne en
+    // double pour le même form_type (le POST d'upsert ne dédoublonne que s'il
+    // existe une contrainte d'unicité côté base) pouvait gagner au hasard.
+    const res = await fetch(`${SB_URL}/rest/v1/form_label_overrides?user_id=eq.${encodeURIComponent(_labelUserId())}&order=updated_at.desc`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
     if (!res.ok) return; // table absente ou policy manquante : on reste en local
     const rows = await res.json();
     if (!Array.isArray(rows) || !rows.length) return;
-    if (!_D.form_label_overrides) _D.form_label_overrides = {};
-    if (!_D.custom_labels)       _D.custom_labels = {};
-    if (!_D.deleted_labels)      _D.deleted_labels = [];
+    if (!_D.form_label_overrides)  _D.form_label_overrides  = {};
+    if (!_D.custom_labels)         _D.custom_labels         = {};
+    if (!_D.deleted_labels)        _D.deleted_labels        = [];
+    if (!_D.label_local_ts)        _D.label_local_ts        = {};
+
+    const seen = new Set();
+    let changed = false;
     rows.forEach(r => {
+      if (seen.has(r.form_type)) return; // doublon plus ancien pour ce type (tri desc) : ignoré
+      seen.add(r.form_type);
+
+      // Rempart anti-perte de données : si CE navigateur a modifié ce label
+      // localement et que le cloud ne s'est pas (encore, ou jamais, en cas
+      // d'échec silencieux du push) mis à jour avec une date plus récente, on
+      // garde la version locale. Sans ce garde-fou, un simple F5 juste après
+      // une modification pouvait ramener l'ancienne valeur cloud et l'écrire
+      // par-dessus l'édition qu'on venait de faire.
+      const localTs = _D.label_local_ts[r.form_type] || 0;
+      const cloudTs = r.updated_at ? new Date(r.updated_at).getTime() : 0;
+      if (localTs && cloudTs <= localTs) return;
+
+      changed = true;
       if (r.is_deleted) {
         if (!_D.deleted_labels.includes(r.form_type)) _D.deleted_labels.push(r.form_type);
         return;
@@ -2724,11 +2879,19 @@ async function _pullLabelOverridesFromCloud() {
       if (Object.keys(ov).length) _D.form_label_overrides[r.form_type] = ov;
       else delete _D.form_label_overrides[r.form_type];
     });
-    saveData();
+    if (changed) saveData();
   } catch(e) { console.warn('[PTCG] pull labels cloud error:', e.message); }
 }
 
 async function _pushLabelOverrideToCloud(type) {
+  // On mémorise l'horodatage de cette modification locale AVANT toute requête
+  // réseau : même si le push échoue, est interrompu (page rechargée juste
+  // après) ou que la table cloud contient des doublons mal triés, la
+  // prochaine synchronisation ne pourra plus jamais écraser ce label avec une
+  // valeur cloud plus ancienne que ce que l'on vient de faire ici.
+  if (!_D.label_local_ts) _D.label_local_ts = {};
+  _D.label_local_ts[type] = Date.now();
+  saveData();
   try {
     const isCustom  = _isCustomLabelType(type);
     const isDeleted = (_D.deleted_labels||[]).includes(type);
@@ -2765,11 +2928,12 @@ async function _pushLabelOverrideToCloud(type) {
       prefixes: ov.prefixes || null, suffixes: ov.suffixes || null,
       updated_at: new Date().toISOString(),
     };
-    await fetch(`${SB_URL}/rest/v1/form_label_overrides`, {
+    const res = await fetch(`${SB_URL}/rest/v1/form_label_overrides`, {
       method: 'POST',
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify(payload),
     });
+    if (!res.ok) console.warn('[PTCG] push label cloud HTTP', res.status, await res.text().catch(()=>'')); 
   } catch(e) { console.warn('[PTCG] push label cloud error:', e.message); }
 }
 
@@ -2789,6 +2953,10 @@ document.addEventListener('click', e => {
     _closePkdxFormsPanel();
   if (!e.target.closest('#pkdx-tcg-ext-panel') && !e.target.closest('#pkdx-tcg-ext-toggle'))
     _closeModalExtPanel();
+  if (!e.target.closest('#add-ext-classeur-panel') && !e.target.closest('#add-ext-classeur-toggle')) {
+    const p = document.getElementById('add-ext-classeur-panel');
+    if (p) p.style.display = 'none';
+  }
 });
 
 // ── Pokédex extension filter (multi-sélection) ──────────────────────────────
@@ -3268,21 +3436,21 @@ const FORM_LABELS = {
 
 // Groupes de labels (utilisés par le filtre Pokédex ET l'onglet Édition › Labels)
 const FORM_LABEL_GROUPS = [
-  { label: 'Régionales',          types: ['alola','galar','hisui','paldea'] },
-  { label: 'Méga',                types: ['mega','mega-x','mega-y','mega-z'] },
-  { label: 'Gigamax / Primo',     types: ['gmax','primal','eternamax'] },
-  { label: 'Légendaires',         types: ['origin','altered','sky','land','therian','incarnate','crowned','black','white','dusk-mane','dawn-wings','ultra','confined','unbound','complete','10','50','battle-bond','ash','teal-mask','wellspring-mask','hearthflame-mask','cornerstone-mask','stellar','terastal','original','original-color','ice-rider','shadow-rider'] },
-  { label: 'Combat / Mécanique',  types: ['blade','shield','zen','galar-zen','pirouette','aria','resolute','ordinary','busted','disguised','school','solo','hangry','full-belly','hero','noice','amped','low-key','single-strike','rapid-strike','gulping','gorging','neutral','zero','dada','two-segment','three-segment','three-family'] },
-  { label: 'Rotom',               types: ['heat','wash','frost','fan','mow'] },
-  { label: 'Morphéo (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
-  { label: 'Formes météo',        types: ['overcast','sunshine','rainy','snowy','midday','midnight','dusk','dawn'] },
-  { label: 'Formes saisonnières', types: ['spring','summer','autumn','winter'] },
-  { label: 'Cheniti/Cheniselle',  types: ['plant','sandy','trash'] },
-  { label: 'Flabébé / Florges',   types: ['red','yellow','orange','blue','white','eternal-flower'] },
-  { label: 'Pikachu spéciaux',    types: ['cap','cosplay','rock-star','belle','pop-star','phd','libre'] },
-  { label: 'Tauros Paldea',       types: ['aqua-breed','blaze-breed','combat-breed'] },
-  { label: 'Couafarel',           types: ['natural','heart','star','diamond','debutante','matron','dandy','la-reine','kabuki','pharaoh'] },
-  { label: 'Autres',              types: ['totem','attack','defense','speed','small','large','super','average','curly','droopy','stretchy','phony','antique','red-striped','blue-striped','white-striped','male','female','own','east-sea','west-sea','active','chest','roaming','full-power','bloodmoon','standard','normal'] },
+  { id:'regionales',      label: 'Régionales',          types: ['alola','galar','hisui','paldea'] },
+  { id:'mega',            label: 'Méga',                types: ['mega','mega-x','mega-y','mega-z'] },
+  { id:'gmax-primo',      label: 'Gigamax / Primo',     types: ['gmax','primal','eternamax'] },
+  { id:'legendaires',     label: 'Légendaires',         types: ['origin','altered','sky','land','therian','incarnate','crowned','black','white','dusk-mane','dawn-wings','ultra','confined','unbound','complete','10','50','battle-bond','ash','teal-mask','wellspring-mask','hearthflame-mask','cornerstone-mask','stellar','terastal','original','original-color','ice-rider','shadow-rider'] },
+  { id:'combat-mecanique',label: 'Combat / Mécanique',  types: ['blade','shield','zen','galar-zen','pirouette','aria','resolute','ordinary','busted','disguised','school','solo','hangry','full-belly','hero','noice','amped','low-key','single-strike','rapid-strike','gulping','gorging','neutral','zero','dada','two-segment','three-segment','three-family'] },
+  { id:'rotom',           label: 'Rotom',               types: ['heat','wash','frost','fan','mow'] },
+  { id:'morpheo',         label: 'Morphéo (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
+  { id:'formes-meteo',    label: 'Formes météo',        types: ['overcast','sunshine','rainy','snowy','midday','midnight','dusk','dawn'] },
+  { id:'formes-saisons',  label: 'Formes saisonnières', types: ['spring','summer','autumn','winter'] },
+  { id:'chenipoto',       label: 'Cheniti/Cheniselle',  types: ['plant','sandy','trash'] },
+  { id:'flabebe',         label: 'Flabébé / Florges',   types: ['red','yellow','orange','blue','white','eternal-flower'] },
+  { id:'pikachu-speciaux',label: 'Pikachu spéciaux',    types: ['cap','cosplay','rock-star','belle','pop-star','phd','libre'] },
+  { id:'tauros-paldea',   label: 'Tauros Paldea',       types: ['aqua-breed','blaze-breed','combat-breed'] },
+  { id:'couafarel',       label: 'Couafarel',           types: ['natural','heart','star','diamond','debutante','matron','dandy','la-reine','kabuki','pharaoh'] },
+  { id:'autres',          label: 'Autres',              types: ['totem','attack','defense','speed','small','large','super','average','curly','droopy','stretchy','phony','antique','red-striped','blue-striped','white-striped','male','female','own','east-sea','west-sea','active','chest','roaming','full-power','bloodmoon','standard','normal'] },
 ];
 
 // Motifs par défaut (préfixe / suffixe dans le nom de carte TCG) permettant de
@@ -3293,6 +3461,7 @@ const DEFAULT_FORM_CARD_PATTERNS = {
   mega:     { prefixes: ['Méga-', 'Méga ', 'M '], suffixes: [] },
   'mega-x': { prefixes: ['Méga-', 'Méga ', 'M '], suffixes: ['X'] },
   'mega-y': { prefixes: ['Méga-', 'Méga ', 'M '], suffixes: ['Y'] },
+  'mega-z': { prefixes: ['Méga-', 'Méga ', 'M '], suffixes: ['Z'] },
   gmax:     { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
   primal:   { prefixes: ['Primo-', 'Primo '], suffixes: [] },
   alola:    { prefixes: [], suffixes: ["d'Alola", 'de Alola', 'Alola'] },
@@ -3336,6 +3505,165 @@ function _allLabelTypes() {
   return [...builtins, ...customs];
 }
 
+// ── Catégories de labels (Édition › Labels) ────────────────────────────────
+// Les catégories intégrées (FORM_LABEL_GROUPS) et celles créées par
+// l'utilisateur (_D.custom_label_categories) sont fusionnées et triées selon
+// _D.label_category_order (même principe que getBlocs() / _D.settings.bloc_order).
+// Une catégorie intégrée peut être renommée ou masquée via
+// _D.label_category_overrides[id] = { name?, _hidden? } — elle n'est jamais
+// supprimée du code, seulement masquée (restaurable).
+function getLabelCategories() {
+  const builtin = FORM_LABEL_GROUPS
+    .filter(g => !(_D.label_category_overrides||{})[g.id]?._hidden)
+    .map(g => {
+      const ov = (_D.label_category_overrides||{})[g.id] || {};
+      return { id: g.id, name: ov.name !== undefined ? ov.name : g.label, _builtin: true };
+    });
+  const custom  = (_D.custom_label_categories || []).map(c => ({ id: c.id, name: c.name, _custom: true }));
+  const all = [...builtin, ...custom];
+  const order = _D.label_category_order || [];
+  if (order.length) {
+    all.sort((a, b) => {
+      const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
+      if (ia === -1 && ib === -1) return 0;
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  }
+  return all;
+}
+
+// Catégorie effective d'un label : une assignation manuelle prend le pas sur
+// l'appartenance par défaut à un groupe intégré ; sans les deux, le label est
+// "Non classé" (null). Si la catégorie par défaut a été masquée, le label
+// retombe aussi sur "Non classé" plutôt que de disparaître silencieusement.
+function _labelCategoryOf(type) {
+  const ov = (_D.label_category_assignments || {})[type];
+  if (ov !== undefined) return ov || null;
+  const grp = FORM_LABEL_GROUPS.find(g => g.types.includes(type));
+  if (!grp) return null;
+  if ((_D.label_category_overrides||{})[grp.id]?._hidden) return null;
+  return grp.id;
+}
+
+// Déplace un label vers une catégorie (categoryId='' ou null → Non classé).
+// N'enregistre une surcharge que si elle diffère de la catégorie par défaut,
+// pour rester cohérent avec le reste de l'appli (ext_overrides, etc.).
+function setLabelCategory(type, categoryId) {
+  if (!_D.label_category_assignments) _D.label_category_assignments = {};
+  const defaultCat = (FORM_LABEL_GROUPS.find(g => g.types.includes(type)) || {}).id || null;
+  const normalized = categoryId || null;
+  if (normalized === defaultCat) delete _D.label_category_assignments[type];
+  else _D.label_category_assignments[type] = normalized || '';
+  saveData();
+  renderLabelsList();
+  toast('Catégorie mise à jour.', 'success');
+}
+
+function addLabelCategory() {
+  const input = document.getElementById('new-label-cat');
+  const name = (input?.value || '').trim();
+  if (!name) { toast('Indique un nom pour la nouvelle catégorie.', 'error'); return; }
+  if (!_D.custom_label_categories) _D.custom_label_categories = [];
+  const id = 'lblcat_' + Date.now();
+  _D.custom_label_categories.push({ id, name });
+  saveData();
+  if (input) input.value = '';
+  renderLabelsList();
+  toast('Catégorie créée.', 'success');
+}
+
+// Renomme une catégorie, personnalisée OU intégrée (via une surcharge de nom).
+function renameLabelCategory(id) {
+  const custom  = (_D.custom_label_categories || []).find(c => c.id === id);
+  const builtin = FORM_LABEL_GROUPS.find(g => g.id === id);
+  if (!custom && !builtin) return;
+  const currentName = custom ? custom.name : ((_D.label_category_overrides||{})[id]?.name ?? builtin.label);
+  const name = prompt('Renommer la catégorie :', currentName);
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) { toast('Le nom ne peut pas être vide.', 'error'); return; }
+  if (custom) {
+    custom.name = trimmed;
+  } else {
+    if (!_D.label_category_overrides) _D.label_category_overrides = {};
+    const ov = { ...(_D.label_category_overrides[id] || {}) };
+    if (trimmed === builtin.label) delete ov.name; else ov.name = trimmed;
+    if (Object.keys(ov).length) _D.label_category_overrides[id] = ov;
+    else delete _D.label_category_overrides[id];
+  }
+  saveData();
+  renderLabelsList();
+  toast('Catégorie renommée.', 'success');
+}
+
+// Supprime une catégorie personnalisée, ou masque une catégorie intégrée
+// (restaurable ensuite). Dans les deux cas, les labels qu'elle contenait
+// repassent en "Non classé" plutôt que de disparaître.
+function deleteLabelCategory(id) {
+  const custom  = (_D.custom_label_categories || []).find(c => c.id === id);
+  const builtin = FORM_LABEL_GROUPS.find(g => g.id === id);
+  if (!custom && !builtin) return;
+  const name = custom ? custom.name : ((_D.label_category_overrides||{})[id]?.name ?? builtin.label);
+  const msg = custom
+    ? `Supprimer la catégorie "${name}" ? Les labels qu'elle contient repasseront en "Non classé".`
+    : `Masquer la catégorie intégrée "${name}" ? Les labels qu'elle contient repasseront en "Non classé" (elle reste restaurable en bas de liste).`;
+  if (!confirm(msg)) return;
+
+  if (custom) {
+    _D.custom_label_categories = (_D.custom_label_categories || []).filter(c => c.id !== id);
+  } else {
+    if (!_D.label_category_overrides) _D.label_category_overrides = {};
+    _D.label_category_overrides[id] = { ...(_D.label_category_overrides[id]||{}), _hidden: true };
+    if (!_D.label_category_assignments) _D.label_category_assignments = {};
+    builtin.types.forEach(type => {
+      if (!(type in (_D.label_category_assignments||{}))) _D.label_category_assignments[type] = '';
+    });
+  }
+  if (_D.label_category_assignments) {
+    Object.keys(_D.label_category_assignments).forEach(type => {
+      if (_D.label_category_assignments[type] === id) delete _D.label_category_assignments[type];
+    });
+  }
+  if (_D.label_category_order) _D.label_category_order = _D.label_category_order.filter(cid => cid !== id);
+  saveData();
+  renderLabelsList();
+  toast(custom ? 'Catégorie supprimée.' : 'Catégorie masquée.', 'success');
+}
+
+// Restaure une catégorie intégrée précédemment masquée.
+function restoreLabelCategory(id) {
+  if ((_D.label_category_overrides||{})[id]) {
+    delete _D.label_category_overrides[id]._hidden;
+    if (Object.keys(_D.label_category_overrides[id]).length === 0) delete _D.label_category_overrides[id];
+  }
+  saveData();
+  renderLabelsList();
+  toast('Catégorie restaurée.', 'success');
+}
+
+// Réorganisation par glisser-déposer des catégories (même principe que
+// onBlocDragStart/Over/Drop pour les blocs d'extensions).
+let _labelCatDragId = null;
+function onLabelCatDragStart(e) { _labelCatDragId = e.currentTarget.dataset.catId; e.dataTransfer.effectAllowed = 'move'; }
+function onLabelCatDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-target'); }
+function onLabelCatDrop(e) {
+  e.preventDefault();
+  document.querySelectorAll('.lbl-group-header.drag-target').forEach(el => el.classList.remove('drag-target'));
+  const toId = e.currentTarget.dataset.catId;
+  if (!_labelCatDragId || _labelCatDragId === toId) { _labelCatDragId = null; return; }
+  const order = getLabelCategories().map(c => c.id);
+  const fromIdx = order.indexOf(_labelCatDragId), toIdx = order.indexOf(toId);
+  if (fromIdx < 0 || toIdx < 0) { _labelCatDragId = null; return; }
+  order.splice(fromIdx, 1); order.splice(toIdx, 0, _labelCatDragId);
+  _D.label_category_order = order;
+  saveData();
+  renderLabelsList();
+  toast('Ordre des catégories sauvegardé.', 'success');
+  _labelCatDragId = null;
+}
+
 // Détermine le type de forme d'un Pokémon : une assignation manuelle prend
 // toujours le pas sur la détection automatique par motif de nom PokéAPI.
 // Une assignation à chaîne vide ('') force explicitement "aucun label".
@@ -3343,6 +3671,14 @@ function _resolveFormType(pokeApiSlug, baseName) {
   const assigned = (_D.pokemon_label_assignments||{})[pokeApiSlug];
   if (assigned !== undefined) return assigned || null;
   return _detectFormType(pokeApiSlug, baseName);
+}
+
+// Label assigné manuellement à un Pokémon de BASE via le sélecteur "Label" de
+// sa fiche (indépendant de la détection de formes, qui ne concerne que les
+// entrées "forme") — renvoie null si aucun label n'a été assigné/effacé.
+function _pkdxBaseAssignedLabel(name) {
+  const assigned = (_D.pokemon_label_assignments||{})[name];
+  return assigned ? getFormLabelConfig(assigned) : null;
 }
 
 function _nnLbl(s) {
@@ -3820,7 +4156,6 @@ function _buildFormTypeFilterList() {
   const typesPresent = new Set(_pkdx.all.filter(p => p.isForm && p.formType).map(p => p.formType));
   const countOf = type => _pkdx.all.filter(p => p.isForm && p.formType === type).length;
   const totalForms = _pkdx.all.filter(p => p.isForm && getFormLabelConfig(p.formType).enabled).length;
-  const GROUPS = FORM_LABEL_GROUPS;
   const mode = _pkdx.formMode || 'all';
   // Le filtre de type est désormais indépendant du mode (all/none/only) : les
   // deux se combinent au lieu de s'exclure mutuellement.
@@ -3838,35 +4173,32 @@ function _buildFormTypeFilterList() {
     <span style="font-weight:600;font-size:.78rem">Tous les types</span>
     <span class="pkdx-forms-count">${totalForms}</span>
   </div>`;
-  GROUPS.forEach(group => {
-    const present = group.types.filter(t => typesPresent.has(t) && getFormLabelConfig(t).enabled);
+
+  const typeRow = type => {
+    const label = getFormLabelConfig(type);
+    if (!label) return '';
+    const active = filter?.has(type) ? 'active' : '';
+    return `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
+      <span class="pkdx-forms-type-badge" style="background:${label.color}">${label.badge}</span>
+      <span>${_escHtml(label.fr)}</span>
+      <span class="pkdx-forms-count">${countOf(type)}</span>
+    </div>`;
+  };
+
+  // Regroupement par catégorie (intégrées + personnalisées), dans l'ordre
+  // réorganisable défini dans Édition › Labels — même logique que renderLabelsList.
+  getLabelCategories().forEach(cat => {
+    const present = _allLabelTypes().filter(t => typesPresent.has(t) && _labelCategoryOf(t) === cat.id && getFormLabelConfig(t).enabled);
     if (!present.length) return;
-    html += `<div class="pkdx-forms-group-label">${group.label}</div>`;
-    present.forEach(type => {
-      const label = getFormLabelConfig(type);
-      if (!label) return;
-      const active = filter?.has(type) ? 'active' : '';
-      html += `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
-        <span class="pkdx-forms-type-badge" style="background:${label.color}">${label.badge}</span>
-        <span>${label.fr}</span>
-        <span class="pkdx-forms-count">${countOf(type)}</span>
-      </div>`;
-    });
+    html += `<div class="pkdx-forms-group-label">${_escHtml(cat.name)}</div>`;
+    present.forEach(type => { html += typeRow(type); });
   });
-  // Types présents mais absents de FORM_LABEL_GROUPS (labels personnalisés notamment)
-  const grouped = new Set(GROUPS.flatMap(g => g.types));
-  const extra = [...typesPresent].filter(t => !grouped.has(t) && getFormLabelConfig(t)?.enabled);
-  if (extra.length) {
-    html += `<div class="pkdx-forms-group-label">Personnalisés</div>`;
-    extra.forEach(type => {
-      const label = getFormLabelConfig(type);
-      const active = filter?.has(type) ? 'active' : '';
-      html += `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
-        <span class="pkdx-forms-type-badge" style="background:${label.color}">${label.badge}</span>
-        <span>${label.fr}</span>
-        <span class="pkdx-forms-count">${countOf(type)}</span>
-      </div>`;
-    });
+
+  // Types présents mais non classés dans une catégorie
+  const unclassified = _allLabelTypes().filter(t => typesPresent.has(t) && _labelCategoryOf(t) === null && getFormLabelConfig(t)?.enabled);
+  if (unclassified.length) {
+    html += `<div class="pkdx-forms-group-label">Non classés</div>`;
+    unclassified.forEach(type => { html += typeRow(type); });
   }
   html += '</div>';
   el.innerHTML = html;
@@ -3923,8 +4255,10 @@ async function _loadFormsList() {
       'clodsire':            'wooper',
       'sneasler':            'sneasel',
       'overqwil':            'qwilfish',
-      'ursaluna':            'ursaring',
-      'ursaluna-bloodmoon':  'ursaring',
+      // Ursaluna-bloodmoon est une forme spéciale d'URSALUNA (Ursaking en FR),
+      // pas d'Ursaring (qui est l'espèce PRÉ-évolution, distincte) : sinon son
+      // nom FR et sa génération étaient calculés à partir d'Ursaring.
+      'ursaluna-bloodmoon':  'ursaluna',
       'basculegion-male':    'basculin',
       'basculegion-female':  'basculin',
     };
@@ -4082,9 +4416,11 @@ function _buildFormFrName(baseFr, formType, pokeName) {
     case 'primal':  return 'Primo-' + baseFr;
     case 'mega-x':  return 'Méga-' + baseFr + ' X';
     case 'mega-y':  return 'Méga-' + baseFr + ' Y';
+    case 'mega-z':  return 'Méga-' + baseFr + ' Z';
     case 'mega':
       if (en.includes('-mega-x')) return 'Méga-' + baseFr + ' X';
       if (en.includes('-mega-y')) return 'Méga-' + baseFr + ' Y';
+      if (en.includes('-mega-z')) return 'Méga-' + baseFr + ' Z';
       return 'Méga-' + baseFr;
     default: return baseFr;
   }
@@ -4129,7 +4465,10 @@ async function _hydrateCard(p) {
 
     const sprite   = poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '';
     const types    = poke.types.map(t => t.type.name);
-    const formMeta = isForm ? getFormLabelConfig(p.formType) : null;
+    // Une forme affiche son label détecté/assigné ; un Pokémon de base peut
+    // aussi se voir assigner un label manuellement (sélecteur "Label" de sa
+    // fiche) — jusqu'ici sans aucun effet visuel, corrigé ici.
+    const formMeta = isForm ? getFormLabelConfig(p.formType) : _pkdxBaseAssignedLabel(p.name);
     const color    = (formMeta && formMeta.enabled) ? formMeta.color : (TYPE_COLORS[types[0]] || '#888');
 
     card.className = 'pkdx-card' + (isForm ? ' pkdx-card-form' : '');
@@ -4196,7 +4535,13 @@ async function openPokedexModal(id) {
     const sprite  = poke.sprites?.other?.['official-artwork']?.front_default ||
                     poke.sprites?.front_default || '';
     const types   = poke.types.map(t => t.type.name);
-    const color   = TYPE_COLORS[types[0]] || '#888';
+    // Un label peut être assigné manuellement à un Pokémon de base (sélecteur
+    // "Label" plus bas) : il doit alors colorer le hero, afficher son badge,
+    // ET restreindre les cartes TCG chargées à ce type précis (exactement
+    // comme pour une forme) — voir l'appel à _loadTcgCardsInModal plus bas.
+    const assignedLabelType = (_D.pokemon_label_assignments||{})[poke.name] || null;
+    const formMeta = assignedLabelType ? getFormLabelConfig(assignedLabelType) : null;
+    const color   = (formMeta && formMeta.enabled) ? formMeta.color : (TYPE_COLORS[types[0]] || '#888');
     const numStr  = '#' + String(poke.id).padStart(4,'0');
 
     // French abilities (fetch in parallel)
@@ -4286,6 +4631,7 @@ async function openPokedexModal(id) {
           <div class="pkdx-modal-num">${numStr}</div>
           <h2 class="pkdx-modal-name">${frName}</h2>
           ${genus ? `<div class="pkdx-modal-genus">${genus}</div>` : ''}
+          ${formMeta && formMeta.enabled ? `<div class="pkdx-modal-genus"><span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span></div>` : ''}
           <div class="pkdx-modal-types">
             ${types.map(t=>`<span class="pkdx-type pkdx-type-lg" style="background:${TYPE_COLORS[t]||'#888'}">${TYPE_FR[t]||t}</span>`).join('')}
           </div>
@@ -4319,7 +4665,7 @@ async function openPokedexModal(id) {
         ${_pkdxTcgSectionHtml()}
       </div>
     `;
-    _loadTcgCardsInModal(frName);
+    _loadTcgCardsInModal(frName, assignedLabelType || undefined);
   } catch(err) {
     inner.innerHTML = `<p style="color:var(--accent2);padding:24px">Erreur : ${err.message}</p>`;
   }

@@ -285,6 +285,11 @@
         </div>
         <p class="form-hint" style="margin-bottom:14px">Nom affiché sur le badge de la forme spéciale, visibilité dans le Pokédex, et préfixes/suffixes (séparés par des virgules) utilisés pour retrouver les cartes TCG correspondantes (ex : <code>Méga-, M </code> pour Méga, <code>VMAX, Gigamax</code> pour Gigamax). Chaque label peut être modifié ou supprimé définitivement ; les labels intégrés supprimés restent restaurables en bas de liste.</p>
         <div class="lbl-new-form">
+          <input type="text" id="new-label-cat" placeholder="Nom de la nouvelle catégorie (ex : Événementielles)" style="flex:1">
+          <button class="btn btn-secondary" onclick="addLabelCategory()">+ Nouvelle catégorie</button>
+        </div>
+        <p class="form-hint" style="margin-bottom:14px">Glisse l'en-tête ⠿ d'une catégorie pour la réorganiser. Change la « Catégorie » d'un label depuis sa ligne pour le déplacer.</p>
+        <div class="lbl-new-form">
           <input type="text" id="new-label-fr" placeholder="Nom du nouveau label (ex : Forme Alpha)" style="flex:1">
           <input type="text" id="new-label-badge" placeholder="Badge (ex : ALPHA)" maxlength="10" style="width:120px">
           <input type="color" id="new-label-color" value="#7038F8">
@@ -505,6 +510,7 @@
     </div>
     <div class="settings-field"><label>Slots par page</label>
       <select id="classeur-slots-select" onchange="syncClasseurInputs('slots')">
+        <option value="4">4 (2×2)</option>
         <option value="9">9 (3×3)</option>
         <option value="12">12 (4×3)</option>
         <option value="18" selected>18 (6×3)</option>
@@ -540,7 +546,17 @@
   <div class="modal">
     <h2>Ajouter une extension au classeur</h2>
     <div class="settings-field"><label>Extension</label>
-      <select id="add-ext-classeur-select"><option value="">— Choisir —</option></select></div>
+      <div style="position:relative">
+        <button type="button" id="add-ext-classeur-toggle" class="pkdx-forms-toggle-btn" style="width:100%;justify-content:space-between" onclick="toggleAddExtClasseurPanel(this)">
+          <span id="add-ext-classeur-label">— Choisir —</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <input type="hidden" id="add-ext-classeur-select" value="">
+        <div id="add-ext-classeur-panel" style="display:none;left:0;right:0;min-width:0" class="pkdx-ext-dropdown">
+          <div id="add-ext-classeur-list"></div>
+        </div>
+      </div>
+    </div>
     <div class="settings-field"><label>Pages dédiées</label>
       <input type="number" id="add-ext-classeur-pages" value="10" min="1" max="200"
              oninput="syncAddExtInputs('pages')"></div>
