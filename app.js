@@ -2787,16 +2787,20 @@ document.addEventListener('click', e => {
     _closePkdxExtPanel();
   if (!e.target.closest('#pkdx-forms-panel') && !e.target.closest('#pkdx-forms-toggle'))
     _closePkdxFormsPanel();
+  if (!e.target.closest('#pkdx-tcg-ext-panel') && !e.target.closest('#pkdx-tcg-ext-toggle'))
+    _closeModalExtPanel();
 });
 
-// ── Pokédex extension filter ───────────────────────────────────────────────
+// ── Pokédex extension filter (multi-sélection) ──────────────────────────────
+// null = pas de filtre, sinon Map<extId, {setId, name}> — plusieurs
+// extensions peuvent être choisies simultanément.
 let _pkdxExtFilter = null;
 
 function _closePkdxExtPanel() {
   const panel = document.getElementById('pkdx-ext-panel');
   if (panel) panel.style.display = 'none';
   const btn = document.getElementById('pkdx-ext-toggle');
-  if (btn) btn.classList.remove('active');
+  if (btn) btn.classList.toggle('active', !!_pkdxExtFilter);
 }
 
 async function togglePokedexExtFilter(btn) {
@@ -2809,51 +2813,86 @@ async function togglePokedexExtFilter(btn) {
   if (panel) panel.style.display = '';
 }
 
+// Liste groupée par bloc (ordre des blocs) puis triée par code au sein de
+// chaque bloc (sortExts, comme partout ailleurs dans l'appli), avec l'image
+// sigle de chaque extension affichée à côté de son nom.
 function _buildExtFilterList() {
   const el = document.getElementById('pkdx-ext-list');
   if (!el) return;
-  const exts = sortExts(getAllExtensions().filter(e => _mapping.mappings[e.id]));
-  if (!exts.length) {
+  const mappedExts = getAllExtensions().filter(e => _mapping.mappings[e.id]);
+  if (!mappedExts.length) {
     el.innerHTML = '<div style="color:var(--text2);font-size:.8rem;padding:8px 12px">Aucune extension mappée.</div>';
     return;
   }
-  const allActive = _pkdxExtFilter === null ? 'active' : '';
-  let html = `<div class="pkdx-ext-filter-item ${allActive}" onclick="setPokedexExtFilter(null,null,null,this)">Toutes les extensions</div>`;
-  html += exts.map(e => {
-    const setId  = _mapping.mappings[e.id].set_id;
-    const name   = e.nom || e.name || e.id;
-    const active = (_pkdxExtFilter && _pkdxExtFilter.setId === setId) ? 'active' : '';
-    return `<div class="pkdx-ext-filter-item ${active}" onclick="setPokedexExtFilter('${setId}','${e.id.replace(/'/g,"\\'")}','${name.replace(/'/g,"\\'")}',this)">${name}</div>`;
-  }).join('');
+  let html = `<div class="pkdx-ext-filter-item pkdx-ext-filter-all ${!_pkdxExtFilter?'active':''}" onclick="setPokedexExtFilterAll()">Toutes les extensions</div>`;
+  getBlocs().forEach(bloc => {
+    const inBloc = sortExts(mappedExts.filter(e => getBlocForExt(e.id)?.id === bloc.id));
+    if (!inBloc.length) return;
+    html += `<div class="pkdx-ext-filter-bloc-label">${_escHtml(bloc.nom || bloc.name || bloc.id)}</div>`;
+    html += inBloc.map(e => {
+      const setId    = _mapping.mappings[e.id].set_id;
+      const name     = e.nom || e.name || e.id;
+      const active   = _pkdxExtFilter && _pkdxExtFilter.has(e.id) ? 'active' : '';
+      const sigleSrc = e.sigle || bloc.sigle || '';
+      return `<div class="pkdx-ext-filter-item ${active}" onclick="togglePokedexExtFilterItem('${_escJs(e.id)}','${_escJs(setId)}','${_escJs(name)}')">
+        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
+        <span>${_escHtml(name)}</span>
+      </div>`;
+    }).join('');
+  });
   el.innerHTML = html;
 }
 
-async function setPokedexExtFilter(setId, extId, name, el) {
-  document.querySelectorAll('.pkdx-ext-filter-item').forEach(i => i.classList.remove('active'));
-  if (el) el.classList.add('active');
-  const labelEl = document.getElementById('pkdx-ext-label');
+function togglePokedexExtFilterItem(extId, setId, name) {
+  if (!_pkdxExtFilter) _pkdxExtFilter = new Map();
+  if (_pkdxExtFilter.has(extId)) _pkdxExtFilter.delete(extId);
+  else _pkdxExtFilter.set(extId, { setId, name });
+  if (_pkdxExtFilter.size === 0) _pkdxExtFilter = null;
+  _buildExtFilterList();
+  _refreshPokedexExtLabelAndClear();
+  _applyPokedexExtFilterAsync();
+}
 
-  if (!setId) {
-    _pkdxExtFilter = null;
-    _pkdx.extFilterNames = null;
-    if (labelEl) labelEl.textContent = 'Extension';
-    _closePkdxExtPanel();
-    _applyPokedexFilter();
-    return;
+function setPokedexExtFilterAll() {
+  _pkdxExtFilter = null;
+  _buildExtFilterList();
+  _refreshPokedexExtLabelAndClear();
+  _applyPokedexExtFilterAsync();
+}
+
+function _refreshPokedexExtLabelAndClear() {
+  const labelEl  = document.getElementById('pkdx-ext-label');
+  const clearBtn = document.getElementById('pkdx-ext-clear');
+  if (!_pkdxExtFilter) {
+    if (labelEl)  labelEl.textContent = 'Extension';
+    if (clearBtn) clearBtn.style.display = 'none';
+  } else {
+    const names = [..._pkdxExtFilter.values()].map(v => v.name);
+    if (labelEl)  labelEl.textContent = names.length === 1 ? names[0] : names.length + ' extensions';
+    if (clearBtn) clearBtn.style.display = '';
   }
+}
 
-  _pkdxExtFilter = { setId, extId, name };
-  if (labelEl) labelEl.textContent = name;
-
-  try {
-    const res = await fetch(`${SB_URL}/rest/v1/cards?set_id=eq.${encodeURIComponent(setId)}&select=name`,
-      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Range': '0-999' } });
-    const cards = await res.json();
-    // Parse card names to extract base name + form type
-    _pkdx.extFilterNames = _parseTcgCardNames(cards.map(c => c.name || ''));
-  } catch(e) { _pkdx.extFilterNames = null; }
-
-  _closePkdxExtPanel();
+// Recalcule la liste des noms de cartes correspondant à TOUTES les extensions
+// sélectionnées (union), pour filtrer la grille principale du Pokédex.
+async function _applyPokedexExtFilterAsync() {
+  if (!_pkdxExtFilter) {
+    _pkdx.extFilterNames = null;
+  } else {
+    try {
+      const baseEntries = new Set();
+      const formEntries = new Set();
+      await Promise.all([..._pkdxExtFilter.values()].map(async v => {
+        const res = await fetch(`${SB_URL}/rest/v1/cards?set_id=eq.${encodeURIComponent(v.setId)}&select=name`,
+          { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Range': '0-999' } });
+        const cards = await res.json();
+        const parsed = _parseTcgCardNames(cards.map(c => c.name || ''));
+        parsed.baseEntries.forEach(n => baseEntries.add(n));
+        parsed.formEntries.forEach(n => formEntries.add(n));
+      }));
+      _pkdx.extFilterNames = { baseEntries, formEntries };
+    } catch(e) { _pkdx.extFilterNames = null; }
+  }
 
   // Force load forms and all frNames
   const prevShowForms = _pkdx.showForms;
@@ -2861,66 +2900,80 @@ async function setPokedexExtFilter(setId, extId, name, el) {
   if (!_pkdx.formsLoaded) await _loadFormsList();
   await _hydrateAllFrNames();
   _pkdx.showForms = prevShowForms;
-  const formsBtn = document.getElementById('pkdx-forms-toggle');
-  if (formsBtn) formsBtn.classList.toggle('active', _pkdx.showForms);
+  _closePkdxFormsPanel();
 
   _applyPokedexFilter();
 }
 
-// Parse TCGdex French card names → Set of "baseName" or "baseName|formType"
+// Bouton "×" du topbar : annule complètement le filtre d'extension du
+// Pokédex, y compris — puisqu'il n'aurait plus de sens sans lui — le filtre
+// local d'une fiche Pokémon actuellement ouverte.
+function clearPokedexExtFilter() {
+  _pkdxExtFilter = null;
+  _pkdx.extFilterNames = null;
+  _refreshPokedexExtLabelAndClear();
+  if (document.getElementById('pkdx-ext-list')) _buildExtFilterList();
+  if (_pkdx.initialized) _applyPokedexFilter();
+  if (_pkdxModalTcg) {
+    _pkdxModalTcg.filterExtIds = null;
+    _renderPkdxTcgGroups();
+    _buildModalExtFilterList();
+  }
+}
+
+// Analyse les noms de cartes TCG d'une extension et détermine, pour chacune,
+// à quel Pokémon PRÉCIS elle correspond : soit le Pokémon de base, soit une
+// forme spéciale précise (jamais les deux). Réutilise les mêmes motifs
+// préfixe/suffixe que le reste de l'appli (Édition › Labels / getFormLabelConfig)
+// au lieu d'une liste de regex séparée — celle-ci ne reconnaissait ni les
+// accents français ("Méga"), ni les abréviations TCGdex ("M "), ce qui
+// empêchait la plupart des formes de ressortir dans le filtre par extension.
+// Retour : { baseEntries: Set<string>, formEntries: Set<"baseName|formType"> }
 function _parseTcgCardNames(cardNames) {
-  const nn = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  const suffixRe = /\b(ex|v|vmax|vstar|gx|lv ?x|radieux|obscur|brillant|delta|turbo|break|prime|legend|origine|couronne)\b/g;
 
-  const formParticles = [
-    { re: /\bde hisui\b/i,   type: 'hisui'  },
-    { re: /\bd['']hisui\b/i, type: 'hisui'  },
-    { re: /\bde galar\b/i,   type: 'galar'  },
-    { re: /\bd['']alola\b/i, type: 'alola'  },
-    { re: /\bde alola\b/i,   type: 'alola'  },
-    { re: /\bde paldea\b/i,  type: 'paldea' },
-    { re: /\bd['']paldea\b/i,type: 'paldea' },
-    { re: /^mega[- ]/i,      type: 'mega'   },
-    { re: /\bmega[- ]/i,     type: 'mega'   },
-    { re: /\bgigamax\b/i,    type: 'gmax'   },
-    { re: /\bprimal\b/i,     type: 'primal' },
-  ];
-
-  const suffixRe = /\s*[-–]?\s*(ex|v|vmax|vstar|gx|lv\.?\s*x|radieux|obscur|brillant|delta|turbo|break|prime|legend|origine|couronné)\s*$/i;
-
-  const entries = new Set();
-
-  cardNames.forEach(raw => {
-    let cardName = raw.trim();
-    let formType = null;
-    let baseName = cardName;
-
-    for (const fp of formParticles) {
-      if (fp.re.test(cardName)) {
-        formType = fp.type;
-        baseName = cardName
-          .replace(/\bde hisui\b/gi, '').replace(/\bd['']hisui\b/gi, '')
-          .replace(/\bde galar\b/gi, '').replace(/\bd['']alola\b/gi, '').replace(/\bde alola\b/gi, '')
-          .replace(/\bde paldea\b/gi, '').replace(/\bd['']paldea\b/gi, '')
-          .replace(/^mega[- ]/gi, '').replace(/\bmega[- ]/gi, '')
-          .replace(/\bgigamax\b/gi, '').replace(/\bprimal\b/gi, '')
-          .trim();
-        break;
-      }
-    }
-
-    const cleanBase = nn(baseName.replace(suffixRe, '').replace(/-/g, ' '));
-    if (!cleanBase) return;
-
-    if (formType) {
-      entries.add(cleanBase + '|' + formType);
-      // Also add base name so the base Pokémon appears alongside its form
-      entries.add(cleanBase);
-    } else {
-      entries.add(cleanBase);
-    }
+  // Types les plus "spécifiques" (ayant un suffixe requis, ex. mega-x/mega-y/gmax)
+  // testés avant les types plus permissifs (ex. mega, qui n'exige aucun
+  // suffixe) — sinon une carte "Méga-Dracaufeu X" serait classée "mega" avant
+  // d'avoir eu la chance d'être reconnue comme "mega-x".
+  const linkedTypes = _allLinkedFormTypes().sort((a, b) => {
+    const sa = (getFormLabelConfig(a).suffixes||[]).length ? 1 : 0;
+    const sb = (getFormLabelConfig(b).suffixes||[]).length ? 1 : 0;
+    return sb - sa;
   });
 
-  return entries;
+  const baseEntries = new Set();
+  const formEntries = new Set();
+
+  cardNames.forEach(raw => {
+    const cardName = (raw || '').trim();
+    if (!cardName) return;
+
+    let matchedType = null;
+    for (const type of linkedTypes) {
+      if (_cardMatchesFormType(cardName, type)) { matchedType = type; break; }
+    }
+
+    // Nom normalisé (accents/casse retirés), duquel on retire le motif de
+    // forme détecté (préfixe et/ou suffixe) pour ne garder que le nom du
+    // Pokémon lui-même.
+    let residual = _nnLbl(cardName);
+    if (matchedType) {
+      const cfg = getFormLabelConfig(matchedType);
+      [...(cfg.prefixes||[]), ...(cfg.suffixes||[])].forEach(pat => {
+        const np = _nnLbl(pat);
+        if (!np) return;
+        residual = residual.replace(new RegExp('\\b'+_escRe(np)+'\\b', 'g'), ' ');
+      });
+    }
+    residual = residual.replace(suffixRe, ' ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!residual) return;
+
+    if (matchedType) formEntries.add(residual + '|' + matchedType);
+    else             baseEntries.add(residual);
+  });
+
+  return { baseEntries, formEntries };
 }
 
 async function _hydrateAllFrNames() {
@@ -3300,6 +3353,10 @@ function _nnLbl(s) {
     .trim();
 }
 function _escRe(s)  { return (s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+// HTML-escape for injecting arbitrary/user-edited text (card names, ext names…) into innerHTML.
+function _escHtml(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Escape for safely embedding a string inside a single-quoted inline onclick="..." attribute.
+function _escJs(s)   { return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 // Un nom de carte TCG correspond-il au label `formType` (via ses préfixes/suffixes) ?
 function _cardMatchesFormType(cardName, formType) {
@@ -3550,6 +3607,15 @@ let _pkdx = {
   initialized:    false,
 };
 
+// État des cartes TCG affichées dans la fiche Pokémon actuellement ouverte.
+// Reconstruit à chaque ouverture de fiche (openPokedexModal / openPokedexFormModal).
+// { frName, formType, groups:[{set_id,set_name,cards,ext}], cardsById:Map, filterExtIds:Set|null }
+let _pkdxModalTcg = null;
+// Mode de tri des groupes d'extension DANS une fiche Pokémon : 'default' (ordre
+// bloc+code standard de l'appli), 'asc' ou 'desc' (tri code seul). Persiste
+// d'une fiche à l'autre (préférence de session), contrairement à filterExtIds.
+let _pkdxModalSortMode = 'default';
+
 function _pkdxGenForId(id) {
   const g = POKEDEX_GENS.find(g => id >= g.from && id <= g.to);
   return g ? g.id : 0;
@@ -3653,15 +3719,30 @@ function _normalizeStr(s) {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
 
+// mode ('all'|'none'|'only') et formTypeFilter (Set de types, ou null = tous)
+// sont deux réglages INDÉPENDANTS qui se combinent (et non plus un seul état
+// exclusif) : on peut par ex. choisir "Formes seules" ET un type précis, et
+// n'afficher alors que les formes de ce type — les deux filtres s'additionnent.
 function _applyPokedexFilter() {
   const bases = _pkdx.all.filter(p => !p.isForm);
-  const forms  = _pkdx.all.filter(p =>  p.isForm);
-  const mode   = _pkdx.formMode || 'all';
+  const forms = _pkdx.all.filter(p =>  p.isForm);
+  const mode       = _pkdx.formMode || 'all';
+  const typeFilter = _pkdx.formTypeFilter;
+
+  const formsMatchingType = typeFilter ? forms.filter(p => typeFilter.has(p.formType)) : forms;
+
   let pool;
-  if      (mode === 'none')   pool = bases;
-  else if (mode === 'only')   pool = forms;
-  else if (mode === 'filter') pool = [...bases, ...forms.filter(p => !_pkdx.formTypeFilter || _pkdx.formTypeFilter.has(p.formType))];
-  else                        pool = _pkdx.formsLoaded ? _buildPoolWithForms() : bases;
+  if (mode === 'none') {
+    pool = bases;
+  } else if (mode === 'only') {
+    // Tri croissant explicite par numéro de Pokédex (baseId), sinon par id de
+    // forme en cas d'égalité — sans ce tri la liste "Formes seules" hérite de
+    // l'ordre d'insertion de _loadFormsList(), pas de l'ordre du Pokédex.
+    pool = [...formsMatchingType].sort((a, b) => (a.baseId - b.baseId) || (a.id - b.id));
+  } else {
+    pool = _pkdx.formsLoaded ? _buildPoolWithForms(formsMatchingType) : bases;
+  }
+
   _pkdx.filtered = pool.filter(p => {
     const baseId   = p.isForm ? p.baseId : p.id;
     const genMatch = _pkdx.gen === 0 || _pkdxGenForId(baseId) === _pkdx.gen;
@@ -3678,9 +3759,9 @@ function _applyPokedexFilter() {
   renderPokedexPage(true);
 }
 
-function _buildPoolWithForms() {
+function _buildPoolWithForms(formsList) {
   const bases = _pkdx.all.filter(p => !p.isForm);
-  const forms  = _pkdx.all.filter(p =>  p.isForm);
+  const forms  = formsList || _pkdx.all.filter(p => p.isForm);
   const result = [];
   bases.forEach(base => {
     result.push(base);
@@ -3689,26 +3770,27 @@ function _buildPoolWithForms() {
   return result;
 }
 
-// Match a Pokémon entry against extFilterNames (Set of "baseName" or "baseName|formType")
+// Une entrée du Pokédex (base ou forme) correspond-elle au filtre d'extension
+// courant ? extFilterNames = { baseEntries: Set<name>, formEntries: Set<"name|type"> }.
 function _matchPkdxExtEntry(p) {
-  const entries = _pkdx.extFilterNames;
-  if (!entries) return true;
+  const data = _pkdx.extFilterNames;
+  if (!data) return true;
   const nn = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/-/g,' ').trim();
 
   if (p.isForm) {
     const formType = p.formType || _resolveFormType(p.name, p.name.split('-')[0]) || null;
-    const baseFr = nn(p.frName || '').split(' ')[0];
-    const baseEn = nn(p.name  || '').split(' ')[0];
     if (!formType) return false;
-    if (entries.has(baseFr + '|' + formType)) return true;
-    if (entries.has(baseEn + '|' + formType)) return true;
-    return false;
+    // Le nom à comparer est celui du Pokémon de BASE (ex. "Florizarre"), pas
+    // le nom déjà composé de la forme (ex. "Méga-Florizarre", qui inclut le
+    // préfixe et ne matcherait donc jamais le résidu extrait des cartes).
+    const baseEntry = _pkdx.all.find(e => !e.isForm && e.id === p.baseId);
+    const baseFr = nn(baseEntry?.frName || '');
+    const baseEn = nn(baseEntry?.name  || p.name.split('-')[0] || '');
+    return data.formEntries.has(baseFr + '|' + formType) || data.formEntries.has(baseEn + '|' + formType);
   } else {
     const nameFr = nn(p.frName || '');
     const nameEn = nn(p.name  || '').split(' ')[0];
-    if (entries.has(nameFr)) return true;
-    if (entries.has(nameEn)) return true;
-    return false;
+    return data.baseEntries.has(nameFr) || data.baseEntries.has(nameEn);
   }
 }
 
@@ -3729,7 +3811,7 @@ function _closePkdxFormsPanel() {
   const panel = document.getElementById('pkdx-forms-panel');
   if (panel) panel.style.display = 'none';
   const btn = document.getElementById('pkdx-forms-toggle');
-  if (btn) btn.classList.toggle('active', (_pkdx.formMode||'all') !== 'all');
+  if (btn) btn.classList.toggle('active', (_pkdx.formMode||'all') !== 'all' || !!_pkdx.formTypeFilter);
 }
 
 function _buildFormTypeFilterList() {
@@ -3740,6 +3822,8 @@ function _buildFormTypeFilterList() {
   const totalForms = _pkdx.all.filter(p => p.isForm && getFormLabelConfig(p.formType).enabled).length;
   const GROUPS = FORM_LABEL_GROUPS;
   const mode = _pkdx.formMode || 'all';
+  // Le filtre de type est désormais indépendant du mode (all/none/only) : les
+  // deux se combinent au lieu de s'exclure mutuellement.
   const filter = _pkdx.formTypeFilter;
   let html = '<div class="pkdx-forms-panel-inner">';
   html += '<div class="pkdx-forms-modes">';
@@ -3749,7 +3833,7 @@ function _buildFormTypeFilterList() {
   });
   html += '</div><div class="pkdx-forms-sep"></div>';
   html += '<div class="pkdx-forms-group-label" style="margin-top:4px">Filtrer par type</div>';
-  const allTypesActive = mode === 'filter' && !filter ? 'active' : '';
+  const allTypesActive = !filter ? 'active' : '';
   html += `<div class="pkdx-forms-type-item ${allTypesActive}" onclick="_setFormFilterAllTypes()">
     <span style="font-weight:600;font-size:.78rem">Tous les types</span>
     <span class="pkdx-forms-count">${totalForms}</span>
@@ -3761,7 +3845,7 @@ function _buildFormTypeFilterList() {
     present.forEach(type => {
       const label = getFormLabelConfig(type);
       if (!label) return;
-      const active = mode === 'filter' && filter?.has(type) ? 'active' : '';
+      const active = filter?.has(type) ? 'active' : '';
       html += `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
         <span class="pkdx-forms-type-badge" style="background:${label.color}">${label.badge}</span>
         <span>${label.fr}</span>
@@ -3776,7 +3860,7 @@ function _buildFormTypeFilterList() {
     html += `<div class="pkdx-forms-group-label">Personnalisés</div>`;
     extra.forEach(type => {
       const label = getFormLabelConfig(type);
-      const active = mode === 'filter' && filter?.has(type) ? 'active' : '';
+      const active = filter?.has(type) ? 'active' : '';
       html += `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
         <span class="pkdx-forms-type-badge" style="background:${label.color}">${label.badge}</span>
         <span>${label.fr}</span>
@@ -3788,37 +3872,35 @@ function _buildFormTypeFilterList() {
   el.innerHTML = html;
 }
 
+// Change uniquement le mode d'affichage (all/none/only). Le filtre de type
+// choisi n'est jamais réinitialisé ici : les deux réglages sont indépendants
+// et peuvent désormais s'additionner (ex. "Formes seules" + type "Méga").
 function _setFormMode(mode) {
   _pkdx.formMode = mode;
-  _pkdx.formTypeFilter = null;
   _pkdx.showForms = mode !== 'none';
   _closePkdxFormsPanel();
   _applyPokedexFilter();
 }
 
 function _setFormFilterAllTypes() {
-  _pkdx.formMode = 'filter';
   _pkdx.formTypeFilter = null;
-  _pkdx.showForms = true;
-  document.querySelectorAll('.pkdx-forms-type-item').forEach(e => e.classList.remove('active'));
-  const first = document.querySelector('.pkdx-forms-type-item');
-  if (first) first.classList.add('active');
-  const btn = document.getElementById('pkdx-forms-toggle');
-  if (btn) btn.classList.add('active');
+  // On reconstruit entièrement le panneau (plutôt que de patcher des classes
+  // à la main) : c'est ce qui garantit que l'état affiché reflète toujours
+  // l'état réel — l'ancien code, purement basé sur des manipulations DOM
+  // ponctuelles, pouvait désynchroniser l'affichage du filtre réel.
+  _buildFormTypeFilterList();
   _applyPokedexFilter();
 }
 
 function _toggleFormType(type, el) {
-  _pkdx.formMode = 'filter';
-  _pkdx.showForms = true;
   let filter = _pkdx.formTypeFilter ? new Set(_pkdx.formTypeFilter) : new Set();
   if (filter.has(type)) filter.delete(type); else filter.add(type);
   _pkdx.formTypeFilter = filter.size > 0 ? filter : null;
-  el.classList.toggle('active', filter.has(type));
-  const allBtn = el.parentElement?.querySelector('.pkdx-forms-type-item');
-  if (allBtn) allBtn.classList.toggle('active', _pkdx.formTypeFilter === null);
-  const btn = document.getElementById('pkdx-forms-toggle');
-  if (btn) btn.classList.toggle('active', (_pkdx.formMode||'all') !== 'all');
+  // Choisir un type alors que les formes sont masquées ("Sans formes") n'a
+  // pas de sens : on repasse automatiquement sur "Toutes" pour que le choix
+  // de l'utilisateur soit immédiatement visible.
+  if ((_pkdx.formMode || 'all') === 'none') _pkdx.formMode = 'all';
+  _buildFormTypeFilterList();
   _applyPokedexFilter();
 }
 
@@ -4234,12 +4316,7 @@ async function openPokedexModal(id) {
         </div>
         ${evoHtml}
         ${formsHtml}
-        <div class="pkdx-modal-section pkdx-modal-full pkdx-tcg-section">
-          <h4>Cartes TCG <span id="pkdx-tcg-count" style="font-size:.72rem;font-weight:400;color:var(--text2)"></span></h4>
-          <div id="pkdx-tcg-grid" class="pkdx-tcg-groups">
-            <div style="color:var(--text2);font-size:.82rem;padding:4px 0">Chargement…</div>
-          </div>
-        </div>
+        ${_pkdxTcgSectionHtml()}
       </div>
     `;
     _loadTcgCardsInModal(frName);
@@ -4248,21 +4325,45 @@ async function openPokedexModal(id) {
   }
 }
 
+// HTML de la section "Cartes TCG" d'une fiche Pokémon : titre + barre d'outils
+// (tri par code, choix d'extension(s) à afficher) + zone des groupes. Partagé
+// entre openPokedexModal et openPokedexFormModal.
+function _pkdxTcgSectionHtml() {
+  return `
+    <div class="pkdx-modal-section pkdx-modal-full pkdx-tcg-section">
+      <div class="pkdx-tcg-section-head">
+        <h4>Cartes TCG <span id="pkdx-tcg-count" style="font-size:.72rem;font-weight:400;color:var(--text2)"></span></h4>
+        <div class="pkdx-tcg-toolbar">
+          <button id="pkdx-tcg-sort-btn" class="btn btn-secondary btn-sm ${_pkdxModalSortMode!=='default'?'active':''}"
+            onclick="_toggleModalSortDir()" title="Trier les extensions par code">${_modalSortBtnLabel()}</button>
+          <div style="position:relative">
+            <button id="pkdx-tcg-ext-toggle" class="btn btn-secondary btn-sm" onclick="_toggleModalExtPanel(this)">Extensions ▾</button>
+            <div id="pkdx-tcg-ext-panel" style="display:none" class="pkdx-ext-dropdown"></div>
+          </div>
+        </div>
+      </div>
+      <div id="pkdx-tcg-filter-chip" class="pkdx-tcg-filter-chip" style="display:none"></div>
+      <div id="pkdx-tcg-grid" class="pkdx-tcg-groups">
+        <div style="color:var(--text2);font-size:.82rem;padding:4px 0">Chargement…</div>
+      </div>
+    </div>`;
+}
+
 async function _loadTcgCardsInModal(frName, formType) {
   const grid  = document.getElementById('pkdx-tcg-grid');
-  const count = document.getElementById('pkdx-tcg-count');
+  const chip  = document.getElementById('pkdx-tcg-filter-chip');
   if (!grid) return;
 
-  const sbUrl = 'https://kfyphcestbcgtkzurvas.supabase.co';
-  const sbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmeXBoY2VzdGJjZ3RrenVydmFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NTAwMzMsImV4cCI6MjA5ODIyNjAzM30.8sxe-_-uZdG4G0CGpUKViBMHE78RuReVaP_SsyLCaa8';
+  _pkdxModalTcg = null;
+  if (chip) chip.style.display = 'none';
 
   // Types de forme ayant un lien carte actif (préfixes/suffixes configurés dans
   // Édition › Labels), utilisés pour exclure ces cartes de la vue "forme de base".
   const linkedTypes = _allLinkedFormTypes();
 
   try {
-    const url = `${sbUrl}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
-    const res = await fetch(url, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
+    const url = `${SB_URL}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
+    const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let cards = await res.json();
 
@@ -4281,8 +4382,8 @@ async function _loadTcgCardsInModal(frName, formType) {
       )];
       for (const letter of shortLetters) {
         try {
-          const r2 = await fetch(`${sbUrl}/rest/v1/cards?name=ilike.${encodeURIComponent(letter + ' ' + frName)}*&order=set_id.asc,number.asc&limit=200`,
-            { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
+          const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(letter + ' ' + frName)}*&order=set_id.asc,number.asc&limit=200`,
+            { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
           const extra = r2.ok ? await r2.json() : [];
           const seen = new Set(cards.map(c => c.id));
           extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
@@ -4296,7 +4397,6 @@ async function _loadTcgCardsInModal(frName, formType) {
     }
     if (!document.getElementById('pkdx-tcg-grid')) return;
     if (!cards.length) { grid.innerHTML = '<p style="color:var(--text3);font-size:.82rem">Aucune carte trouvée.</p>'; return; }
-    if (count) count.textContent = '— ' + cards.length + ' carte' + (cards.length > 1 ? 's' : '');
 
     // Ensure mapping loaded
     if (!_mapping.initialized) await initMappingView();
@@ -4334,56 +4434,256 @@ async function _loadTcgCardsInModal(frName, formType) {
       groupMap.get(key).cards.push(c);
     });
 
-    // Sort groups by PTCG bloc+code order
-    const groups = Array.from(groupMap.values()).sort((a, b) => {
-      const ea = setIdToExt[a.set_id];
-      const eb = setIdToExt[b.set_id];
-      if (!ea && !eb) return (a.set_name||'').localeCompare(b.set_name||'');
-      if (!ea) return 1;
-      if (!eb) return -1;
-      const oa = extOrder[ea.id] !== undefined ? extOrder[ea.id] : 9999;
-      const ob = extOrder[eb.id] !== undefined ? extOrder[eb.id] : 9999;
-      return oa - ob;
+    // Attache à chaque groupe (et à chaque carte, pour la modale de détail) les
+    // infos d'extension PTCG utiles à l'affichage/au tri : id, code, nom, logo, sigle.
+    const groups = Array.from(groupMap.values()).map(group => {
+      const ext = setIdToExt[group.set_id];
+      const extInfo = {
+        extId: ext ? ext.id : null,
+        code:  ext ? (ext.code || '') : '',
+        name:  ext ? (ext.nom || ext.name || group.set_name) : (group.set_name || group.set_id || '?'),
+        logo:  ext ? (ext.logo  || '') : '',
+        sigle: ext ? (ext.sigle || '') : '',
+        order: ext && extOrder[ext.id] !== undefined ? extOrder[ext.id] : 9999,
+      };
+      group.cards.forEach(c => { c._ext = extInfo; });
+      return { ...group, ext: extInfo };
     });
 
-    // Render: one full-width block per extension
-    let html = '';
-    groups.forEach(group => {
-      const ext      = setIdToExt[group.set_id];
-      const logoSrc  = ext ? (ext.logo  || '') : '';
-      const sigleSrc = ext ? (ext.sigle || '') : '';
-      const extName  = ext ? (ext.nom || ext.name || group.set_name) : (group.set_name || group.set_id || '?');
-      const extCode  = ext ? (ext.code || '') : '';
+    const cardsById = new Map();
+    cards.forEach(c => cardsById.set(String(c.id), c));
 
-      html += '<div class="pkdx-tcg-ext-group">'
-        + '<div class="pkdx-tcg-ext-header">'
-        + (logoSrc  ? '<img src="' + logoSrc  + '" alt="" class="pkdx-tcg-ext-logo"  onerror="this.style.display=\'none\'">' : '')
-        + (sigleSrc ? '<img src="' + sigleSrc + '" alt="" class="pkdx-tcg-ext-sigle" onerror="this.style.display=\'none\'">' : '')
-        + '<span class="pkdx-tcg-ext-name">' + extName + '</span>'
-        + (extCode  ? '<span class="pkdx-tcg-ext-code">' + extCode + '</span>' : '')
-        + '<span class="pkdx-tcg-ext-badge">' + group.cards.length + '</span>'
-        + '</div>'
-        + '<div class="pkdx-tcg-grid">';
+    // Le filtre d'extension global du Pokédex (choisi dans la barre du haut),
+    // s'il y en a un, restreint dès l'ouverture la fiche à cette/ces extension(s)
+    // — limité à celles réellement présentes sur ce Pokémon.
+    let initialFilter = null;
+    if (_pkdxExtFilter) {
+      const present   = new Set(groups.map(g => g.ext.extId).filter(Boolean));
+      const inherited = [..._pkdxExtFilter.keys()].filter(id => present.has(id));
+      if (inherited.length) initialFilter = new Set(inherited);
+    }
 
-      group.cards.forEach(c => {
-        html += '<div class="pkdx-tcg-card" title="' + (c.set_name||'') + ' — ' + (c.number||'') + ' — ' + (c.rarity||'') + '">';
-        if (c.image_url) {
-          html += '<img src="' + c.image_url + '" alt="' + c.name + '" loading="lazy">';
-        } else {
-          html += '<div class="pkdx-tcg-placeholder">' + c.name + '</div>';
-        }
-        html += '<div class="pkdx-tcg-card-info">'
-          + '<span class="pkdx-tcg-num">' + (c.number||'') + '</span>'
-          + '<span class="pkdx-tcg-set">' + (c.rarity||'') + '</span>'
-          + '</div></div>';
-      });
-
-      html += '</div></div>';
-    });
-
-    grid.innerHTML = html;
+    _pkdxModalTcg = { frName, formType, groups, cardsById, filterExtIds: initialFilter };
+    _renderPkdxTcgGroups();
   } catch(e) {
     if (grid) grid.innerHTML = '<p style="color:var(--accent2);font-size:.82rem">Erreur : ' + e.message + '</p>';
+  }
+}
+
+// Redessine les groupes de cartes TCG de la fiche ouverte à partir de l'état
+// déjà chargé (_pkdxModalTcg), en appliquant le tri et le filtre d'extension
+// courants — sans jamais refaire d'appel réseau (tri/filtre instantanés).
+function _renderPkdxTcgGroups() {
+  const grid  = document.getElementById('pkdx-tcg-grid');
+  const count = document.getElementById('pkdx-tcg-count');
+  const chip  = document.getElementById('pkdx-tcg-filter-chip');
+  const state = _pkdxModalTcg;
+  if (!grid || !state) return;
+
+  let groups = state.filterExtIds
+    ? state.groups.filter(g => g.ext.extId && state.filterExtIds.has(g.ext.extId))
+    : state.groups.slice();
+
+  groups = _pkdxModalSortMode === 'default'
+    ? [...groups].sort((a, b) => a.ext.order - b.ext.order || (a.set_name||'').localeCompare(b.set_name||''))
+    : [...groups].sort((a, b) => {
+        const cmp = (a.ext.code||'').localeCompare(b.ext.code||'', 'fr', { numeric: true });
+        return _pkdxModalSortMode === 'asc' ? cmp : -cmp;
+      });
+
+  const totalCards = groups.reduce((s, g) => s + g.cards.length, 0);
+  if (count) count.textContent = '— ' + totalCards + ' carte' + (totalCards > 1 ? 's' : '');
+
+  if (chip) {
+    if (state.filterExtIds) {
+      const names = state.groups.filter(g => state.filterExtIds.has(g.ext.extId)).map(g => g.ext.name);
+      chip.style.display = 'flex';
+      chip.innerHTML = `<span>Filtré : ${_escHtml(names.join(', '))}</span>
+        <button onclick="_setModalExtFilterAll()" title="Annuler le filtre d'extension">×</button>`;
+    } else {
+      chip.style.display = 'none';
+      chip.innerHTML = '';
+    }
+  }
+
+  if (!groups.length) {
+    grid.innerHTML = '<p style="color:var(--text3);font-size:.82rem">Aucune carte trouvée.</p>';
+    return;
+  }
+
+  let html = '';
+  groups.forEach(group => {
+    const ext = group.ext;
+    html += '<div class="pkdx-tcg-ext-group">'
+      + '<div class="pkdx-tcg-ext-header">'
+      + (ext.logo  ? '<img src="' + ext.logo  + '" alt="" class="pkdx-tcg-ext-logo"  onerror="this.style.display=\'none\'">' : '')
+      + (ext.sigle ? '<img src="' + ext.sigle + '" alt="" class="pkdx-tcg-ext-sigle" onerror="this.style.display=\'none\'">' : '')
+      + '<span class="pkdx-tcg-ext-name">' + _escHtml(ext.name) + '</span>'
+      + (ext.code  ? '<span class="pkdx-tcg-ext-code">' + _escHtml(ext.code) + '</span>' : '')
+      + '<span class="pkdx-tcg-ext-badge">' + group.cards.length + '</span>'
+      + '</div>'
+      + '<div class="pkdx-tcg-grid">';
+
+    group.cards.forEach(c => {
+      html += '<div class="pkdx-tcg-card" onclick="openCardDetailModal(\'' + _escJs(String(c.id)) + '\')" title="'
+        + _escHtml((c.set_name||'') + ' — ' + (c.number||'') + ' — ' + (c.rarity||'')) + '">';
+      if (c.image_url) {
+        html += '<img src="' + c.image_url + '" alt="' + _escHtml(c.name) + '" loading="lazy">';
+      } else {
+        html += '<div class="pkdx-tcg-placeholder">' + _escHtml(c.name) + '</div>';
+      }
+      html += '<div class="pkdx-tcg-card-info">'
+        + '<span class="pkdx-tcg-num">' + _escHtml(c.number||'') + '</span>'
+        + '<span class="pkdx-tcg-set">' + _escHtml(c.rarity||'') + '</span>'
+        + '</div></div>';
+    });
+
+    html += '</div></div>';
+  });
+
+  grid.innerHTML = html;
+}
+
+// ── Barre d'outils "Cartes TCG" : tri par code ──────────────────────────────
+function _modalSortBtnLabel() {
+  return _pkdxModalSortMode === 'default' ? 'Trier par code' : (_pkdxModalSortMode === 'asc' ? '↑ Code' : '↓ Code');
+}
+
+function _toggleModalSortDir() {
+  _pkdxModalSortMode = _pkdxModalSortMode === 'default' ? 'asc' : _pkdxModalSortMode === 'asc' ? 'desc' : 'default';
+  const btn = document.getElementById('pkdx-tcg-sort-btn');
+  if (btn) { btn.textContent = _modalSortBtnLabel(); btn.classList.toggle('active', _pkdxModalSortMode !== 'default'); }
+  _renderPkdxTcgGroups();
+}
+
+// ── Barre d'outils "Cartes TCG" : choix d'une/des extension(s) à afficher ──
+function _closeModalExtPanel() {
+  const panel = document.getElementById('pkdx-tcg-ext-panel');
+  if (panel) panel.style.display = 'none';
+  const btn = document.getElementById('pkdx-tcg-ext-toggle');
+  if (btn) btn.classList.toggle('active', !!(_pkdxModalTcg && _pkdxModalTcg.filterExtIds));
+}
+
+function _toggleModalExtPanel(btn) {
+  const panel = document.getElementById('pkdx-tcg-ext-panel');
+  if (!panel) return;
+  const open = panel.style.display !== 'none';
+  if (open) { _closeModalExtPanel(); return; }
+  _buildModalExtFilterList();
+  panel.style.display = '';
+  btn.classList.add('active');
+}
+
+function _buildModalExtFilterList() {
+  const el = document.getElementById('pkdx-tcg-ext-panel');
+  if (!el) return;
+  const state = _pkdxModalTcg;
+  if (!state || !state.groups.length) {
+    el.innerHTML = '<div style="color:var(--text2);font-size:.8rem;padding:8px 12px">Aucune extension.</div>';
+    return;
+  }
+  const items = state.groups.filter(g => g.ext.extId).map(g => g.ext).sort((a, b) => a.order - b.order);
+  const filter = state.filterExtIds;
+  let html = `<div class="pkdx-ext-filter-item ${!filter?'active':''}" onclick="_setModalExtFilterAll()">Toutes les extensions</div>`;
+  html += items.map(ext => {
+    const active = filter && filter.has(ext.extId) ? 'active' : '';
+    return `<div class="pkdx-ext-filter-item ${active}" onclick="_toggleModalExtFilterItem('${_escJs(ext.extId)}')">
+      ${ext.sigle ? `<img src="${ext.sigle}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(ext.code||'')}</span>`}
+      <span>${_escHtml(ext.name)}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = html;
+}
+
+function _toggleModalExtFilterItem(extId) {
+  const state = _pkdxModalTcg;
+  if (!state) return;
+  let f = state.filterExtIds ? new Set(state.filterExtIds) : new Set();
+  if (f.has(extId)) f.delete(extId); else f.add(extId);
+  state.filterExtIds = f.size ? f : null;
+  _buildModalExtFilterList();
+  _renderPkdxTcgGroups();
+}
+
+// Réinitialise UNIQUEMENT le filtre local de la fiche ouverte (affiche à
+// nouveau toutes les extensions de ce Pokémon), sans toucher au filtre
+// global du Pokédex — utilisable "à tout moment" via le bouton × du chip.
+function _setModalExtFilterAll() {
+  const state = _pkdxModalTcg;
+  if (!state) return;
+  state.filterExtIds = null;
+  _buildModalExtFilterList();
+  _renderPkdxTcgGroups();
+}
+
+// ── Modale carte : zoom, infos, renommage et illustration (→ Supabase) ─────
+function openCardDetailModal(cardId) {
+  const card = _pkdxModalTcg?.cardsById?.get(String(cardId));
+  if (!card) return;
+  const modal = document.getElementById('modal-card-detail');
+  const inner = document.getElementById('pkdx-card-modal-content');
+  if (!modal || !inner) return;
+  const ext = card._ext || {};
+
+  inner.innerHTML = `
+    <div class="pkdx-card-modal-layout">
+      <div class="pkdx-card-modal-zoom">
+        ${card.image_url
+          ? `<img src="${card.image_url}" alt="${_escHtml(card.name)}" id="pkdx-card-zoom-img">`
+          : `<div class="pkdx-tcg-placeholder" style="width:100%;aspect-ratio:63/88;border-radius:12px;background:var(--bg3)">${_escHtml(card.name)}</div>`}
+      </div>
+      <div class="pkdx-card-modal-info">
+        <h3>${_escHtml(card.name)}</h3>
+        <div class="pkdx-card-modal-meta">
+          ${ext.sigle ? `<img src="${ext.sigle}" alt="" class="pkdx-card-modal-ext-sigle">` : ''}
+          <span>${_escHtml(ext.name || card.set_name || '')}</span>
+          ${ext.code ? `<span class="pkdx-tcg-ext-code">${_escHtml(ext.code)}</span>` : ''}
+        </div>
+        <div class="pkdx-card-modal-num">N° ${_escHtml(card.number || '?')}${card.rarity ? ' · ' + _escHtml(card.rarity) : ''}</div>
+
+        <div class="settings-field" style="margin-top:18px">
+          <label>Nom de la carte</label>
+          <input type="text" id="pkdx-card-edit-name" value="${_escHtml(card.name)}">
+        </div>
+        <div class="settings-field">
+          <label>URL de l'illustration</label>
+          <input type="url" id="pkdx-card-edit-img" value="${_escHtml(card.image_url||'')}" placeholder="https://…">
+        </div>
+        <div class="modal-footer" style="justify-content:flex-start">
+          <button class="btn btn-primary btn-sm" onclick="saveCardEdits('${_escJs(String(cardId))}')">Enregistrer dans Supabase</button>
+        </div>
+      </div>
+    </div>
+  `;
+  modal.classList.add('open');
+}
+
+async function saveCardEdits(cardId) {
+  const card = _pkdxModalTcg?.cardsById?.get(String(cardId));
+  if (!card) return;
+  const nameInp = document.getElementById('pkdx-card-edit-name');
+  const imgInp  = document.getElementById('pkdx-card-edit-img');
+  const newName = (nameInp?.value || '').trim();
+  const newImg  = (imgInp?.value || '').trim();
+  if (!newName) { toast('Le nom ne peut pas être vide.', 'error'); return; }
+
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/cards?id=eq.${encodeURIComponent(cardId)}`, {
+      method: 'PATCH',
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ name: newName, image_url: newImg || null }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    // Reflète immédiatement le changement dans l'état déjà chargé (même objet
+    // référencé par groups[].cards et cardsById → un seul endroit à mettre à jour).
+    card.name = newName;
+    card.image_url = newImg;
+    _renderPkdxTcgGroups();
+    closeModal('modal-card-detail');
+    toast('Carte mise à jour dans Supabase !', 'success');
+  } catch(e) {
+    toast('Erreur Supabase : ' + e.message, 'error');
   }
 }
 
@@ -4472,12 +4772,7 @@ async function openPokedexFormModal(pokeName, baseFrName) {
             ${statsHtml}
           </div>
         </div>
-        <div class="pkdx-modal-section pkdx-modal-full pkdx-tcg-section">
-          <h4>Cartes TCG <span id="pkdx-tcg-count" style="font-size:.72rem;font-weight:400;color:var(--text2)"></span></h4>
-          <div id="pkdx-tcg-grid" class="pkdx-tcg-groups">
-            <div style="color:var(--text2);font-size:.82rem;padding:4px 0">Chargement…</div>
-          </div>
-        </div>
+        ${_pkdxTcgSectionHtml()}
       </div>
     `;
     _loadTcgCardsInModal(baseFrName, formType);

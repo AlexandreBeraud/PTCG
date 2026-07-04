@@ -380,11 +380,12 @@
               <div id="pkdx-forms-list"></div>
             </div>
           </div>
-          <div style="position:relative">
+          <div style="position:relative;display:flex;align-items:center;gap:4px">
             <button id="pkdx-ext-toggle" class="pkdx-forms-toggle-btn" onclick="togglePokedexExtFilter(this)">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="14" height="20" rx="2"/><rect x="8" y="1" width="14" height="20" rx="2"/></svg>
               <span id="pkdx-ext-label">Extension</span>
             </button>
+            <button id="pkdx-ext-clear" class="pkdx-ext-clear-btn" style="display:none" onclick="clearPokedexExtFilter()" title="Annuler le filtre d'extension">×</button>
             <div id="pkdx-ext-panel" style="display:none" class="pkdx-ext-dropdown">
               <div id="pkdx-ext-list"></div>
             </div>
@@ -418,6 +419,18 @@
           </svg>
         </button>
         <div id="pkdx-modal-content">Chargement…</div>
+      </div>
+    </div>
+
+    <!-- Card Detail / Edit Modal -->
+    <div class="modal-backdrop" id="modal-card-detail" onclick="if(event.target===this)closeModal('modal-card-detail')">
+      <div class="modal pkdx-card-modal" id="pkdx-card-modal-inner">
+        <button class="pkdx-modal-close" onclick="closeModal('modal-card-detail')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <div id="pkdx-card-modal-content">Chargement…</div>
       </div>
     </div>
 
