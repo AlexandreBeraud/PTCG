@@ -2387,6 +2387,8 @@ document.addEventListener('click', e => {
     document.querySelectorAll('.mrow-dropdown').forEach(d => d.style.display = 'none');
   if (!e.target.closest('#pkdx-ext-panel') && !e.target.closest('#pkdx-ext-toggle'))
     _closePkdxExtPanel();
+  if (!e.target.closest('#pkdx-forms-panel') && !e.target.closest('#pkdx-forms-toggle'))
+    _closePkdxFormsPanel();
 });
 
 // ── Pokédex extension filter ───────────────────────────────────────────────
@@ -2651,16 +2653,166 @@ const TYPE_FR = {
 
 // Labels des formes spéciales
 const FORM_LABELS = {
-  mega:      { fr:'Méga',      badge:'MÉGA',     color:'#7038F8' },
-  'mega-x':  { fr:'Méga X',    badge:'MÉGA X',   color:'#7038F8' },
-  'mega-y':  { fr:'Méga Y',    badge:'MÉGA Y',   color:'#C03028' },
-  gmax:      { fr:'Gigamax',   badge:'GIGAMAX',  color:'#E63946' },
-  alola:     { fr:'Alola',     badge:'ALOLA',    color:'#06D6A0' },
-  galar:     { fr:'Galar',     badge:'GALAR',    color:'#4A9EFF' },
-  hisui:     { fr:'Hisui',     badge:'HISUI',    color:'#C0984A' },
-  paldea:    { fr:'Paldea',    badge:'PALDEA',   color:'#A855F7' },
-  totem:     { fr:'Totem',     badge:'TOTEM',    color:'#FFD166' },
-  primal:    { fr:'Primo',     badge:'PRIMO',    color:'#E8553D' },
+  // Méga
+  mega:            { fr:'Méga',              badge:'MÉGA',      color:'#7038F8' },
+  'mega-x':        { fr:'Méga X',            badge:'MÉGA X',    color:'#5A28C8' },
+  'mega-y':        { fr:'Méga Y',            badge:'MÉGA Y',    color:'#C03028' },
+  'mega-z':        { fr:'Méga Z',            badge:'MÉGA Z',    color:'#2563EB' },
+  // Gigamax / Primo
+  gmax:            { fr:'Gigamax',           badge:'GIGAMAX',   color:'#E63946' },
+  primal:          { fr:'Primo',             badge:'PRIMO',     color:'#E8553D' },
+  eternamax:       { fr:'Éternamax',         badge:'ÉTERNA.',   color:'#DC2626' },
+  // Régionales
+  alola:           { fr:'Alola',             badge:'ALOLA',     color:'#06D6A0' },
+  galar:           { fr:'Galar',             badge:'GALAR',     color:'#4A9EFF' },
+  hisui:           { fr:'Hisui',             badge:'HISUI',     color:'#C0984A' },
+  paldea:          { fr:'Paldea',            badge:'PALDEA',    color:'#A855F7' },
+  // Légendaires formes
+  origin:          { fr:'Originel',          badge:'ORIGIN.',   color:'#64748B' },
+  altered:         { fr:'Modifié',           badge:'MODIF.',    color:'#4B5563' },
+  sky:             { fr:'Ciel',              badge:'CIEL',      color:'#38BDF8' },
+  land:            { fr:'Terrestre',         badge:'TERR.',     color:'#84CC16' },
+  incarnate:       { fr:'Incarné',           badge:'INCARNÉ',   color:'#6366F1' },
+  therian:         { fr:'Totémique',         badge:'TOTÉM.',    color:'#78716C' },
+  crowned:         { fr:'Couronné',          badge:'COURON.',   color:'#D4AF37' },
+  black:           { fr:'Noir',              badge:'NOIR',      color:'#1C1917' },
+  white:           { fr:'Blanc',             badge:'BLANC',     color:'#E2E8F0' },
+  'dusk-mane':     { fr:'Crinière Couchant', badge:'CRIN.',     color:'#F59E0B' },
+  'dawn-wings':    { fr:'Ailes Aurore',      badge:'AILES',     color:'#6366F1' },
+  ultra:           { fr:'Ultra',             badge:'ULTRA',     color:'#F97316' },
+  confined:        { fr:'Confiné',           badge:'CONF.',     color:'#7C3AED' },
+  unbound:         { fr:'Déchaîné',          badge:'DÉCHAÎNÉ',  color:'#DC2626' },
+  complete:        { fr:'Complet',           badge:'COMPLET',   color:'#10B981' },
+  '10':            { fr:'10%',               badge:'10%',       color:'#EF4444' },
+  '50':            { fr:'50%',               badge:'50%',       color:'#6B7280' },
+  '100':           { fr:'100%',              badge:'100%',      color:'#DC2626' },
+  'battle-bond':   { fr:'Résolution',        badge:'RÉSOL.',    color:'#2563EB' },
+  ash:             { fr:'Sacha',             badge:'SACHA',     color:'#EF4444' },
+  'teal-mask':     { fr:'Masque Turquoise',  badge:'TURQ.',     color:'#0D9488' },
+  'wellspring-mask':{ fr:'Masque Source',    badge:'SOURCE',    color:'#0EA5E9' },
+  'hearthflame-mask':{ fr:'Masque Foyer',    badge:'FOYER',     color:'#F97316' },
+  'cornerstone-mask':{ fr:'Masque Socle',    badge:'SOCLE',     color:'#78716C' },
+  stellar:         { fr:'Stellaire',         badge:'STELL.',    color:'#A855F7' },
+  terastal:        { fr:'Téracristal',       badge:'TÉRA',      color:'#F59E0B' },
+  original:        { fr:'Passé',             badge:'PASSÉ',     color:'#D97706' },
+  'original-color':{ fr:'Couleur Passé',     badge:'PASSÉ',     color:'#D97706' },
+  'ice-rider':     { fr:'Cavalier Glace',    badge:'GLACE',     color:'#93C5FD' },
+  'shadow-rider':  { fr:'Cavalier Spectre',  badge:'SPECTRE',   color:'#8B5CF6' },
+  // Combat / mécanique
+  blade:           { fr:'Épée',              badge:'ÉPÉE',      color:'#EF4444' },
+  shield:          { fr:'Bouclier',          badge:'BOUCLIER',  color:'#3B82F6' },
+  zen:             { fr:'Mode Zen',          badge:'ZEN',       color:'#8B5CF6' },
+  'galar-zen':     { fr:'Galar Mode Zen',    badge:'GAL.ZEN',   color:'#3B82F6' },
+  pirouette:       { fr:'Pirouette',         badge:'PIROU.',    color:'#EC4899' },
+  aria:            { fr:'Aria',              badge:'ARIA',      color:'#F472B6' },
+  resolute:        { fr:'Résolu',            badge:'RÉSOLU',    color:'#EF4444' },
+  ordinary:        { fr:'Ordinaire',         badge:'ORD.',      color:'#9CA3AF' },
+  busted:          { fr:'Révélé',            badge:'RÉVÉLÉ',    color:'#7C3AED' },
+  disguised:       { fr:'Déguisé',           badge:'DÉGUISÉ',   color:'#059669' },
+  school:          { fr:'Banc',              badge:'BANC',      color:'#06B6D4' },
+  solo:            { fr:'Solo',              badge:'SOLO',      color:'#84CC16' },
+  hangry:          { fr:'Affamé',            badge:'AFFAMÉ',    color:'#DC2626' },
+  'full-belly':    { fr:'Repu',              badge:'REPU',      color:'#16A34A' },
+  hero:            { fr:'Héros',             badge:'HÉROS',     color:'#D97706' },
+  noice:           { fr:'Visage Découvert',  badge:'DÉCOUV.',   color:'#93C5FD' },
+  amped:           { fr:'Amplifié',          badge:'AMPLI.',    color:'#FBBF24' },
+  'low-key':       { fr:'Discret',           badge:'DISCR.',    color:'#60A5FA' },
+  'single-strike': { fr:'Poing Final',      badge:'BRUTAL',    color:'#1E3A8A' },
+  'rapid-strike':  { fr:'Style Rapide',      badge:'RAPIDE',    color:'#06A77D' },
+  gulping:         { fr:'Glouton',           badge:'GLOUTON',   color:'#F97316' },
+  gorging:         { fr:'Gavé',              badge:'GAVÉ',      color:'#DC2626' },
+  neutral:         { fr:'Neutre',            badge:'NEUTRE',    color:'#6B7280' },
+  zero:            { fr:'Zéro',              badge:'ZÉRO',      color:'#9CA3AF' },
+  dada:            { fr:'Papa',              badge:'PAPA',      color:'#A78BFA' },
+  'two-segment':   { fr:'Courbée (2 seg.)',        badge:'×2',        color:'#6B7280' },
+  'three-family':  { fr:'Famille de 3',      badge:'FAM.3',     color:'#F9A8D4' },
+  'three-segment': { fr:'3 Segments',        badge:'×3',        color:'#374151' },
+  'full-power':    { fr:'Puissance Max',     badge:'MAX',       color:'#7C3AED' },
+  own:             { fr:'Maître',            badge:'MAÎTRE',    color:'#D97706' },
+  'east-sea':      { fr:'Mer Orient',        badge:'ORIENT',    color:'#0EA5E9' },
+  'west-sea':      { fr:'Mer Occident',      badge:'OCCID.',    color:'#6366F1' },
+  active:          { fr:'Actif',             badge:'ACTIF',     color:'#FBBF24' },
+  chest:           { fr:'Coffre',            badge:'COFFRE',    color:'#D97706' },
+  roaming:         { fr:'Errant',            badge:'ERRANT',    color:'#9CA3AF' },
+  // Rotom
+  heat:            { fr:'Chaleur',           badge:'CHAUD',     color:'#EF4444' },
+  wash:            { fr:'Lavage',            badge:'LAVAGE',    color:'#3B82F6' },
+  frost:           { fr:'Froid',             badge:'FROID',     color:'#BAE6FD' },
+  fan:             { fr:'Ventilateur',       badge:'VENT.',     color:'#86EFAC' },
+  mow:             { fr:'Tonte',             badge:'TONTE',     color:'#4ADE80' },
+  // Plumeline (Oricorio)
+  baile:           { fr:'Style Flamenco',     badge:'FLAMENCO',  color:'#EF4444' },
+  'pom-pom':       { fr:'Style Pom-Pom',     badge:'POM-POM',   color:'#F59E0B' },
+  pau:             { fr:"Style Pa'u",        badge:"PA'U",      color:'#EC4899' },
+  sensu:           { fr:'Style Sensu',       badge:'SENSU',     color:'#8B5CF6' },
+  // Météo / saisonnières
+  overcast:        { fr:'Nuageux',           badge:'NUAGE',     color:'#94A3B8' },
+  sunshine:        { fr:'Ensoleillé',        badge:'SOLEIL',    color:'#FCD34D' },
+  rainy:           { fr:'Pluvieux',          badge:'PLUIE',     color:'#60A5FA' },
+  snowy:           { fr:'Neigeux',           badge:'NEIGE',     color:'#E0F2FE' },
+  midday:          { fr:'Diurne',            badge:'DIURNE',    color:'#FCD34D' },
+  midnight:        { fr:'Nocturne',          badge:'NOCT.',     color:'#4F46E5' },
+  dusk:            { fr:'Crépusculaire',     badge:'CRÉP.',     color:'#F97316' },
+  dawn:            { fr:'Aube',              badge:'AUBE',      color:'#818CF8' },
+  spring:          { fr:'Printemps',         badge:'PRINT.',    color:'#F9A8D4' },
+  summer:          { fr:'Été',               badge:'ÉTÉ',       color:'#FCD34D' },
+  autumn:          { fr:'Automne',           badge:'AUT.',      color:'#F97316' },
+  winter:          { fr:'Hiver',             badge:'HIVER',     color:'#93C5FD' },
+  // Cheniti / Cheniselle
+  plant:           { fr:'Plante',            badge:'PLANTE',    color:'#22C55E' },
+  sandy:           { fr:'Sable',             badge:'SABLE',     color:'#D97706' },
+  trash:           { fr:'Déchet',            badge:'DÉCHET',    color:'#6B7280' },
+  // Flabébé / Florges
+  red:             { fr:'Rouge',             badge:'ROUGE',     color:'#EF4444' },
+  yellow:          { fr:'Jaune',             badge:'JAUNE',     color:'#FCD34D' },
+  orange:          { fr:'Orange',            badge:'ORANGE',    color:'#F97316' },
+  blue:            { fr:'Bleu',              badge:'BLEU',      color:'#3B82F6' },
+  'eternal-flower':{ fr:'Fleur Éternelle',   badge:'ÉTERN.',    color:'#A78BFA' },
+  // Pikachu
+  cap:             { fr:'Casquette',         badge:'CASQ.',     color:'#FFCB05' },
+  cosplay:         { fr:'Cosplay',           badge:'COSPLAY',   color:'#EC4899' },
+  'rock-star':     { fr:'Rock Star',         badge:'ROCK',      color:'#374151' },
+  belle:           { fr:'Belle',             badge:'BELLE',     color:'#F472B6' },
+  'pop-star':      { fr:'Pop Star',          badge:'POP',       color:'#E879F9' },
+  phd:             { fr:'Chercheuse',        badge:'DR.',       color:'#2563EB' },
+  libre:           { fr:'Catcheuse',         badge:'LIBRE',     color:'#16A34A' },
+  // Tauros Paldea
+  'aqua-breed':    { fr:'Race Aqua',         badge:'AQUA',      color:'#38BDF8' },
+  'blaze-breed':   { fr:'Race Flamme',       badge:'FLAMME',    color:'#F97316' },
+  'combat-breed':  { fr:'Race Combat',       badge:'COMBAT',    color:'#EF4444' },
+  // Divers
+  totem:           { fr:'Totem',             badge:'TOTEM',     color:'#FFD166' },
+  attack:          { fr:'Attaque',           badge:'ATT.',      color:'#EF4444' },
+  defense:         { fr:'Défense',           badge:'DÉF.',      color:'#3B82F6' },
+  speed:           { fr:'Vitesse',           badge:'VIT.',      color:'#F59E0B' },
+  small:           { fr:'Petite',            badge:'PETITE',    color:'#86EFAC' },
+  large:           { fr:'Grande',            badge:'GRANDE',    color:'#4ADE80' },
+  super:           { fr:'Géante',            badge:'GÉANTE',    color:'#166534' },
+  average:         { fr:'Moyenne',           badge:'MOY.',      color:'#6B7280' },
+  curly:           { fr:'Vert (Enroulé)',     badge:'ENROUL.',   color:'#22C55E' },
+  droopy:          { fr:'Pendant',           badge:'PENDANT',   color:'#93C5FD' },
+  stretchy:        { fr:'Allongé',           badge:'ALLONG.',   color:'#FCD34D' },
+  phony:           { fr:'Contrefait',        badge:'CONTREF.',  color:'#9CA3AF' },
+  antique:         { fr:'Authentique',       badge:'AUTH.',     color:'#D97706' },
+  'red-striped':   { fr:'Rayé Rouge',        badge:'ROUGE',     color:'#EF4444' },
+  'blue-striped':  { fr:'Rayé Bleu',         badge:'BLEU',      color:'#3B82F6' },
+  'white-striped': { fr:'Rayé Blanc',        badge:'BLANC',     color:'#E2E8F0' },
+  natural:         { fr:'Naturel',           badge:'NAT.',      color:'#84CC16' },
+  heart:           { fr:'Cœur',              badge:'CŒUR',      color:'#EC4899' },
+  star:            { fr:'Étoile',            badge:'ÉTOILE',    color:'#FBBF24' },
+  diamond:         { fr:'Diamant',           badge:'DIAMANT',   color:'#60A5FA' },
+  debutante:       { fr:'Demoiselle',        badge:'DEMOIS.',   color:'#F9A8D4' },
+  matron:          { fr:'Madame',            badge:'MADAME',    color:'#A78BFA' },
+  dandy:           { fr:'Monsieur',          badge:'MONSIEUR',  color:'#374151' },
+  'la-reine':      { fr:'Reine',             badge:'REINE',     color:'#D4AF37' },
+  kabuki:          { fr:'Kabuki',            badge:'KABUKI',    color:'#EF4444' },
+  pharaoh:         { fr:'Pharaon',           badge:'PHARAON',   color:'#D97706' },
+  bloodmoon:       { fr:'Lune Vermeille',    badge:'L.VERM.',   color:'#DC2626' },
+  male:            { fr:'Mâle',              badge:'♂',         color:'#3B82F6' },
+  female:          { fr:'Femelle',           badge:'♀',         color:'#EC4899' },
+  standard:        { fr:'Standard',          badge:'STD.',      color:'#6B7280' },
+  normal:          { fr:'Normal',            badge:'NORM.',     color:'#9CA3AF' },
+  'normal-silvally': { fr:'Type Aigüe',       badge:'AIGÜE',     color:'#9CA3AF' },
 };
 
 // Détecte le type de forme à partir du nom PokéAPI
@@ -2727,6 +2879,11 @@ function _detectFormType(pokeName, baseName) {
     'pikachu-cosplay':'cosplay','pikachu-rock-star':'rock-star','pikachu-belle':'belle',
     'pikachu-pop-star':'pop-star','pikachu-phd':'phd','pikachu-libre':'libre',
     'furfrou-natural':'natural',
+    'furfrou-heart':'heart','furfrou-star':'star','furfrou-diamond':'diamond',
+    'furfrou-debutante':'debutante','furfrou-matron':'matron','furfrou-dandy':'dandy',
+    'furfrou-la-reine':'la-reine','furfrou-kabuki':'kabuki','furfrou-pharaoh':'pharaoh',
+    'ursaluna-bloodmoon':'bloodmoon',
+    'maushold-family-of-three':'three-family',
   };
   if (exact[pokeName]) return exact[pokeName];
 
@@ -2765,6 +2922,7 @@ function _detectFormType(pokeName, baseName) {
   if (pokeName.includes('-blue-striped')) return 'blue-striped';
   if (pokeName.includes('-white-striped')) return 'white-striped';
   if (pokeName.includes('-two-segment')) return 'two-segment';
+  if (pokeName.includes('-family-of-three')) return 'three-family';
   if (pokeName.includes('-three-segment')) return 'three-segment';
   if (pokeName.includes('-dusk-mane')) return 'dusk-mane';
   if (pokeName.includes('-dawn-wings')) return 'dawn-wings';
@@ -2875,8 +3033,10 @@ let _pkdx = {
   pageSize:       45,
   gen:            0,
   query:          '',
-  showForms:      false,
+  showForms:      true,
   formsLoaded:    false,
+  formMode:       'all',
+  formTypeFilter: null,
   extFilterNames: null,
   loading:        false,
   initialized:    false,
@@ -2940,11 +3100,15 @@ async function initPokedex() {
     _pkdx.loading     = false;
     document.getElementById('pokedex-loading').style.display = 'none';
     document.getElementById('pokedex-subtitle').textContent  =
-      `${_pkdx.all.length} Pokémon — données via PokéAPI`;
+      `${_pkdx.all.length} Pokémon — chargement des formes…`;
 
     _buildGenFilters();
     _pkdx.page = 0;
     await renderPokedexPage();
+    // Load forms and re-render — awaited so forms appear on first scroll
+    await _loadFormsList();
+    document.getElementById('pokedex-subtitle').textContent  =
+      `${_pkdx.all.filter(p => !p.isForm).length} Pokémon + ${_pkdx.all.filter(p => p.isForm).length} formes — données via PokéAPI`;
   } catch(err) {
     _pkdx.loading = false;
     document.getElementById('pokedex-loading').style.display = 'none';
@@ -2982,7 +3146,14 @@ function _normalizeStr(s) {
 }
 
 function _applyPokedexFilter() {
-  const pool = _pkdx.showForms ? _buildPoolWithForms() : _pkdx.all.filter(p => !p.isForm);
+  const bases = _pkdx.all.filter(p => !p.isForm);
+  const forms  = _pkdx.all.filter(p =>  p.isForm);
+  const mode   = _pkdx.formMode || 'all';
+  let pool;
+  if      (mode === 'none')   pool = bases;
+  else if (mode === 'only')   pool = forms;
+  else if (mode === 'filter') pool = [...bases, ...forms.filter(p => !_pkdx.formTypeFilter || _pkdx.formTypeFilter.has(p.formType))];
+  else                        pool = _pkdx.formsLoaded ? _buildPoolWithForms() : bases;
   _pkdx.filtered = pool.filter(p => {
     const baseId   = p.isForm ? p.baseId : p.id;
     const genMatch = _pkdx.gen === 0 || _pkdxGenForId(baseId) === _pkdx.gen;
@@ -3033,19 +3204,122 @@ function _matchPkdxExtEntry(p) {
 }
 
 function togglePokedexForms(btn) {
-  _pkdx.showForms = !_pkdx.showForms;
-  btn.classList.toggle('active', _pkdx.showForms);
-  if (_pkdx.showForms && !_pkdx.formsLoaded) {
-    _loadFormsList();
+  const panel = document.getElementById('pkdx-forms-panel');
+  const open  = panel && panel.style.display !== 'none';
+  if (open) { _closePkdxFormsPanel(); return; }
+  btn.classList.add('active');
+  if (!_pkdx.formsLoaded) {
+    _loadFormsList().then(() => _buildFormTypeFilterList());
   } else {
-    _applyPokedexFilter();
+    _buildFormTypeFilterList();
   }
+  if (panel) panel.style.display = '';
+}
+
+function _closePkdxFormsPanel() {
+  const panel = document.getElementById('pkdx-forms-panel');
+  if (panel) panel.style.display = 'none';
+  const btn = document.getElementById('pkdx-forms-toggle');
+  if (btn) btn.classList.toggle('active', (_pkdx.formMode||'all') !== 'all');
+}
+
+function _buildFormTypeFilterList() {
+  const el = document.getElementById('pkdx-forms-list');
+  if (!el) return;
+  const typesPresent = new Set(_pkdx.all.filter(p => p.isForm && p.formType).map(p => p.formType));
+  const countOf = type => _pkdx.all.filter(p => p.isForm && p.formType === type).length;
+  const totalForms = _pkdx.all.filter(p => p.isForm).length;
+  const GROUPS = [
+    { label: 'Régionales',          types: ['alola','galar','hisui','paldea'] },
+    { label: 'Méga',                types: ['mega','mega-x','mega-y','mega-z'] },
+    { label: 'Gigamax / Primo',     types: ['gmax','primal','eternamax'] },
+    { label: 'Légendaires',         types: ['origin','altered','sky','land','therian','incarnate','crowned','black','white','dusk-mane','dawn-wings','ultra','confined','unbound','complete','10','50','battle-bond','ash','teal-mask','wellspring-mask','hearthflame-mask','cornerstone-mask','stellar','terastal','original','original-color','ice-rider','shadow-rider'] },
+    { label: 'Combat / Mécanique',  types: ['blade','shield','zen','galar-zen','pirouette','aria','resolute','ordinary','busted','disguised','school','solo','hangry','full-belly','hero','noice','amped','low-key','single-strike','rapid-strike','gulping','gorging','neutral','zero','dada','two-segment','three-segment','three-family'] },
+    { label: 'Rotom',               types: ['heat','wash','frost','fan','mow'] },
+    { label: 'Plumeline (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
+    { label: 'Formes météo',        types: ['overcast','sunshine','rainy','snowy','midday','midnight','dusk','dawn'] },
+    { label: 'Formes saisonnières', types: ['spring','summer','autumn','winter'] },
+    { label: 'Cheniti/Cheniselle',  types: ['plant','sandy','trash'] },
+    { label: 'Flabébé / Florges',   types: ['red','yellow','orange','blue','white','eternal-flower'] },
+    { label: 'Pikachu spéciaux',    types: ['cap','cosplay','rock-star','belle','pop-star','phd','libre'] },
+    { label: 'Tauros Paldea',       types: ['aqua-breed','blaze-breed','combat-breed'] },
+    { label: 'Couafarel',           types: ['natural','heart','star','diamond','debutante','matron','dandy','la-reine','kabuki','pharaoh'] },
+    { label: 'Autres',              types: ['totem','attack','defense','speed','small','large','super','average','curly','droopy','stretchy','phony','antique','red-striped','blue-striped','white-striped','male','female','own','east-sea','west-sea','active','chest','roaming','full-power','bloodmoon','standard','normal'] },
+  ];
+  const mode = _pkdx.formMode || 'all';
+  const filter = _pkdx.formTypeFilter;
+  let html = '<div class="pkdx-forms-panel-inner">';
+  html += '<div class="pkdx-forms-modes">';
+  [{ m:'all', label:'Toutes' }, { m:'none', label:'Sans formes' }, { m:'only', label:'Formes seules' }].forEach(({m, label}) => {
+    const active = mode === m ? 'active' : '';
+    html += `<div class="pkdx-forms-mode-btn ${active}" onclick="_setFormMode('${m}')">${label}</div>`;
+  });
+  html += '</div><div class="pkdx-forms-sep"></div>';
+  html += '<div class="pkdx-forms-group-label" style="margin-top:4px">Filtrer par type</div>';
+  const allTypesActive = mode === 'filter' && !filter ? 'active' : '';
+  html += `<div class="pkdx-forms-type-item ${allTypesActive}" onclick="_setFormFilterAllTypes()">
+    <span style="font-weight:600;font-size:.78rem">Tous les types</span>
+    <span class="pkdx-forms-count">${totalForms}</span>
+  </div>`;
+  GROUPS.forEach(group => {
+    const present = group.types.filter(t => typesPresent.has(t));
+    if (!present.length) return;
+    html += `<div class="pkdx-forms-group-label">${group.label}</div>`;
+    present.forEach(type => {
+      const label = FORM_LABELS[type];
+      if (!label) return;
+      const active = mode === 'filter' && filter?.has(type) ? 'active' : '';
+      html += `<div class="pkdx-forms-type-item ${active}" onclick="_toggleFormType('${type}',this)">
+        <span class="pkdx-forms-type-badge" style="background:${label.color}">${label.badge}</span>
+        <span>${label.fr}</span>
+        <span class="pkdx-forms-count">${countOf(type)}</span>
+      </div>`;
+    });
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function _setFormMode(mode) {
+  _pkdx.formMode = mode;
+  _pkdx.formTypeFilter = null;
+  _pkdx.showForms = mode !== 'none';
+  _closePkdxFormsPanel();
+  _applyPokedexFilter();
+}
+
+function _setFormFilterAllTypes() {
+  _pkdx.formMode = 'filter';
+  _pkdx.formTypeFilter = null;
+  _pkdx.showForms = true;
+  document.querySelectorAll('.pkdx-forms-type-item').forEach(e => e.classList.remove('active'));
+  const first = document.querySelector('.pkdx-forms-type-item');
+  if (first) first.classList.add('active');
+  const btn = document.getElementById('pkdx-forms-toggle');
+  if (btn) btn.classList.add('active');
+  _applyPokedexFilter();
+}
+
+function _toggleFormType(type, el) {
+  _pkdx.formMode = 'filter';
+  _pkdx.showForms = true;
+  let filter = _pkdx.formTypeFilter ? new Set(_pkdx.formTypeFilter) : new Set();
+  if (filter.has(type)) filter.delete(type); else filter.add(type);
+  _pkdx.formTypeFilter = filter.size > 0 ? filter : null;
+  el.classList.toggle('active', filter.has(type));
+  const allBtn = el.parentElement?.querySelector('.pkdx-forms-type-item');
+  if (allBtn) allBtn.classList.toggle('active', _pkdx.formTypeFilter === null);
+  const btn = document.getElementById('pkdx-forms-toggle');
+  if (btn) btn.classList.toggle('active', (_pkdx.formMode||'all') !== 'all');
+  _applyPokedexFilter();
 }
 
 async function _loadFormsList() {
   try {
     // Fetch ALL Pokémon entries (base + forms) from PokéAPI
-    const res  = await fetch(`${POKEAPI}/pokemon?limit=2000&offset=0`);
+    // Must use limit=20000 — form pokemon have IDs like 10001, 10168 etc.
+    // limit=2000 only gets IDs 1-2000 and misses most alternate forms
+    const res  = await fetch(`${POKEAPI}/pokemon?limit=20000&offset=0`);
     const data = await res.json();
 
     // Base Pokémon already loaded (PokéAPI English names)
