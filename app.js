@@ -100,6 +100,7 @@ function loadData() {
       deleted_labels: [],
       pokemon_label_assignments: {},
       label_local_ts: {},
+      label_settings_ts: 0,
       settings:      { display_mode: 'logo' }
     };
   };
@@ -142,6 +143,10 @@ function loadData() {
     renderLabelsList();
     _refreshPokedexAfterLabelChange();
   }).catch(() => {});
+  _pullLabelSettingsFromCloud().then(() => {
+    renderLabelsList();
+    _refreshPokedexAfterLabelChange();
+  }).catch(() => {});
 }
 
 function saveData() {
@@ -179,13 +184,22 @@ function applyRainbow() {
     if (w >= 100) el.style.background = '';
   });
   // Text at 100%
-  document.querySelectorAll('.ext-card-pct, .ext-row-pct, .cer-pct, .clr-pct, .bloc-progress-txt, .booster-pct-txt, .bea-pct-txt, .stats-bloc-pct, .stats-top-pct, [id="d-pct"], [id="global-pct"]').forEach(el => {
+  document.querySelectorAll('.ext-card-pct, .ext-row-pct, .cer-pct, .clr-pct, .classeur-global-pct, .bloc-progress-txt, .booster-pct-txt, .bea-pct-txt, .stats-bloc-pct, .stats-top-pct, [id="d-pct"], [id="global-pct"]').forEach(el => {
     el.classList.toggle('rainbow-txt', parseFloat(el.textContent) >= 100);
   });
   // Ext card border at 100%
   document.querySelectorAll('.ext-card').forEach(card => {
     const fill = card.querySelector('.ext-card-bar-fill');
     card.classList.toggle('rainbow-border', fill && parseFloat(fill.style.width) >= 100);
+  });
+  // Classeur border at 100% — autour du classeur entier, pas seulement sa jauge
+  document.querySelectorAll('.classeur-card').forEach(card => {
+    const fill = card.querySelector('.classeur-global-fill');
+    card.classList.toggle('rainbow-border', fill && parseFloat(fill.style.width) >= 100);
+  });
+  document.querySelectorAll('.classeur-list-row').forEach(row => {
+    const fill = row.querySelector('.clr-bar-fill');
+    row.classList.toggle('rainbow-border', fill && parseFloat(fill.style.width) >= 100);
   });
 }
 
@@ -686,13 +700,26 @@ function renderClasseurs() {
   if (addBtn) container.appendChild(addBtn);
 }
 
+// Statut de complétion d'un classeur : 'to_buy' | 'in_progress' | 'complete'.
+// Rétrocompatible avec l'ancien booléen cl.complete (→ 'complete' si true).
+function _classeurStatus(cl) {
+  if (cl.status === 'to_buy' || cl.status === 'in_progress' || cl.status === 'complete') return cl.status;
+  return cl.complete ? 'complete' : 'in_progress';
+}
+function _classeurStatusInfo(cl) {
+  const status = _classeurStatus(cl);
+  if (status === 'to_buy')   return { status, label: '🛒 À acheter', cls: 'status-to-buy' };
+  if (status === 'complete') return { status, label: '✓ Complet',    cls: 'status-complete' };
+  return                            { status, label: 'À compléter',  cls: 'status-in-progress' };
+}
+
 function classeurStats(cl) {
   const spp = cl.slots_par_page || 18;
   const totalSlots = cl.pages * spp;
   let filled = 0;
   (cl.extensions || []).forEach(ce => filled += Math.min(ce.filled||0, (ce.pages||0)*spp));
   const rawPct = totalSlots > 0 ? Math.round(filled/totalSlots*100) : 0;
-  const pct = cl.complete ? 100 : rawPct;
+  const pct = _classeurStatus(cl) === 'complete' ? 100 : rawPct;
   const palette = ['#e63946','#4a9eff','#06d6a0','#ffd166','#a855f7','#f97316','#ec4899'];
   // Use cl.id-based index to avoid indexOf returning -1 when cl comes from a sorted copy
   const bloc = (_D && cl.bloc_id) ? (getBlocs().find(b=>b.id===cl.bloc_id) || null) : null;
@@ -718,6 +745,7 @@ function buildClasseurCard(cl) {
   card.addEventListener('dragleave', onClasseurDragLeave);
   card.addEventListener('drop',      onClasseurDrop);
 
+  const statusInfo = _classeurStatusInfo(cl);
   card.innerHTML = `
     <div class="classeur-card-top" style="${topBg}">
       ${!cl.image ? '<span class="classeur-card-icon">📗</span>' : ''}
@@ -725,7 +753,7 @@ function buildClasseurCard(cl) {
       <div class="classeur-top-info">
         <div class="classeur-card-name">${cl.nom}</div>
         <div class="classeur-card-meta">${cl.pages} p · ${spp} slots/p${bloc?' · '+bloc.short:''}</div>
-        ${cl.complete ? '<div class="classeur-complete-badge">✓ Complet</div>' : ''}
+        <div class="classeur-status-badge ${statusInfo.cls}">${statusInfo.label}</div>
       </div>
       <div class="classeur-card-actions">
         <button class="btn btn-icon btn-sm" title="Modifier" onclick="event.stopPropagation();editClasseur('${cl.id}')">
@@ -745,7 +773,7 @@ function buildClasseurCard(cl) {
     <div class="classeur-card-body">
       ${warn}
       <div class="classeur-global-bar-wrap">
-        <div class="classeur-global-txt"><span>${filled}/${totalSlots} slots</span><span style="color:${pctTxt(pct)}">${pct}%</span></div>
+        <div class="classeur-global-txt"><span>${filled}/${totalSlots} slots</span><span class="classeur-global-pct" style="color:${pctTxt(pct)}">${pct}%</span></div>
         <div class="classeur-global-bar"><div class="classeur-global-fill" style="width:${pct}%;background:${pctBg(pct)}"></div></div>
       </div>
       <div class="classeur-ext-list" id="cel-${cl.id}"></div>
@@ -766,7 +794,8 @@ function buildClasseurRow(cl) {
   const uid = `clr-acc-${cl.id}`;
   const extCount = (cl.extensions || []).length;
   const warnBadge = cl.pages > 100 ? '<span class="clr-warn-badge">⚠️ >100p</span>' : '';
-  const completeBadge = cl.complete ? '<span class="clr-complete-badge">✓ Complet</span>' : '';
+  const statusInfo = _classeurStatusInfo(cl);
+  const completeBadge = `<span class="classeur-status-badge ${statusInfo.cls}">${statusInfo.label}</span>`;
   const thumbStyle = cl.image
     ? `background:url('${cl.image}') center/cover no-repeat`
     : `background:linear-gradient(135deg,${c}33,${c}55)`;
@@ -1067,6 +1096,13 @@ function onClasseurDrop(e) {
 }
 
 // ── Classeur CRUD ──────────────────────────────────────────────────────────
+function setClasseurStatusInput(status) {
+  document.getElementById('classeur-status-input').value = status;
+  document.querySelectorAll('#classeur-status-select .classeur-status-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.status === status);
+  });
+}
+
 function openAddClasseurModal() {
   const modal = document.getElementById('modal-classeur');
   delete modal.dataset.editId;
@@ -1077,7 +1113,7 @@ function openAddClasseurModal() {
   document.getElementById('classeur-slots-select').value  = '18';
   document.getElementById('classeur-image-input').value   = '';
   document.getElementById('classeur-bloc-select').value   = '';
-  document.getElementById('classeur-complete').checked    = false;
+  setClasseurStatusInput('in_progress');
   previewClasseurImage('');
   populateClasseurBlocSelect();
   modal.classList.add('open');
@@ -1104,15 +1140,15 @@ function saveClasseur() {
   const slots    = parseInt(document.getElementById('classeur-slots-select').value) || 18;
   const image    = document.getElementById('classeur-image-input').value.trim();
   const bloc_id  = document.getElementById('classeur-bloc-select').value || '';
-  const complete = document.getElementById('classeur-complete').checked;
+  const status   = document.getElementById('classeur-status-input').value || 'in_progress';
   if (!nom) { toast('Veuillez saisir un nom.','error'); return; }
   const editId = modal.dataset.editId;
   if (editId) {
     const cl = _D.classeurs.find(c=>c.id===editId);
-    if (cl) { cl.nom=nom; cl.pages=pages; cl.slots_par_page=slots; cl.image=image; cl.bloc_id=bloc_id; cl.complete=complete; }
+    if (cl) { cl.nom=nom; cl.pages=pages; cl.slots_par_page=slots; cl.image=image; cl.bloc_id=bloc_id; cl.status=status; cl.complete=(status==='complete'); }
     toast('Classeur mis à jour !','success');
   } else {
-    _D.classeurs.push({ id:'cl_'+Date.now(), nom, pages, slots_par_page:slots, image, bloc_id, complete:false, extensions:[] });
+    _D.classeurs.push({ id:'cl_'+Date.now(), nom, pages, slots_par_page:slots, image, bloc_id, status, complete:(status==='complete'), extensions:[] });
     toast('Classeur créé !','success');
   }
   saveData(); renderAll(); closeModal('modal-classeur');
@@ -1128,7 +1164,7 @@ function editClasseur(id) {
   document.getElementById('classeur-cartes-input').value = cl.pages * (cl.slots_par_page||18);
   document.getElementById('classeur-slots-select').value = cl.slots_par_page||18;
   document.getElementById('classeur-image-input').value  = cl.image||'';
-  document.getElementById('classeur-complete').checked   = cl.complete||false;
+  setClasseurStatusInput(_classeurStatus(cl));
   previewClasseurImage(cl.image||'');
   populateClasseurBlocSelect(cl.bloc_id||'');
   modal.classList.add('open');
@@ -2803,6 +2839,7 @@ async function assignPokemonLabel(slug, value, reopenType, reopenA, reopenB) {
   else if (value === '__clear__') _D.pokemon_label_assignments[slug] = '';
   else _D.pokemon_label_assignments[slug] = value;
   saveData();
+  _pushLabelSettingsToCloud();
   toast('Label du Pokémon mis à jour.', 'success');
   try { await _loadFormsList(); } catch(_) {}
   if (reopenType === 'base') openPokedexModal(reopenA);
@@ -2933,8 +2970,73 @@ async function _pushLabelOverrideToCloud(type) {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) console.warn('[PTCG] push label cloud HTTP', res.status, await res.text().catch(()=>'')); 
-  } catch(e) { console.warn('[PTCG] push label cloud error:', e.message); }
+    if (!res.ok) {
+      const body = await res.text().catch(()=>'');
+      console.warn('[PTCG] push label cloud HTTP', res.status, body);
+      toast(`Supabase (label) : échec HTTP ${res.status}`, 'error');
+    }
+  } catch(e) {
+    console.warn('[PTCG] push label cloud error:', e.message);
+    toast('Supabase (label) : ' + e.message, 'error');
+  }
+}
+
+// ── Sync cloud des réglages annexes (assignations par Pokémon + catégories) ─
+// Contrairement aux labels (une ligne par form_type), ce sont ici de simples
+// réglages qu'on stocke comme UN SEUL blob JSON par utilisateur, dans la
+// table Supabase dédiée label_settings (SQL de création plus bas).
+let _labelSettingsPulled = false;
+
+async function _pushLabelSettingsToCloud() {
+  _D.label_settings_ts = Date.now();
+  saveData();
+  try {
+    const payload = {
+      user_id: _labelUserId(),
+      pokemon_label_assignments:  _D.pokemon_label_assignments || {},
+      custom_label_categories:    _D.custom_label_categories || [],
+      label_category_order:       _D.label_category_order || [],
+      label_category_assignments: _D.label_category_assignments || {},
+      label_category_overrides:   _D.label_category_overrides || {},
+      updated_at: new Date().toISOString(),
+    };
+    const res = await fetch(`${SB_URL}/rest/v1/label_settings`, {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(()=>'');
+      console.warn('[PTCG] push label settings HTTP', res.status, body);
+      toast(`Supabase (catégories/labels Pokémon) : échec HTTP ${res.status}`, 'error');
+    }
+  } catch(e) {
+    console.warn('[PTCG] push label settings error:', e.message);
+    toast('Supabase (catégories/labels Pokémon) : ' + e.message, 'error');
+  }
+}
+
+async function _pullLabelSettingsFromCloud() {
+  if (_labelSettingsPulled) return;
+  _labelSettingsPulled = true;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/label_settings?user_id=eq.${encodeURIComponent(_labelUserId())}`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    if (!res.ok) return; // table absente ou policy manquante : on reste en local
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return;
+    const r = rows[0];
+    const cloudTs = r.updated_at ? new Date(r.updated_at).getTime() : 0;
+    const localTs = _D.label_settings_ts || 0;
+    if (localTs && cloudTs <= localTs) return; // notre version locale est au moins aussi récente
+    _D.pokemon_label_assignments  = r.pokemon_label_assignments  || {};
+    _D.custom_label_categories    = r.custom_label_categories    || [];
+    _D.label_category_order       = r.label_category_order       || [];
+    _D.label_category_assignments = r.label_category_assignments || {};
+    _D.label_category_overrides   = r.label_category_overrides   || {};
+    _D.label_settings_ts = cloudTs;
+    saveData();
+  } catch(e) { console.warn('[PTCG] pull label settings error:', e.message); }
 }
 
 function filterMappingList(q) { _mapping.query = q; renderMappingList(); }
@@ -3557,6 +3659,7 @@ function setLabelCategory(type, categoryId) {
   if (normalized === defaultCat) delete _D.label_category_assignments[type];
   else _D.label_category_assignments[type] = normalized || '';
   saveData();
+  _pushLabelSettingsToCloud();
   renderLabelsList();
   toast('Catégorie mise à jour.', 'success');
 }
@@ -3569,6 +3672,7 @@ function addLabelCategory() {
   const id = 'lblcat_' + Date.now();
   _D.custom_label_categories.push({ id, name });
   saveData();
+  _pushLabelSettingsToCloud();
   if (input) input.value = '';
   renderLabelsList();
   toast('Catégorie créée.', 'success');
@@ -3594,6 +3698,7 @@ function renameLabelCategory(id) {
     else delete _D.label_category_overrides[id];
   }
   saveData();
+  _pushLabelSettingsToCloud();
   renderLabelsList();
   toast('Catégorie renommée.', 'success');
 }
@@ -3628,6 +3733,7 @@ function deleteLabelCategory(id) {
   }
   if (_D.label_category_order) _D.label_category_order = _D.label_category_order.filter(cid => cid !== id);
   saveData();
+  _pushLabelSettingsToCloud();
   renderLabelsList();
   toast(custom ? 'Catégorie supprimée.' : 'Catégorie masquée.', 'success');
 }
@@ -3639,6 +3745,7 @@ function restoreLabelCategory(id) {
     if (Object.keys(_D.label_category_overrides[id]).length === 0) delete _D.label_category_overrides[id];
   }
   saveData();
+  _pushLabelSettingsToCloud();
   renderLabelsList();
   toast('Catégorie restaurée.', 'success');
 }
@@ -3659,6 +3766,7 @@ function onLabelCatDrop(e) {
   order.splice(fromIdx, 1); order.splice(toIdx, 0, _labelCatDragId);
   _D.label_category_order = order;
   saveData();
+  _pushLabelSettingsToCloud();
   renderLabelsList();
   toast('Ordre des catégories sauvegardé.', 'success');
   _labelCatDragId = null;

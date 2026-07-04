@@ -523,10 +523,13 @@
       </select>
     </div>
     <div class="settings-field">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="classeur-complete" style="width:auto;accent-color:var(--green)">
-        Marquer comme complet (même si pas 100%)
-      </label>
+      <label>Statut de complétion</label>
+      <div class="classeur-status-select" id="classeur-status-select">
+        <div class="classeur-status-btn" data-status="to_buy" onclick="setClasseurStatusInput('to_buy')">🛒 À acheter</div>
+        <div class="classeur-status-btn" data-status="in_progress" onclick="setClasseurStatusInput('in_progress')">À compléter</div>
+        <div class="classeur-status-btn" data-status="complete" onclick="setClasseurStatusInput('complete')">✓ Complet</div>
+      </div>
+      <input type="hidden" id="classeur-status-input" value="in_progress">
     </div>
     <div class="settings-field"><label>Image de couverture (URL)</label>
       <input type="url" id="classeur-image-input" placeholder="https://…" oninput="previewClasseurImage(this.value)">

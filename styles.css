@@ -229,7 +229,7 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .classeurs-grid { display: block; }
 .classeurs-grid-inner { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
 .classeurs-list-wrap { display: flex; flex-direction: column; gap: 10px; }
-.classeur-card { background: var(--bg2); border: 2px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .2s, box-shadow .2s; }
+.classeur-card { background: var(--bg2); border: 2px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .2s, box-shadow .2s; position: relative; }
 .classeur-card:hover { border-color: var(--text3); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
 .classeur-card.drag-over { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(74,158,255,.3); }
 .classeur-card-top { height: 72px; display: flex; align-items: center; padding: 0 14px; gap: 12px; position: relative; }
@@ -279,7 +279,7 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 /* Classeur list mode */
 .classeurs-list-wrap { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.classeur-list-row { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
+.classeur-list-row { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; position: relative; }
 .classeur-list-row:hover { border-color: var(--text3); }
 .classeur-list-row.drag-over { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(74,158,255,.25); }
 
@@ -1017,8 +1017,31 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   border: 1px solid rgba(6,214,160,.35); border-radius: 4px;
   padding: 2px 7px; margin-top: 3px;
 }
-/* Complete classeur: bar turns full green */
-.classeur-card.is-complete .classeur-global-fill { background: var(--green) !important; width: 100% !important; }
+/* ── Statut de complétion d'un classeur (à acheter / à compléter / complet) ── */
+.classeur-status-badge {
+  display: inline-flex; align-items: center; gap: 4px; width: fit-content;
+  padding: 2px 8px; border-radius: 20px; font-size: .6rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .03em; color: #fff;
+}
+.classeur-status-badge.status-to-buy      { background: #e63946; }
+.classeur-status-badge.status-in-progress { background: #f97316; }
+.classeur-status-badge.status-complete    { background: #22c55e; }
+.classeur-status-select { display: flex; gap: 6px; }
+.classeur-status-btn {
+  flex: 1; text-align: center; padding: 7px 6px; border-radius: var(--radius-sm);
+  font-size: .74rem; font-weight: 600; cursor: pointer; color: var(--text2);
+  background: var(--bg3); border: 1.5px solid var(--border); transition: all .12s;
+}
+.classeur-status-btn:hover { border-color: var(--text3); color: var(--text); }
+.classeur-status-btn.active[data-status="to_buy"]      { background: #e63946; border-color: #e63946; color: #fff; }
+.classeur-status-btn.active[data-status="in_progress"] { background: #f97316; border-color: #f97316; color: #fff; }
+.classeur-status-btn.active[data-status="complete"]    { background: #22c55e; border-color: #22c55e; color: #fff; }
+
+/* Le statut "Complet" force déjà pct=100 et width:100% côté JS (classeurStats) ;
+   applyRainbow() s'occupe ensuite d'appliquer le dégradé animé. On ne force
+   plus une couleur verte unie ici : ça entrait en conflit (à spécificité CSS
+   égale ou supérieure) avec .rainbow-bar et empêchait l'effet arc-en-ciel de
+   s'afficher sur un classeur marqué complet manuellement. */
 
 /* ── Rainbow animation at 100% ──────────────────────────────────────────── */
 @keyframes rainbow-shift {
@@ -1050,6 +1073,28 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   border-color: transparent !important;
 }
 .ext-card.rainbow-border::before {
+  content: '';
+  position: absolute; inset: -1.5px; z-index: -1;
+  border-radius: calc(var(--radius) + 1.5px);
+  background: linear-gradient(90deg,#e63946,#f97316,#ffd166,#06d6a0,#4a9eff,#a855f7,#e63946);
+  background-size: 300% 100%;
+  animation: rainbow-shift 3s ease infinite;
+}
+.classeur-card.rainbow-border {
+  border-color: transparent !important;
+}
+.classeur-card.rainbow-border::before {
+  content: '';
+  position: absolute; inset: -1.5px; z-index: -1;
+  border-radius: calc(var(--radius) + 1.5px);
+  background: linear-gradient(90deg,#e63946,#f97316,#ffd166,#06d6a0,#4a9eff,#a855f7,#e63946);
+  background-size: 300% 100%;
+  animation: rainbow-shift 3s ease infinite;
+}
+.classeur-list-row.rainbow-border {
+  border-color: transparent !important;
+}
+.classeur-list-row.rainbow-border::before {
   content: '';
   position: absolute; inset: -1.5px; z-index: -1;
   border-radius: calc(var(--radius) + 1.5px);
