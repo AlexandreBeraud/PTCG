@@ -2714,10 +2714,10 @@ const FORM_LABELS = {
   hangry:          { fr:'Affamé',            badge:'AFFAMÉ',    color:'#DC2626' },
   'full-belly':    { fr:'Repu',              badge:'REPU',      color:'#16A34A' },
   hero:            { fr:'Héros',             badge:'HÉROS',     color:'#D97706' },
-  noice:           { fr:'Visage Découvert',  badge:'DÉCOUV.',   color:'#93C5FD' },
+  noice:           { fr:'Glace',             badge:'GLACE',     color:'#93C5FD' },
   amped:           { fr:'Amplifié',          badge:'AMPLI.',    color:'#FBBF24' },
   'low-key':       { fr:'Discret',           badge:'DISCR.',    color:'#60A5FA' },
-  'single-strike': { fr:'Poing Final',      badge:'BRUTAL',    color:'#1E3A8A' },
+  'single-strike': { fr:'Style Brutal',      badge:'BRUTAL',    color:'#1E3A8A' },
   'rapid-strike':  { fr:'Style Rapide',      badge:'RAPIDE',    color:'#06A77D' },
   gulping:         { fr:'Glouton',           badge:'GLOUTON',   color:'#F97316' },
   gorging:         { fr:'Gavé',              badge:'GAVÉ',      color:'#DC2626' },
@@ -3100,15 +3100,15 @@ async function initPokedex() {
     _pkdx.loading     = false;
     document.getElementById('pokedex-loading').style.display = 'none';
     document.getElementById('pokedex-subtitle').textContent  =
-      `${_pkdx.all.length} Pokémon — chargement des formes…`;
+      `${_pkdx.all.length} Pokémon — données via PokéAPI`;
 
     _buildGenFilters();
     _pkdx.page = 0;
-    await renderPokedexPage();
-    // Load forms and re-render — awaited so forms appear on first scroll
+    document.getElementById('pokedex-subtitle').textContent = 'Chargement des formes…';
     await _loadFormsList();
-    document.getElementById('pokedex-subtitle').textContent  =
-      `${_pkdx.all.filter(p => !p.isForm).length} Pokémon + ${_pkdx.all.filter(p => p.isForm).length} formes — données via PokéAPI`;
+    document.getElementById('pokedex-subtitle').textContent =
+      `${_pkdx.all.filter(p=>!p.isForm).length} Pokémon + ${_pkdx.all.filter(p=>p.isForm).length} formes — PokéAPI`;
+    await renderPokedexPage();
   } catch(err) {
     _pkdx.loading = false;
     document.getElementById('pokedex-loading').style.display = 'none';
@@ -3236,7 +3236,7 @@ function _buildFormTypeFilterList() {
     { label: 'Légendaires',         types: ['origin','altered','sky','land','therian','incarnate','crowned','black','white','dusk-mane','dawn-wings','ultra','confined','unbound','complete','10','50','battle-bond','ash','teal-mask','wellspring-mask','hearthflame-mask','cornerstone-mask','stellar','terastal','original','original-color','ice-rider','shadow-rider'] },
     { label: 'Combat / Mécanique',  types: ['blade','shield','zen','galar-zen','pirouette','aria','resolute','ordinary','busted','disguised','school','solo','hangry','full-belly','hero','noice','amped','low-key','single-strike','rapid-strike','gulping','gorging','neutral','zero','dada','two-segment','three-segment','three-family'] },
     { label: 'Rotom',               types: ['heat','wash','frost','fan','mow'] },
-    { label: 'Plumeline (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
+    { label: 'Morphéo (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
     { label: 'Formes météo',        types: ['overcast','sunshine','rainy','snowy','midday','midnight','dusk','dawn'] },
     { label: 'Formes saisonnières', types: ['spring','summer','autumn','winter'] },
     { label: 'Cheniti/Cheniselle',  types: ['plant','sandy','trash'] },
@@ -3346,7 +3346,7 @@ async function _loadFormsList() {
       const parts = p.url.split('/').filter(Boolean);
       const apiId = parseInt(parts[parts.length - 1], 10);
 
-      // Find base: exactParent first, then longest prefix match
+      // Find base: exactParent first, then longest prefix match, then species-root match
       let base = null;
       if (exactParent[p.name]) {
         base = baseByName[exactParent[p.name]] || null;
@@ -3361,6 +3361,19 @@ async function _loadFormsList() {
             bestLen = b.name.length;
           }
         }
+      }
+      if (!base) {
+        // Some base Pokémon have a composite default name because PokéAPI's
+        // "default" variety already carries a suffix (deoxys-normal,
+        // keldeo-ordinary, meloetta-aria, wormadam-plant, giratina-altered,
+        // shaymin-land, tornadus-incarnate, thundurus-incarnate,
+        // landorus-incarnate, enamorus-incarnate...). In that case the form's
+        // own name won't start with the full base name. Fall back to matching
+        // on the species root (the part before the first hyphen), but only
+        // when it points to exactly one base to avoid ambiguous matches.
+        const formRoot = p.name.split('-')[0];
+        const candidates = bases.filter(b => b.name.split('-')[0] === formRoot);
+        if (candidates.length === 1) base = candidates[0];
       }
       if (!base) return;
 
