@@ -1080,27 +1080,27 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   background-size: 300% 100%;
   animation: rainbow-shift 3s ease infinite;
 }
-.classeur-card.rainbow-border {
-  border-color: transparent !important;
-}
-.classeur-card.rainbow-border::before {
-  content: '';
-  position: absolute; inset: -1.5px; z-index: -1;
-  border-radius: calc(var(--radius) + 1.5px);
-  background: linear-gradient(90deg,#e63946,#f97316,#ffd166,#06d6a0,#4a9eff,#a855f7,#e63946);
-  background-size: 300% 100%;
-  animation: rainbow-shift 3s ease infinite;
-}
+.classeur-card.rainbow-border,
 .classeur-list-row.rainbow-border {
+  /* Technique "gradient border" : deux calques de fond, l'un peint uniquement
+     dans la zone intérieure (padding-box) avec la couleur de fond normale,
+     l'autre peint jusque dans la bordure (border-box) avec le dégradé animé.
+     Contrairement à un halo ::before en z-index négatif, ce résultat n'est
+     JAMAIS masqué par les fonds opaques du haut/corps de la carte : il est
+     littéralement à l'endroit de la bordure elle-même. */
   border-color: transparent !important;
+  background-image:
+    linear-gradient(var(--bg2), var(--bg2)),
+    linear-gradient(90deg,#e63946,#f97316,#ffd166,#06d6a0,#4a9eff,#a855f7,#e63946);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-size: 100% 100%, 300% 100%;
+  animation: classeur-rainbow-border-shift 3s ease infinite;
 }
-.classeur-list-row.rainbow-border::before {
-  content: '';
-  position: absolute; inset: -1.5px; z-index: -1;
-  border-radius: calc(var(--radius) + 1.5px);
-  background: linear-gradient(90deg,#e63946,#f97316,#ffd166,#06d6a0,#4a9eff,#a855f7,#e63946);
-  background-size: 300% 100%;
-  animation: rainbow-shift 3s ease infinite;
+@keyframes classeur-rainbow-border-shift {
+  0%   { background-position: 0% 0%, 0% 50%; }
+  50%  { background-position: 0% 0%, 100% 50%; }
+  100% { background-position: 0% 0%, 0% 50%; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
