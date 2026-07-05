@@ -10,7 +10,8 @@ let _currentExt      = null;
 let _showNonSorti    = false;
 let _searchQuery     = '';
 // Per-tab view modes
-const _tabViewModes = { extensions:'grid', classeurs:'grid', boosters:'grid', edition:'grid' };
+const _tabViewModes = { extensions:'grid', classeurs:'grid', boosters:'grid', edition:'grid',
+  ventes:'grid', acheteurs:'grid', depenses:'grid', vendeurs:'grid' };
 let _currentView = 'extensions';
 // Backward compat helper
 function _viewMode() { return _tabViewModes[_currentView] || 'grid'; }
@@ -101,6 +102,10 @@ function loadData() {
       pokemon_label_assignments: {},
       label_local_ts: {},
       label_settings_ts: 0,
+      ventes:        [],
+      acheteurs:     [],
+      depenses:      [],
+      vendeurs:      [],
       settings:      { display_mode: 'logo' }
     };
   };
@@ -125,6 +130,10 @@ function loadData() {
       if (!_D.deleted_labels) _D.deleted_labels = [];
       if (!_D.pokemon_label_assignments) _D.pokemon_label_assignments = {};
       if (!_D.label_local_ts) _D.label_local_ts = {};
+      if (!_D.ventes)         _D.ventes         = [];
+      if (!_D.acheteurs)      _D.acheteurs      = [];
+      if (!_D.depenses)       _D.depenses       = [];
+      if (!_D.vendeurs)       _D.vendeurs       = [];
       if (!_D.settings)       _D.settings       = { display_mode: 'logo' };
       // Discard old ext_overrides and bloc_overrides that referenced built-in IDs
       // (they're meaningless now that template is empty)
@@ -171,6 +180,10 @@ function renderAll() {
   safe(renderBoosters,      'renderBoosters');
   safe(renderEdition,       'renderEdition');
   safe(renderStats,         'renderStats');
+  safe(renderVentes,        'renderVentes');
+  safe(renderAcheteurs,     'renderAcheteurs');
+  safe(renderDepenses,      'renderDepenses');
+  safe(renderVendeurs,      'renderVendeurs');
   safe(updateGlobalProgress,'updateGlobalProgress');
   safe(updateBadges,        'updateBadges');
   setTimeout(applyRainbow, 0);
@@ -529,6 +542,10 @@ function updateBadges() {
   document.getElementById('nb-classeurs').textContent = _D.classeurs.length;
   const bd = _D.boosters_data || {};
   document.getElementById('nb-boosters').textContent  = Object.values(bd).reduce((a,arr)=>a+(arr?arr.length:0),0);
+  const nbVentes = document.getElementById('nb-ventes');       if (nbVentes)    nbVentes.textContent    = (_D.ventes||[]).length;
+  const nbAcheteurs = document.getElementById('nb-acheteurs'); if (nbAcheteurs) nbAcheteurs.textContent = (_D.acheteurs||[]).length;
+  const nbDepenses = document.getElementById('nb-depenses');   if (nbDepenses)  nbDepenses.textContent  = (_D.depenses||[]).length;
+  const nbVendeurs = document.getElementById('nb-vendeurs');   if (nbVendeurs)  nbVendeurs.textContent  = (_D.vendeurs||[]).length;
 }
 
 // ── Detail Panel ───────────────────────────────────────────────────────────
@@ -2319,25 +2336,45 @@ function switchView(view,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   if(btn)btn.classList.add('active');
-  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres',pokedex:'Pokédex'};
+  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres',pokedex:'Pokédex',ventes:'Ventes',acheteurs:'Acheteurs',depenses:'Dépenses',vendeurs:'Vendeurs'};
   document.getElementById('topbar-title').textContent=titles[view]||view;
   const showSearch=view==='extensions';
-  const showToggle=['extensions','classeurs','boosters','edition'].includes(view);
+  const showToggle=['extensions','classeurs','boosters','edition','ventes','acheteurs','depenses','vendeurs'].includes(view);
+  const showSortBtn=!['ventes','acheteurs','depenses','vendeurs'].includes(view);
   document.getElementById('topbar-search-wrap').style.display  =showSearch?'flex':'none';
-  document.getElementById('topbar-sort-btn').style.display     ='flex';  // always visible
+  document.getElementById('topbar-sort-btn').style.display     =showSortBtn?'flex':'none';
   document.getElementById('topbar-view-toggle').style.display  =showToggle?'flex':'none';
+  if (showToggle) {
+    const mode = _tabViewModes[view] || 'grid';
+    const toggleBtns = document.querySelectorAll('#topbar-view-toggle button');
+    toggleBtns.forEach((b,i) => b.classList.toggle('active', (i===0) === (mode==='grid')));
+  }
   document.getElementById('global-progress-wrap').style.display=showSearch?'flex':'none';
   closeDetail();
   if(view==='edition'){populateBlocSelect();renderEditionList();}
   if(view==='statistiques')renderStats();
   if(view==='parametres')initSettingsView();
   if(view==='pokedex')initPokedex();
+  if(view==='ventes')renderVentes();
+  if(view==='acheteurs')renderAcheteurs();
+  if(view==='depenses')renderDepenses();
+  if(view==='vendeurs')renderVendeurs();
 }
 
 // ── Modals ─────────────────────────────────────────────────────────────────
 function closeModal(id){
   document.getElementById(id).classList.remove('open');
   if(id==='modal-classeur')delete document.getElementById('modal-classeur').dataset.editId;
+  if(id==='modal-acheteur' && _acheteurReturnTo==='vente'){
+    document.getElementById('modal-vente').classList.add('open');
+    if (_lastCreatedAcheteurId) populateAcheteurSelect(_lastCreatedAcheteurId);
+    _acheteurReturnTo = null; _lastCreatedAcheteurId = null;
+  }
+  if(id==='modal-vendeur' && _vendeurReturnTo==='depense'){
+    document.getElementById('modal-depense').classList.add('open');
+    if (_lastCreatedVendeurId) populateVendeurSelect(_lastCreatedVendeurId);
+    _vendeurReturnTo = null; _lastCreatedVendeurId = null;
+  }
 }
 
 // ── Paramètres ─────────────────────────────────────────────────────────────
@@ -3314,6 +3351,7 @@ function resetData(){
     _v:1,_ts:0,_tpl_blocs:[],
     collection:{},classeurs:[],boosters_data:{},
     custom_exts:[],ext_overrides:{},bloc_overrides:{},custom_blocs:[],
+    ventes:[],acheteurs:[],depenses:[],vendeurs:[],
     settings:{display_mode:'logo'}
   };
   renderAll();toast('Données réinitialisées.','success');
@@ -3335,6 +3373,935 @@ async function syncCloud(){
   }catch(e){toast('Erreur sync : '+e.message,'error');}
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VENTES / ACHETEURS / DÉPENSES / VENDEURS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CARD_CONDITIONS = ['Mint','Near Mint','Excellent','Good','Light Played','Poor'];
+const VENTE_TYPES = [
+  { id:'normale',      label:'Normale' },
+  { id:'reverse',      label:'Reverse' },
+  { id:'holo_cosmos',  label:'Holo Cosmos' },
+  { id:'1ere_edition', label:'1ère édition' },
+];
+const TCG_LANGUES = ['Français','Anglais','Japonais','Allemand','Italien','Espagnol','Portugais','Néerlandais','Coréen','Chinois'];
+
+const ACHETEUR_STATUTS = [
+  { id:'a_envoyer', label:'À envoyer', cls:'status-a-envoyer', color:'#f97316' },
+  { id:'envoye',    label:'Envoyé',    cls:'status-envoye',    color:'#4a9eff' },
+  { id:'arrive',    label:'Arrivé',    cls:'status-arrive',    color:'#22c55e' },
+];
+const VENDEUR_STATUTS = [
+  { id:'a_payer', label:'À payer', cls:'status-a-payer', color:'#f97316' },
+  { id:'paye',    label:'Payé',    cls:'status-paye',    color:'#4a9eff' },
+  { id:'arrive',  label:'Arrivé',  cls:'status-arrive',  color:'#22c55e' },
+];
+
+const ICON_EDIT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+const ICON_DELETE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>';
+const ICON_LINK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.07 0l2.83-2.83a5 5 0 00-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.07 0L4.1 13.83a5 5 0 007.07 7.07l1.5-1.5"/></svg>';
+
+function _venteId()    { return 'vt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+function _acheteurId() { return 'ac_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+function _depenseId()  { return 'dp_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+function _vendeurId()  { return 'vd_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+
+function _jsEscape(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+function _fmtDate(iso) {
+  if (!iso) return '';
+  const parts = iso.split('-');
+  if (parts.length !== 3) return iso;
+  const [y,m,d] = parts;
+  return `${d}/${m}/${y}`;
+}
+
+// ── Agrégats ─────────────────────────────────────────────────────────────
+function acheteurVentes(acheteurId) { return (_D.ventes||[]).filter(v => v.acheteur_id === acheteurId); }
+function acheteurTotal(acheteurId)  { return acheteurVentes(acheteurId).reduce((s,v)=>s+(parseFloat(v.prix)||0),0); }
+function vendeurDepenses(vendeurId) { return (_D.depenses||[]).filter(d => d.vendeur_id === vendeurId); }
+function vendeurTotal(vendeurId)    { return vendeurDepenses(vendeurId).reduce((s,d)=>s+(parseFloat(d.prix)||0),0); }
+
+// ── État des filtres/recherche ──────────────────────────────────────────
+let _venteFilter = 'all', _depenseFilter = 'all', _acheteurFilter = 'all', _vendeurFilter = 'all';
+let _venteQuery = '', _depenseQuery = '', _acheteurQuery = '', _vendeurQuery = '';
+let _acheteurReturnTo = null, _vendeurReturnTo = null;
+let _lastCreatedAcheteurId = null, _lastCreatedVendeurId = null;
+
+// ── Item row (utilisé dans les cartes Acheteur/Vendeur) ─────────────────
+function _orderItemRowHtml(item, kind) {
+  const editFn = kind === 'vente' ? 'editVente' : 'editDepense';
+  const delFn  = kind === 'vente' ? 'deleteVente' : 'deleteDepense';
+  return `<div class="order-item-row">
+    <div class="order-item-thumb">${item.card_image ? `<img src="${item.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+    <div class="order-item-info">
+      <div class="order-item-name">${item.card_name || item.pokemon_name || '—'}</div>
+      <div class="order-item-meta">${item.set_name||''}${item.number?' · N°'+item.number:''} · ${item.etat||''}</div>
+    </div>
+    <div class="order-item-price">${(parseFloat(item.prix)||0).toFixed(2)} €</div>
+    <div class="order-item-actions">
+      <button class="btn btn-icon btn-sm" title="Modifier" onclick="${editFn}('${item.id}')">${ICON_EDIT}</button>
+      <button class="btn btn-icon btn-sm btn-danger" title="Retirer" onclick="${delFn}('${item.id}')">${ICON_DELETE}</button>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VENTES
+// ═══════════════════════════════════════════════════════════════════════════
+function renderVentes() {
+  const grid = document.getElementById('ventes-grid');
+  if (!grid) return;
+  const addBtn = grid.querySelector('.add-new-card');
+  if (addBtn) addBtn.remove();
+  grid.innerHTML = '';
+  const mode = _tabViewModes['ventes'] || 'grid';
+  grid.className = mode === 'list' ? 'sales-list-wrap' : 'sales-grid';
+
+  let items = [...(_D.ventes||[])];
+  if (_venteFilter === 'unlinked') items = items.filter(v => !v.acheteur_id);
+  if (_venteFilter === 'linked')   items = items.filter(v => !!v.acheteur_id);
+  if (_venteQuery) {
+    const q = _normalizeStr(_venteQuery);
+    items = items.filter(v => _normalizeStr(v.card_name||'').includes(q) || _normalizeStr(v.pokemon_name||'').includes(q));
+  }
+  items.sort((a,b) => (b.created_at||0) - (a.created_at||0));
+
+  if (!items.length) {
+    grid.innerHTML = `<div class="sales-empty">Aucune vente${(_venteQuery||_venteFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+  } else {
+    items.forEach(v => grid.appendChild(mode === 'list' ? buildVenteRow(v) : buildVenteCard(v)));
+  }
+  if (addBtn) grid.appendChild(addBtn);
+  renderVentesStats();
+}
+
+function renderVentesStats() {
+  const el = document.getElementById('ventes-stats'); if (!el) return;
+  const all = _D.ventes||[];
+  const linked   = all.filter(v => v.acheteur_id);
+  const unlinked = all.filter(v => !v.acheteur_id);
+  const sum = arr => arr.reduce((s,v)=>s+(parseFloat(v.prix)||0),0);
+  el.innerHTML = `
+    <div class="stat-card" style="--accent-color:var(--accent)"><div class="val">${all.length}</div><div class="lbl">Cartes au total</div></div>
+    <div class="stat-card" style="--accent-color:var(--blue)"><div class="val">${unlinked.length}</div><div class="lbl">En vente</div><div class="sub">${sum(unlinked).toFixed(2)} €</div></div>
+    <div class="stat-card" style="--accent-color:var(--green)"><div class="val">${linked.length}</div><div class="lbl">Vendues</div><div class="sub">${sum(linked).toFixed(2)} €</div></div>
+    <div class="stat-card" style="--accent-color:var(--gold)"><div class="val">${sum(all).toFixed(2)} €</div><div class="lbl">Valeur totale</div></div>`;
+}
+
+function buildVenteCard(v) {
+  const acheteur = v.acheteur_id ? (_D.acheteurs||[]).find(a=>a.id===v.acheteur_id) : null;
+  const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
+  const card = document.createElement('div');
+  card.className = 'sale-card';
+  card.innerHTML = `
+    <div class="sale-card-top">
+      <div class="sale-card-thumb">${v.card_image ? `<img src="${v.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+      <div class="sale-card-info">
+        <div class="sale-card-name">${v.card_name || v.pokemon_name || '—'}</div>
+        <div class="sale-card-meta">${v.set_name||''}${v.number?' · N°'+v.number:''}</div>
+      </div>
+      <div class="sale-card-actions">
+        <button class="btn btn-icon btn-sm" title="Modifier" onclick="editVente('${v.id}')">${ICON_EDIT}</button>
+        <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteVente('${v.id}')">${ICON_DELETE}</button>
+      </div>
+    </div>
+    <div class="sale-card-body">
+      <div class="sale-row"><span class="lbl">État</span><span class="val">${v.etat||'—'}</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(v.prix)||0).toFixed(2)} €</span></div>
+      ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
+      <div class="sale-row"><span class="lbl">Langue</span><span class="val">${v.langue||'—'}</span></div>
+      <div class="sale-acheteur ${acheteur ? '' : 'unlinked'}">${acheteur ? '👤 '+acheteur.pseudo : '— Pas encore vendu —'}</div>
+      ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de la vente</a>` : ''}
+    </div>`;
+  return card;
+}
+
+function buildVenteRow(v) {
+  const acheteur = v.acheteur_id ? (_D.acheteurs||[]).find(a=>a.id===v.acheteur_id) : null;
+  const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
+  const row = document.createElement('div');
+  row.className = 'sale-list-row';
+  row.innerHTML = `
+    <div class="sale-list-thumb">${v.card_image ? `<img src="${v.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+    <div class="sale-list-main">
+      <div class="sale-list-name">${v.card_name || v.pokemon_name || '—'}</div>
+      <div class="sale-list-meta">${v.set_name||''}${v.number?' · N°'+v.number:''} · ${v.etat||'—'} · ${v.langue||'—'}</div>
+      ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
+    </div>
+    <div class="sale-list-price">${(parseFloat(v.prix)||0).toFixed(2)} €</div>
+    <div class="sale-list-acheteur ${acheteur ? '' : 'unlinked'}">${acheteur ? '👤 '+acheteur.pseudo : '— Non vendu —'}</div>
+    <div class="sale-list-actions">
+      ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="btn btn-icon btn-sm" title="Lien">${ICON_LINK}</a>` : ''}
+      <button class="btn btn-icon btn-sm" title="Modifier" onclick="editVente('${v.id}')">${ICON_EDIT}</button>
+      <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteVente('${v.id}')">${ICON_DELETE}</button>
+    </div>`;
+  return row;
+}
+
+function setVenteFilter(f, btn) {
+  _venteFilter = f;
+  document.querySelectorAll('#ventes-filter-bar .booster-filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderVentes();
+}
+function filterVentes(q) { _venteQuery = q; renderVentes(); }
+
+function populateAcheteurSelect(selected) {
+  const sel = document.getElementById('vente-acheteur-select'); if (!sel) return;
+  const opts = (_D.acheteurs||[]).slice().sort((a,b)=>(a.pseudo||'').localeCompare(b.pseudo||'','fr'))
+    .map(a => `<option value="${a.id}" ${a.id===selected?'selected':''}>${a.pseudo}</option>`).join('');
+  sel.innerHTML = '<option value="">— Pas encore vendu —</option>' + opts;
+}
+
+function openAddVenteModal(acheteurId) {
+  const modal = document.getElementById('modal-vente');
+  delete modal.dataset.editId;
+  document.getElementById('modal-vente-title').textContent = 'Nouvelle vente';
+  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name'].forEach(f => {
+    const el = document.getElementById('vente-'+f); if (el) el.value = '';
+  });
+  _renderCardPreview('vente');
+  document.getElementById('vente-etat-select').value = 'Near Mint';
+  document.getElementById('vente-prix-input').value = '';
+  document.getElementById('vente-langue-select').value = 'Français';
+  document.getElementById('vente-lien-input').value = '';
+  _setChipGroup('vente-type-chips', []);
+  populateAcheteurSelect(acheteurId || '');
+  modal.classList.add('open');
+}
+
+function editVente(id) {
+  const v = (_D.ventes||[]).find(x=>x.id===id); if (!v) return;
+  const modal = document.getElementById('modal-vente');
+  modal.dataset.editId = id;
+  document.getElementById('modal-vente-title').textContent = 'Modifier la vente';
+  document.getElementById('vente-card-id').value = v.card_id||'';
+  document.getElementById('vente-card-name').value = v.card_name||'';
+  document.getElementById('vente-card-image').value = v.card_image||'';
+  document.getElementById('vente-set-id').value = v.set_id||'';
+  document.getElementById('vente-set-name').value = v.set_name||'';
+  document.getElementById('vente-set-logo').value = v.set_logo||'';
+  document.getElementById('vente-number').value = v.number||'';
+  document.getElementById('vente-rarity').value = v.rarity||'';
+  document.getElementById('vente-pokemon-name').value = v.pokemon_name||'';
+  _renderCardPreview('vente');
+  document.getElementById('vente-etat-select').value = v.etat||'Near Mint';
+  document.getElementById('vente-prix-input').value = v.prix||'';
+  document.getElementById('vente-langue-select').value = v.langue||'Français';
+  document.getElementById('vente-lien-input').value = v.lien_vente||'';
+  _setChipGroup('vente-type-chips', v.types||[]);
+  populateAcheteurSelect(v.acheteur_id||'');
+  modal.classList.add('open');
+}
+
+function saveVente() {
+  const modal = document.getElementById('modal-vente');
+  const cardName = document.getElementById('vente-card-name').value;
+  if (!cardName) { toast('Veuillez choisir une carte.','error'); return; }
+  const data = {
+    card_id:      document.getElementById('vente-card-id').value,
+    card_name:    cardName,
+    card_image:   document.getElementById('vente-card-image').value,
+    set_id:       document.getElementById('vente-set-id').value,
+    set_name:     document.getElementById('vente-set-name').value,
+    set_logo:     document.getElementById('vente-set-logo').value,
+    number:       document.getElementById('vente-number').value,
+    rarity:       document.getElementById('vente-rarity').value,
+    pokemon_name: document.getElementById('vente-pokemon-name').value || cardName,
+    etat:         document.getElementById('vente-etat-select').value,
+    prix:         parseFloat(document.getElementById('vente-prix-input').value) || 0,
+    types:        _getChipGroup('vente-type-chips'),
+    langue:       document.getElementById('vente-langue-select').value,
+    lien_vente:   document.getElementById('vente-lien-input').value.trim(),
+    acheteur_id:  document.getElementById('vente-acheteur-select').value || null,
+  };
+  const editId = modal.dataset.editId;
+  if (editId) {
+    const v = _D.ventes.find(x=>x.id===editId);
+    if (v) { Object.assign(v, data); v.updated_at = Date.now(); }
+    toast('Vente mise à jour !','success');
+  } else {
+    _D.ventes.push({ id:_venteId(), ...data, created_at:Date.now(), updated_at:Date.now() });
+    toast('Vente enregistrée !','success');
+  }
+  saveData(); renderAll(); closeModal('modal-vente');
+}
+
+function deleteVente(id) {
+  if (!confirm('Supprimer cette vente ?')) return;
+  _D.ventes = _D.ventes.filter(v=>v.id!==id);
+  saveData(); renderAll(); toast('Vente supprimée.','success');
+}
+
+function _openAcheteurFromVente() {
+  _acheteurReturnTo = 'vente';
+  _lastCreatedAcheteurId = null;
+  document.getElementById('modal-vente').classList.remove('open');
+  openAddAcheteurModal();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  DÉPENSES
+// ═══════════════════════════════════════════════════════════════════════════
+function renderDepenses() {
+  const grid = document.getElementById('depenses-grid');
+  if (!grid) return;
+  const addBtn = grid.querySelector('.add-new-card');
+  if (addBtn) addBtn.remove();
+  grid.innerHTML = '';
+  const mode = _tabViewModes['depenses'] || 'grid';
+  grid.className = mode === 'list' ? 'sales-list-wrap' : 'sales-grid';
+
+  let items = [...(_D.depenses||[])];
+  if (_depenseFilter === 'unlinked') items = items.filter(d => !d.vendeur_id);
+  if (_depenseFilter === 'linked')   items = items.filter(d => !!d.vendeur_id);
+  if (_depenseQuery) {
+    const q = _normalizeStr(_depenseQuery);
+    items = items.filter(d => _normalizeStr(d.card_name||'').includes(q) || _normalizeStr(d.pokemon_name||'').includes(q));
+  }
+  items.sort((a,b) => (b.created_at||0) - (a.created_at||0));
+
+  if (!items.length) {
+    grid.innerHTML = `<div class="sales-empty">Aucun achat${(_depenseQuery||_depenseFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+  } else {
+    items.forEach(d => grid.appendChild(mode === 'list' ? buildDepenseRow(d) : buildDepenseCard(d)));
+  }
+  if (addBtn) grid.appendChild(addBtn);
+  renderDepensesStats();
+}
+
+function renderDepensesStats() {
+  const el = document.getElementById('depenses-stats'); if (!el) return;
+  const all = _D.depenses||[];
+  const linked   = all.filter(d => d.vendeur_id);
+  const unlinked = all.filter(d => !d.vendeur_id);
+  const sum = arr => arr.reduce((s,d)=>s+(parseFloat(d.prix)||0),0);
+  el.innerHTML = `
+    <div class="stat-card" style="--accent-color:var(--accent)"><div class="val">${all.length}</div><div class="lbl">Cartes au total</div></div>
+    <div class="stat-card" style="--accent-color:var(--blue)"><div class="val">${unlinked.length}</div><div class="lbl">Sans vendeur</div><div class="sub">${sum(unlinked).toFixed(2)} €</div></div>
+    <div class="stat-card" style="--accent-color:var(--green)"><div class="val">${linked.length}</div><div class="lbl">Avec vendeur</div><div class="sub">${sum(linked).toFixed(2)} €</div></div>
+    <div class="stat-card" style="--accent-color:var(--gold)"><div class="val">${sum(all).toFixed(2)} €</div><div class="lbl">Dépensé au total</div></div>`;
+}
+
+function buildDepenseCard(d) {
+  const vendeur = d.vendeur_id ? (_D.vendeurs||[]).find(x=>x.id===d.vendeur_id) : null;
+  const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
+  const card = document.createElement('div');
+  card.className = 'sale-card';
+  card.innerHTML = `
+    <div class="sale-card-top">
+      <div class="sale-card-thumb">${d.card_image ? `<img src="${d.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+      <div class="sale-card-info">
+        <div class="sale-card-name">${d.card_name || d.pokemon_name || '—'}</div>
+        <div class="sale-card-meta">${d.set_name||''}${d.number?' · N°'+d.number:''}</div>
+      </div>
+      <div class="sale-card-actions">
+        <button class="btn btn-icon btn-sm" title="Modifier" onclick="editDepense('${d.id}')">${ICON_EDIT}</button>
+        <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteDepense('${d.id}')">${ICON_DELETE}</button>
+      </div>
+    </div>
+    <div class="sale-card-body">
+      <div class="sale-row"><span class="lbl">État</span><span class="val">${d.etat||'—'}</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(d.prix)||0).toFixed(2)} €</span></div>
+      ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
+      <div class="sale-row"><span class="lbl">Langue</span><span class="val">${d.langue||'—'}</span></div>
+      <div class="sale-acheteur ${vendeur ? '' : 'unlinked'}">${vendeur ? '🏷️ '+vendeur.pseudo : '— Aucun vendeur —'}</div>
+      ${d.lien_achat ? `<a href="${d.lien_achat}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de l'achat</a>` : ''}
+    </div>`;
+  return card;
+}
+
+function buildDepenseRow(d) {
+  const vendeur = d.vendeur_id ? (_D.vendeurs||[]).find(x=>x.id===d.vendeur_id) : null;
+  const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
+  const row = document.createElement('div');
+  row.className = 'sale-list-row';
+  row.innerHTML = `
+    <div class="sale-list-thumb">${d.card_image ? `<img src="${d.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+    <div class="sale-list-main">
+      <div class="sale-list-name">${d.card_name || d.pokemon_name || '—'}</div>
+      <div class="sale-list-meta">${d.set_name||''}${d.number?' · N°'+d.number:''} · ${d.etat||'—'} · ${d.langue||'—'}</div>
+      ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
+    </div>
+    <div class="sale-list-price">${(parseFloat(d.prix)||0).toFixed(2)} €</div>
+    <div class="sale-list-acheteur ${vendeur ? '' : 'unlinked'}">${vendeur ? '🏷️ '+vendeur.pseudo : '— Aucun vendeur —'}</div>
+    <div class="sale-list-actions">
+      ${d.lien_achat ? `<a href="${d.lien_achat}" target="_blank" rel="noopener" class="btn btn-icon btn-sm" title="Lien">${ICON_LINK}</a>` : ''}
+      <button class="btn btn-icon btn-sm" title="Modifier" onclick="editDepense('${d.id}')">${ICON_EDIT}</button>
+      <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteDepense('${d.id}')">${ICON_DELETE}</button>
+    </div>`;
+  return row;
+}
+
+function setDepenseFilter(f, btn) {
+  _depenseFilter = f;
+  document.querySelectorAll('#depenses-filter-bar .booster-filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderDepenses();
+}
+function filterDepenses(q) { _depenseQuery = q; renderDepenses(); }
+
+function populateVendeurSelect(selected) {
+  const sel = document.getElementById('depense-vendeur-select'); if (!sel) return;
+  const opts = (_D.vendeurs||[]).slice().sort((a,b)=>(a.pseudo||'').localeCompare(b.pseudo||'','fr'))
+    .map(v => `<option value="${v.id}" ${v.id===selected?'selected':''}>${v.pseudo}</option>`).join('');
+  sel.innerHTML = '<option value="">— Aucun vendeur —</option>' + opts;
+}
+
+function openAddDepenseModal(vendeurId) {
+  const modal = document.getElementById('modal-depense');
+  delete modal.dataset.editId;
+  document.getElementById('modal-depense-title').textContent = 'Nouvel achat';
+  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name'].forEach(f => {
+    const el = document.getElementById('depense-'+f); if (el) el.value = '';
+  });
+  _renderCardPreview('depense');
+  document.getElementById('depense-etat-select').value = 'Near Mint';
+  document.getElementById('depense-prix-input').value = '';
+  document.getElementById('depense-langue-select').value = 'Français';
+  document.getElementById('depense-lien-input').value = '';
+  _setChipGroup('depense-type-chips', []);
+  populateVendeurSelect(vendeurId || '');
+  modal.classList.add('open');
+}
+
+function editDepense(id) {
+  const d = (_D.depenses||[]).find(x=>x.id===id); if (!d) return;
+  const modal = document.getElementById('modal-depense');
+  modal.dataset.editId = id;
+  document.getElementById('modal-depense-title').textContent = "Modifier l'achat";
+  document.getElementById('depense-card-id').value = d.card_id||'';
+  document.getElementById('depense-card-name').value = d.card_name||'';
+  document.getElementById('depense-card-image').value = d.card_image||'';
+  document.getElementById('depense-set-id').value = d.set_id||'';
+  document.getElementById('depense-set-name').value = d.set_name||'';
+  document.getElementById('depense-set-logo').value = d.set_logo||'';
+  document.getElementById('depense-number').value = d.number||'';
+  document.getElementById('depense-rarity').value = d.rarity||'';
+  document.getElementById('depense-pokemon-name').value = d.pokemon_name||'';
+  _renderCardPreview('depense');
+  document.getElementById('depense-etat-select').value = d.etat||'Near Mint';
+  document.getElementById('depense-prix-input').value = d.prix||'';
+  document.getElementById('depense-langue-select').value = d.langue||'Français';
+  document.getElementById('depense-lien-input').value = d.lien_achat||'';
+  _setChipGroup('depense-type-chips', d.types||[]);
+  populateVendeurSelect(d.vendeur_id||'');
+  modal.classList.add('open');
+}
+
+function saveDepense() {
+  const modal = document.getElementById('modal-depense');
+  const cardName = document.getElementById('depense-card-name').value;
+  if (!cardName) { toast('Veuillez choisir une carte.','error'); return; }
+  const data = {
+    card_id:      document.getElementById('depense-card-id').value,
+    card_name:    cardName,
+    card_image:   document.getElementById('depense-card-image').value,
+    set_id:       document.getElementById('depense-set-id').value,
+    set_name:     document.getElementById('depense-set-name').value,
+    set_logo:     document.getElementById('depense-set-logo').value,
+    number:       document.getElementById('depense-number').value,
+    rarity:       document.getElementById('depense-rarity').value,
+    pokemon_name: document.getElementById('depense-pokemon-name').value || cardName,
+    etat:         document.getElementById('depense-etat-select').value,
+    prix:         parseFloat(document.getElementById('depense-prix-input').value) || 0,
+    types:        _getChipGroup('depense-type-chips'),
+    langue:       document.getElementById('depense-langue-select').value,
+    lien_achat:   document.getElementById('depense-lien-input').value.trim(),
+    vendeur_id:   document.getElementById('depense-vendeur-select').value || null,
+  };
+  const editId = modal.dataset.editId;
+  if (editId) {
+    const d = _D.depenses.find(x=>x.id===editId);
+    if (d) { Object.assign(d, data); d.updated_at = Date.now(); }
+    toast('Achat mis à jour !','success');
+  } else {
+    _D.depenses.push({ id:_depenseId(), ...data, created_at:Date.now(), updated_at:Date.now() });
+    toast('Achat enregistré !','success');
+  }
+  saveData(); renderAll(); closeModal('modal-depense');
+}
+
+function deleteDepense(id) {
+  if (!confirm('Supprimer cet achat ?')) return;
+  _D.depenses = _D.depenses.filter(d=>d.id!==id);
+  saveData(); renderAll(); toast('Achat supprimé.','success');
+}
+
+function _openVendeurFromDepense() {
+  _vendeurReturnTo = 'depense';
+  _lastCreatedVendeurId = null;
+  document.getElementById('modal-depense').classList.remove('open');
+  openAddVendeurModal();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ACHETEURS
+// ═══════════════════════════════════════════════════════════════════════════
+function renderAcheteurs() {
+  const grid = document.getElementById('acheteurs-grid');
+  if (!grid) return;
+  const addBtn = grid.querySelector('.add-new-card');
+  if (addBtn) addBtn.remove();
+  grid.innerHTML = '';
+  const mode = _tabViewModes['acheteurs'] || 'grid';
+  grid.className = mode === 'list' ? 'sales-list-wrap' : 'sales-grid';
+
+  let items = [...(_D.acheteurs||[])];
+  if (_acheteurFilter !== 'all') items = items.filter(a => (a.etat||'a_envoyer') === _acheteurFilter);
+  if (_acheteurQuery) { const q = _normalizeStr(_acheteurQuery); items = items.filter(a => _normalizeStr(a.pseudo||'').includes(q)); }
+  items.sort((a,b) => (b.date_achat||'').localeCompare(a.date_achat||''));
+
+  if (!items.length) {
+    grid.innerHTML = `<div class="sales-empty">Aucun acheteur${(_acheteurQuery||_acheteurFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+  } else {
+    items.forEach(a => grid.appendChild(mode === 'list' ? buildAcheteurRow(a) : buildAcheteurCard(a)));
+  }
+  if (addBtn) grid.appendChild(addBtn);
+  renderAcheteursStats();
+}
+
+function renderAcheteursStats() {
+  const el = document.getElementById('acheteurs-stats'); if (!el) return;
+  const all = _D.acheteurs||[];
+  const totalVal = all.reduce((s,a)=>s+acheteurTotal(a.id),0);
+  const nbCards = (_D.ventes||[]).filter(v=>v.acheteur_id).length;
+  const enCours = all.filter(a => (a.etat||'a_envoyer') !== 'arrive').length;
+  el.innerHTML = `
+    <div class="stat-card" style="--accent-color:var(--accent)"><div class="val">${all.length}</div><div class="lbl">Acheteurs</div></div>
+    <div class="stat-card" style="--accent-color:var(--blue)"><div class="val">${nbCards}</div><div class="lbl">Cartes vendues</div></div>
+    <div class="stat-card" style="--accent-color:var(--gold)"><div class="val">${totalVal.toFixed(2)} €</div><div class="lbl">Total encaissé</div></div>
+    <div class="stat-card" style="--accent-color:var(--green)"><div class="val">${enCours}</div><div class="lbl">En cours d'envoi</div></div>`;
+}
+
+function buildAcheteurCard(a) {
+  const ventes = acheteurVentes(a.id);
+  const total  = acheteurTotal(a.id);
+  const st = ACHETEUR_STATUTS.find(s=>s.id===(a.etat||'a_envoyer')) || ACHETEUR_STATUTS[0];
+  const card = document.createElement('div');
+  card.className = 'order-card';
+  card.innerHTML = `
+    <div class="order-card-top">
+      <div class="order-card-avatar">👤</div>
+      <div class="order-card-info">
+        <div class="order-card-name">${a.pseudo}</div>
+        <div class="order-card-meta">${a.date_achat?_fmtDate(a.date_achat):'—'}${a.date_arrivee?' → '+_fmtDate(a.date_arrivee):''}</div>
+        <div class="status-badge ${st.cls}">${st.label}</div>
+      </div>
+      <div class="order-card-actions">
+        <button class="btn btn-icon btn-sm" title="Modifier" onclick="editAcheteur('${a.id}')">${ICON_EDIT}</button>
+        <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteAcheteur('${a.id}')">${ICON_DELETE}</button>
+      </div>
+    </div>
+    <div class="order-card-body">
+      <div class="order-stat-row"><span>${ventes.length} carte${ventes.length>1?'s':''}</span><span class="order-total">${total.toFixed(2)} €</span></div>
+      ${a.lien_vente ? `<a href="${a.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de la vente</a>` : ''}
+      <div class="order-items-list">${ventes.map(v=>_orderItemRowHtml(v,'vente')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
+      <button class="order-add-btn" onclick="openAddVenteModal('${a.id}')">+ Ajouter une carte</button>
+    </div>`;
+  return card;
+}
+
+function buildAcheteurRow(a) {
+  const ventes = acheteurVentes(a.id);
+  const total  = acheteurTotal(a.id);
+  const st = ACHETEUR_STATUTS.find(s=>s.id===(a.etat||'a_envoyer')) || ACHETEUR_STATUTS[0];
+  const uid = `acc-ach-${a.id}`;
+  const row = document.createElement('div');
+  row.className = 'classeur-list-row';
+  row.innerHTML = `
+    <div class="clr-header" onclick="toggleClrAccordion('${uid}', this)">
+      <div class="clr-thumb" style="background:linear-gradient(135deg,${st.color}33,${st.color}55)"><span style="font-size:1.1rem">👤</span></div>
+      <div class="clr-accent-bar" style="background:${st.color}"></div>
+      <div class="clr-info">
+        <div class="clr-name">${a.pseudo} <span class="status-badge ${st.cls}">${st.label}</span></div>
+        <div class="clr-meta">${a.date_achat?_fmtDate(a.date_achat):'—'}${a.date_arrivee?' → '+_fmtDate(a.date_arrivee):''} · ${ventes.length} carte${ventes.length>1?'s':''}</div>
+      </div>
+      <div class="clr-right"><div class="order-total" style="font-size:.92rem">${total.toFixed(2)} €</div></div>
+      <div class="clr-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-icon btn-sm" title="Modifier" onclick="editAcheteur('${a.id}')">${ICON_EDIT}</button>
+        <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteAcheteur('${a.id}')">${ICON_DELETE}</button>
+        <div class="clr-chevron" id="chev-${uid}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+      </div>
+    </div>
+    <div class="clr-body" id="${uid}">
+      ${a.lien_vente ? `<a href="${a.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de la vente</a>` : ''}
+      <div class="order-items-list">${ventes.map(v=>_orderItemRowHtml(v,'vente')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
+      <button class="order-add-btn" onclick="openAddVenteModal('${a.id}')">+ Ajouter une carte</button>
+    </div>`;
+  return row;
+}
+
+function setAcheteurFilter(f, btn) {
+  _acheteurFilter = f;
+  document.querySelectorAll('#acheteurs-filter-bar .booster-filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderAcheteurs();
+}
+function filterAcheteurs(q) { _acheteurQuery = q; renderAcheteurs(); }
+
+function setAcheteurStatusInput(status) {
+  document.getElementById('acheteur-status-input').value = status;
+  document.querySelectorAll('#acheteur-status-select .classeur-status-btn').forEach(b => b.classList.toggle('active', b.dataset.status===status));
+}
+
+function openAddAcheteurModal() {
+  const modal = document.getElementById('modal-acheteur');
+  delete modal.dataset.editId;
+  document.getElementById('modal-acheteur-title').textContent = 'Nouvel acheteur';
+  document.getElementById('acheteur-pseudo-input').value = '';
+  document.getElementById('acheteur-date-achat-input').value = new Date().toISOString().slice(0,10);
+  document.getElementById('acheteur-date-arrivee-input').value = '';
+  document.getElementById('acheteur-lien-input').value = '';
+  setAcheteurStatusInput('a_envoyer');
+  modal.classList.add('open');
+}
+
+function editAcheteur(id) {
+  const a = (_D.acheteurs||[]).find(x=>x.id===id); if (!a) return;
+  const modal = document.getElementById('modal-acheteur');
+  modal.dataset.editId = id;
+  document.getElementById('modal-acheteur-title').textContent = "Modifier l'acheteur";
+  document.getElementById('acheteur-pseudo-input').value = a.pseudo||'';
+  document.getElementById('acheteur-date-achat-input').value = a.date_achat||'';
+  document.getElementById('acheteur-date-arrivee-input').value = a.date_arrivee||'';
+  document.getElementById('acheteur-lien-input').value = a.lien_vente||'';
+  setAcheteurStatusInput(a.etat||'a_envoyer');
+  modal.classList.add('open');
+}
+
+function saveAcheteur() {
+  const modal = document.getElementById('modal-acheteur');
+  const pseudo = document.getElementById('acheteur-pseudo-input').value.trim();
+  if (!pseudo) { toast('Veuillez saisir un pseudo.','error'); return; }
+  const data = {
+    pseudo,
+    date_achat:   document.getElementById('acheteur-date-achat-input').value || '',
+    date_arrivee: document.getElementById('acheteur-date-arrivee-input').value || '',
+    lien_vente:   document.getElementById('acheteur-lien-input').value.trim(),
+    etat:         document.getElementById('acheteur-status-input').value || 'a_envoyer',
+  };
+  const editId = modal.dataset.editId;
+  if (editId) {
+    const a = _D.acheteurs.find(x=>x.id===editId);
+    if (a) { Object.assign(a, data); a.updated_at = Date.now(); }
+    toast('Acheteur mis à jour !','success');
+  } else {
+    const newId = _acheteurId();
+    _D.acheteurs.push({ id:newId, ...data, created_at:Date.now(), updated_at:Date.now() });
+    _lastCreatedAcheteurId = newId;
+    toast('Acheteur ajouté !','success');
+  }
+  saveData(); renderAll(); closeModal('modal-acheteur');
+}
+
+function deleteAcheteur(id) {
+  const linked = acheteurVentes(id).length;
+  const msg = linked ? `Supprimer cet acheteur ? ${linked} vente(s) liée(s) seront détachées (pas supprimées).` : 'Supprimer cet acheteur ?';
+  if (!confirm(msg)) return;
+  _D.acheteurs = _D.acheteurs.filter(a=>a.id!==id);
+  (_D.ventes||[]).forEach(v => { if (v.acheteur_id===id) v.acheteur_id = null; });
+  saveData(); renderAll(); toast('Acheteur supprimé.','success');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VENDEURS
+// ═══════════════════════════════════════════════════════════════════════════
+function renderVendeurs() {
+  const grid = document.getElementById('vendeurs-grid');
+  if (!grid) return;
+  const addBtn = grid.querySelector('.add-new-card');
+  if (addBtn) addBtn.remove();
+  grid.innerHTML = '';
+  const mode = _tabViewModes['vendeurs'] || 'grid';
+  grid.className = mode === 'list' ? 'sales-list-wrap' : 'sales-grid';
+
+  let items = [...(_D.vendeurs||[])];
+  if (_vendeurFilter !== 'all') items = items.filter(v => (v.etat||'a_payer') === _vendeurFilter);
+  if (_vendeurQuery) { const q = _normalizeStr(_vendeurQuery); items = items.filter(v => _normalizeStr(v.pseudo||'').includes(q)); }
+  items.sort((a,b) => (b.date_achat||'').localeCompare(a.date_achat||''));
+
+  if (!items.length) {
+    grid.innerHTML = `<div class="sales-empty">Aucun vendeur${(_vendeurQuery||_vendeurFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+  } else {
+    items.forEach(v => grid.appendChild(mode === 'list' ? buildVendeurRow(v) : buildVendeurCard(v)));
+  }
+  if (addBtn) grid.appendChild(addBtn);
+  renderVendeursStats();
+}
+
+function renderVendeursStats() {
+  const el = document.getElementById('vendeurs-stats'); if (!el) return;
+  const all = _D.vendeurs||[];
+  const totalVal = all.reduce((s,v)=>s+vendeurTotal(v.id),0);
+  const nbCards = (_D.depenses||[]).filter(d=>d.vendeur_id).length;
+  const enCours = all.filter(v => (v.etat||'a_payer') !== 'arrive').length;
+  el.innerHTML = `
+    <div class="stat-card" style="--accent-color:var(--accent)"><div class="val">${all.length}</div><div class="lbl">Vendeurs</div></div>
+    <div class="stat-card" style="--accent-color:var(--blue)"><div class="val">${nbCards}</div><div class="lbl">Cartes achetées</div></div>
+    <div class="stat-card" style="--accent-color:var(--gold)"><div class="val">${totalVal.toFixed(2)} €</div><div class="lbl">Total dépensé</div></div>
+    <div class="stat-card" style="--accent-color:var(--green)"><div class="val">${enCours}</div><div class="lbl">En cours</div></div>`;
+}
+
+function buildVendeurCard(v) {
+  const depenses = vendeurDepenses(v.id);
+  const total    = vendeurTotal(v.id);
+  const st = VENDEUR_STATUTS.find(s=>s.id===(v.etat||'a_payer')) || VENDEUR_STATUTS[0];
+  const card = document.createElement('div');
+  card.className = 'order-card';
+  card.innerHTML = `
+    <div class="order-card-top">
+      <div class="order-card-avatar">🏷️</div>
+      <div class="order-card-info">
+        <div class="order-card-name">${v.pseudo}</div>
+        <div class="order-card-meta">${v.date_achat?_fmtDate(v.date_achat):'—'}${v.date_arrivee?' → '+_fmtDate(v.date_arrivee):''}</div>
+        <div class="status-badge ${st.cls}">${st.label}</div>
+      </div>
+      <div class="order-card-actions">
+        <button class="btn btn-icon btn-sm" title="Modifier" onclick="editVendeur('${v.id}')">${ICON_EDIT}</button>
+        <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteVendeur('${v.id}')">${ICON_DELETE}</button>
+      </div>
+    </div>
+    <div class="order-card-body">
+      <div class="order-stat-row"><span>${depenses.length} carte${depenses.length>1?'s':''}</span><span class="order-total">${total.toFixed(2)} €</span></div>
+      ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de l'achat</a>` : ''}
+      <div class="order-items-list">${depenses.map(d=>_orderItemRowHtml(d,'depense')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
+      <button class="order-add-btn" onclick="openAddDepenseModal('${v.id}')">+ Ajouter une carte</button>
+    </div>`;
+  return card;
+}
+
+function buildVendeurRow(v) {
+  const depenses = vendeurDepenses(v.id);
+  const total    = vendeurTotal(v.id);
+  const st = VENDEUR_STATUTS.find(s=>s.id===(v.etat||'a_payer')) || VENDEUR_STATUTS[0];
+  const uid = `acc-vd-${v.id}`;
+  const row = document.createElement('div');
+  row.className = 'classeur-list-row';
+  row.innerHTML = `
+    <div class="clr-header" onclick="toggleClrAccordion('${uid}', this)">
+      <div class="clr-thumb" style="background:linear-gradient(135deg,${st.color}33,${st.color}55)"><span style="font-size:1.1rem">🏷️</span></div>
+      <div class="clr-accent-bar" style="background:${st.color}"></div>
+      <div class="clr-info">
+        <div class="clr-name">${v.pseudo} <span class="status-badge ${st.cls}">${st.label}</span></div>
+        <div class="clr-meta">${v.date_achat?_fmtDate(v.date_achat):'—'}${v.date_arrivee?' → '+_fmtDate(v.date_arrivee):''} · ${depenses.length} carte${depenses.length>1?'s':''}</div>
+      </div>
+      <div class="clr-right"><div class="order-total" style="font-size:.92rem">${total.toFixed(2)} €</div></div>
+      <div class="clr-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-icon btn-sm" title="Modifier" onclick="editVendeur('${v.id}')">${ICON_EDIT}</button>
+        <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteVendeur('${v.id}')">${ICON_DELETE}</button>
+        <div class="clr-chevron" id="chev-${uid}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+      </div>
+    </div>
+    <div class="clr-body" id="${uid}">
+      ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de l'achat</a>` : ''}
+      <div class="order-items-list">${depenses.map(d=>_orderItemRowHtml(d,'depense')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
+      <button class="order-add-btn" onclick="openAddDepenseModal('${v.id}')">+ Ajouter une carte</button>
+    </div>`;
+  return row;
+}
+
+function setVendeurFilter(f, btn) {
+  _vendeurFilter = f;
+  document.querySelectorAll('#vendeurs-filter-bar .booster-filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderVendeurs();
+}
+function filterVendeurs(q) { _vendeurQuery = q; renderVendeurs(); }
+
+function setVendeurStatusInput(status) {
+  document.getElementById('vendeur-status-input').value = status;
+  document.querySelectorAll('#vendeur-status-select .classeur-status-btn').forEach(b => b.classList.toggle('active', b.dataset.status===status));
+}
+
+function openAddVendeurModal() {
+  const modal = document.getElementById('modal-vendeur');
+  delete modal.dataset.editId;
+  document.getElementById('modal-vendeur-title').textContent = 'Nouveau vendeur';
+  document.getElementById('vendeur-pseudo-input').value = '';
+  document.getElementById('vendeur-date-achat-input').value = new Date().toISOString().slice(0,10);
+  document.getElementById('vendeur-date-arrivee-input').value = '';
+  document.getElementById('vendeur-lien-input').value = '';
+  setVendeurStatusInput('a_payer');
+  modal.classList.add('open');
+}
+
+function editVendeur(id) {
+  const v = (_D.vendeurs||[]).find(x=>x.id===id); if (!v) return;
+  const modal = document.getElementById('modal-vendeur');
+  modal.dataset.editId = id;
+  document.getElementById('modal-vendeur-title').textContent = 'Modifier le vendeur';
+  document.getElementById('vendeur-pseudo-input').value = v.pseudo||'';
+  document.getElementById('vendeur-date-achat-input').value = v.date_achat||'';
+  document.getElementById('vendeur-date-arrivee-input').value = v.date_arrivee||'';
+  document.getElementById('vendeur-lien-input').value = v.lien_vente||'';
+  setVendeurStatusInput(v.etat||'a_payer');
+  modal.classList.add('open');
+}
+
+function saveVendeur() {
+  const modal = document.getElementById('modal-vendeur');
+  const pseudo = document.getElementById('vendeur-pseudo-input').value.trim();
+  if (!pseudo) { toast('Veuillez saisir un pseudo.','error'); return; }
+  const data = {
+    pseudo,
+    date_achat:   document.getElementById('vendeur-date-achat-input').value || '',
+    date_arrivee: document.getElementById('vendeur-date-arrivee-input').value || '',
+    lien_vente:   document.getElementById('vendeur-lien-input').value.trim(),
+    etat:         document.getElementById('vendeur-status-input').value || 'a_payer',
+  };
+  const editId = modal.dataset.editId;
+  if (editId) {
+    const v = _D.vendeurs.find(x=>x.id===editId);
+    if (v) { Object.assign(v, data); v.updated_at = Date.now(); }
+    toast('Vendeur mis à jour !','success');
+  } else {
+    const newId = _vendeurId();
+    _D.vendeurs.push({ id:newId, ...data, created_at:Date.now(), updated_at:Date.now() });
+    _lastCreatedVendeurId = newId;
+    toast('Vendeur ajouté !','success');
+  }
+  saveData(); renderAll(); closeModal('modal-vendeur');
+}
+
+function deleteVendeur(id) {
+  const linked = vendeurDepenses(id).length;
+  const msg = linked ? `Supprimer ce vendeur ? ${linked} achat(s) lié(s) seront détachés (pas supprimés).` : 'Supprimer ce vendeur ?';
+  if (!confirm(msg)) return;
+  _D.vendeurs = _D.vendeurs.filter(v=>v.id!==id);
+  (_D.depenses||[]).forEach(d => { if (d.vendeur_id===id) d.vendeur_id = null; });
+  saveData(); renderAll(); toast('Vendeur supprimé.','success');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SÉLECTEUR "TYPE" (multi-sélection : Normale / Reverse / Holo Cosmos / 1ère édition)
+// ═══════════════════════════════════════════════════════════════════════════
+function _buildChipGroup(containerId, options, selected) {
+  const el = document.getElementById(containerId); if (!el) return;
+  el.innerHTML = options.map(o => `<button type="button" class="chip-toggle-btn ${selected.includes(o.id)?'active':''}" data-value="${o.id}" onclick="_toggleChip(this)">${o.label}</button>`).join('');
+}
+function _toggleChip(btn) { btn.classList.toggle('active'); }
+function _setChipGroup(containerId, selected) { _buildChipGroup(containerId, VENTE_TYPES, selected||[]); }
+function _getChipGroup(containerId) {
+  return [...document.querySelectorAll(`#${containerId} .chip-toggle-btn.active`)].map(b=>b.dataset.value);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SÉLECTEUR DE CARTE (Choix du Pokémon → Choix de la carte)
+//  Recherche directement dans la table Supabase "cards" (déjà utilisée par
+//  le Pokédex) : étape 1 = noms distincts correspondant à la recherche,
+//  étape 2 = toutes les cartes portant ce nom exact (une par édition/set).
+// ═══════════════════════════════════════════════════════════════════════════
+let _cardPickerTarget = null;      // 'vente' | 'depense'
+let _cardPickerTimer = null;
+let _cardPickerPokemonName = null;
+let _cardPickerCards = [];
+
+function openCardPicker(target) {
+  _cardPickerTarget = target;
+  _cardPickerPokemonName = null;
+  _cardPickerCards = [];
+  const search = document.getElementById('cardpicker-search');
+  search.value = '';
+  document.getElementById('cardpicker-step1').innerHTML = '<div class="sales-empty">Tapez au moins 2 lettres pour rechercher…</div>';
+  document.getElementById('cardpicker-step1').style.display = '';
+  document.getElementById('cardpicker-step2').style.display = 'none';
+  document.getElementById('modal-card-picker').classList.add('open');
+  setTimeout(() => search.focus(), 60);
+}
+
+function _cardPickerSearch(q) {
+  clearTimeout(_cardPickerTimer);
+  const query = q.trim();
+  if (query.length < 2) {
+    document.getElementById('cardpicker-step1').innerHTML = '<div class="sales-empty">Tapez au moins 2 lettres pour rechercher…</div>';
+    return;
+  }
+  _cardPickerTimer = setTimeout(() => _doCardPickerSearch(query), 300);
+}
+
+async function _doCardPickerSearch(query) {
+  const el = document.getElementById('cardpicker-step1');
+  el.innerHTML = '<div class="sales-empty">Recherche…</div>';
+  try {
+    const url = `${SB_URL}/rest/v1/cards?name=ilike.*${encodeURIComponent(query)}*&select=name&order=name.asc&limit=300`;
+    const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const rows = await res.json();
+    const names = [...new Set(rows.map(r=>r.name))].sort((a,b)=>a.localeCompare(b,'fr'));
+    if (!names.length) { el.innerHTML = '<div class="sales-empty">Aucun résultat.</div>'; return; }
+    el.innerHTML = names.map(n => `<div class="cardpicker-pokemon-item" onclick="_cardPickerSelectPokemon('${_jsEscape(n)}')">${n}</div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="sales-empty">Erreur : ${e.message}</div>`;
+  }
+}
+
+async function _cardPickerSelectPokemon(name) {
+  _cardPickerPokemonName = name;
+  document.getElementById('cardpicker-step1').style.display = 'none';
+  document.getElementById('cardpicker-step2').style.display = '';
+  document.getElementById('cardpicker-pokemon-label').textContent = name;
+  const grid = document.getElementById('cardpicker-cards');
+  grid.innerHTML = '<div class="sales-empty">Chargement…</div>';
+  try {
+    const url = `${SB_URL}/rest/v1/cards?name=eq.${encodeURIComponent(name)}&order=set_id.asc,number.asc&limit=300`;
+    const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const cards = await res.json();
+    _cardPickerCards = cards;
+    if (!cards.length) { grid.innerHTML = '<div class="sales-empty">Aucune carte trouvée.</div>'; return; }
+    grid.innerHTML = cards.map((c,i) => `
+      <div class="cardpicker-card-item" onclick="_cardPickerSelectCard(${i})">
+        <div class="cardpicker-card-thumb">${c.image_url ? `<img src="${c.image_url}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+        <div class="cardpicker-card-info">
+          <div class="cardpicker-card-set">${c.set_name||c.set_id||''}</div>
+          <div class="cardpicker-card-num">N° ${c.number||'?'}${c.rarity?' · '+c.rarity:''}</div>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    grid.innerHTML = `<div class="sales-empty">Erreur : ${e.message}</div>`;
+  }
+}
+
+function _cardPickerBackToStep1() {
+  document.getElementById('cardpicker-step1').style.display = '';
+  document.getElementById('cardpicker-step2').style.display = 'none';
+}
+
+function _cardPickerSelectCard(idx) {
+  const c = _cardPickerCards[idx]; if (!c) return;
+  const p = _cardPickerTarget; if (!p) return;
+  document.getElementById(`${p}-card-id`).value = c.id||'';
+  document.getElementById(`${p}-card-name`).value = c.name||'';
+  document.getElementById(`${p}-card-image`).value = c.image_url||'';
+  document.getElementById(`${p}-set-id`).value = c.set_id||'';
+  document.getElementById(`${p}-set-name`).value = c.set_name||'';
+  document.getElementById(`${p}-set-logo`).value = c.set_logo||'';
+  document.getElementById(`${p}-number`).value = c.number||'';
+  document.getElementById(`${p}-rarity`).value = c.rarity||'';
+  document.getElementById(`${p}-pokemon-name`).value = _cardPickerPokemonName || c.name || '';
+  _renderCardPreview(p);
+  closeModal('modal-card-picker');
+}
+
+function _renderCardPreview(prefix) {
+  const wrap = document.getElementById(`${prefix}-card-preview`); if (!wrap) return;
+  const name = document.getElementById(`${prefix}-card-name`).value;
+  if (!name) { wrap.innerHTML = '<div class="sales-empty" style="padding:8px 0">Aucune carte sélectionnée.</div>'; return; }
+  const img = document.getElementById(`${prefix}-card-image`).value;
+  const setName = document.getElementById(`${prefix}-set-name`).value;
+  const number = document.getElementById(`${prefix}-number`).value;
+  wrap.innerHTML = `
+    <div class="cardpicker-selected-preview">
+      <div class="sale-card-thumb">${img ? `<img src="${img}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+      <div class="sale-card-info">
+        <div class="sale-card-name">${name}</div>
+        <div class="sale-card-meta">${setName||''}${number?' · N°'+number:''}</div>
+      </div>
+    </div>`;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  POKÉDEX — v2 (noms FR, talens FR, types FR, formes spéciales, séparateurs)

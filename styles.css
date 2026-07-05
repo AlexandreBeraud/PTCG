@@ -2,7 +2,7 @@
    PTCG Collection — styles.css
 ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Variables & Reset ─────────────────────────────────────────────────── */
+/* ── Variables & Reset ──────────────────────────────────────────────────── */
 :root {
   --bg:        #0f1117;
   --bg2:       #181c26;
@@ -1617,3 +1617,110 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   color: #fff; font-size: .74rem; padding: 3px 6px; outline: none; cursor: pointer;
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════
+   VENTES / ACHETEURS / DÉPENSES / VENDEURS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.sales-search-input {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 12px; font-size: .8rem; color: var(--text); min-width: 220px;
+}
+.sales-search-input:focus { border-color: var(--accent); }
+
+.sales-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.sales-list-wrap { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.sales-empty { color: var(--text2); font-size: .82rem; padding: 28px 8px; text-align: center; grid-column: 1/-1; }
+
+/* Cartes Vente / Dépense (item unique) */
+.sale-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
+.sale-card:hover { border-color: var(--text3); }
+.sale-card-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.sale-card-thumb { width: 40px; height: 56px; border-radius: 5px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); font-size: 1.3rem; }
+.sale-card-info { flex: 1; min-width: 0; }
+.sale-card-name { font-size: .86rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale-card-meta { font-size: .68rem; color: var(--text2); margin-top: 2px; }
+.sale-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.sale-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.sale-row { display: flex; align-items: center; justify-content: space-between; font-size: .76rem; }
+.sale-row .lbl { color: var(--text2); }
+.sale-row .val.price { color: var(--green); font-weight: 700; }
+.sale-types { display: flex; flex-wrap: wrap; gap: 4px; }
+.type-chip { font-size: .62rem; font-weight: 600; background: rgba(74,158,255,.14); color: var(--blue); border: 1px solid rgba(74,158,255,.3); border-radius: 10px; padding: 2px 8px; }
+.type-chip.sm { padding: 1px 6px; }
+.sale-acheteur { font-size: .74rem; color: var(--text); background: var(--bg3); border-radius: var(--radius-sm); padding: 5px 8px; }
+.sale-acheteur.unlinked { color: var(--text3); font-style: italic; }
+.sale-link { font-size: .72rem; color: var(--blue); display: inline-flex; align-items: center; gap: 4px; }
+.sale-link:hover { text-decoration: underline; }
+
+/* Lignes Vente / Dépense (mode liste) */
+.sale-list-row { display: flex; align-items: center; gap: 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; transition: border-color .15s; }
+.sale-list-row:hover { border-color: var(--text3); }
+.sale-list-thumb { width: 36px; height: 50px; border-radius: 5px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); font-size: 1.1rem; }
+.sale-list-main { flex: 1; min-width: 0; }
+.sale-list-name { font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale-list-meta { font-size: .68rem; color: var(--text2); margin-top: 2px; }
+.sale-list-price { font-size: .82rem; font-weight: 700; color: var(--green); min-width: 70px; text-align: right; flex-shrink: 0; }
+.sale-list-acheteur { font-size: .72rem; color: var(--text); min-width: 130px; text-align: right; flex-shrink: 0; }
+.sale-list-acheteur.unlinked { color: var(--text3); font-style: italic; }
+.sale-list-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+/* Cartes commande Acheteur / Vendeur (grid) */
+.order-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
+.order-card:hover { border-color: var(--text3); }
+.order-card-top { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border-bottom: 1px solid var(--border); }
+.order-card-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--bg3); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+.order-card-info { flex: 1; min-width: 0; }
+.order-card-name { font-size: .9rem; font-weight: 700; }
+.order-card-meta { font-size: .68rem; color: var(--text2); margin-top: 2px; }
+.order-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.order-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.order-stat-row { display: flex; align-items: center; justify-content: space-between; font-size: .8rem; }
+.order-total { font-weight: 800; color: var(--gold); }
+.order-items-list { display: flex; flex-direction: column; gap: 6px; }
+.order-item-row { display: flex; align-items: center; gap: 8px; background: var(--bg3); border-radius: var(--radius-sm); padding: 6px 8px; }
+.order-item-thumb { width: 26px; height: 36px; border-radius: 4px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); font-size: .9rem; }
+.order-item-info { flex: 1; min-width: 0; }
+.order-item-name { font-size: .74rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order-item-meta { font-size: .64rem; color: var(--text2); }
+.order-item-price { font-size: .74rem; font-weight: 700; color: var(--green); flex-shrink: 0; }
+.order-item-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.order-add-btn { font-size: .72rem; color: var(--accent); text-align: left; padding: 4px 0; }
+.order-add-btn:hover { text-decoration: underline; }
+
+/* Badges de statut (Acheteurs / Vendeurs) */
+.status-badge { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .02em; color: #fff; border-radius: 10px; padding: 2px 8px; margin-top: 4px; }
+.status-badge.status-a-envoyer { background: #f97316; }
+.status-badge.status-envoye    { background: #4a9eff; }
+.status-badge.status-arrive    { background: #22c55e; }
+.status-badge.status-a-payer   { background: #f97316; }
+.status-badge.status-paye      { background: #4a9eff; }
+
+/* Réutilise .classeur-status-btn pour les nouveaux statuts */
+.classeur-status-btn.active[data-status="a_envoyer"] { background: #f97316; border-color: #f97316; color: #fff; }
+.classeur-status-btn.active[data-status="envoye"]    { background: #4a9eff; border-color: #4a9eff; color: #fff; }
+.classeur-status-btn.active[data-status="a_payer"]   { background: #f97316; border-color: #f97316; color: #fff; }
+.classeur-status-btn.active[data-status="paye"]      { background: #4a9eff; border-color: #4a9eff; color: #fff; }
+.classeur-status-btn.active[data-status="arrive"]    { background: #22c55e; border-color: #22c55e; color: #fff; }
+
+/* Sélecteur "Type" multi-choix (Normale / Reverse / Holo Cosmos / 1ère édition) */
+.chip-toggle-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-toggle-btn { font-size: .74rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); transition: all .15s; }
+.chip-toggle-btn:hover { border-color: var(--text3); color: var(--text); }
+.chip-toggle-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Sélecteur de carte (modal partagée Ventes / Dépenses) */
+.cardpicker-preview-wrap { min-height: 8px; }
+.cardpicker-selected-preview { display: flex; align-items: center; gap: 10px; }
+.cardpicker-results { max-height: 260px; overflow-y: auto; margin-bottom: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.cardpicker-pokemon-item { padding: 9px 12px; font-size: .82rem; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .15s; }
+.cardpicker-pokemon-item:last-child { border-bottom: none; }
+.cardpicker-pokemon-item:hover { background: var(--bg3); }
+.cardpicker-pokemon-label { font-size: .82rem; font-weight: 700; margin: 10px 0 8px; }
+.cardpicker-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 340px; overflow-y: auto; padding-right: 2px; }
+.cardpicker-card-item { display: flex; flex-direction: column; gap: 6px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; cursor: pointer; transition: border-color .15s; }
+.cardpicker-card-item:hover { border-color: var(--accent); }
+.cardpicker-card-thumb { width: 100%; aspect-ratio: 5/7; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--bg); font-size: 1.6rem; }
+.cardpicker-card-info { text-align: center; }
+.cardpicker-card-set { font-size: .68rem; font-weight: 600; }
+.cardpicker-card-num { font-size: .62rem; color: var(--text2); }
