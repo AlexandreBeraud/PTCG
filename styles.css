@@ -1724,3 +1724,31 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .cardpicker-card-info { text-align: center; }
 .cardpicker-card-set { font-size: .68rem; font-weight: 600; }
 .cardpicker-card-num { font-size: .62rem; color: var(--text2); }
+
+/* ── Ajouts feedback round 2 (quantité, statut vente, sélecteur Pokédex) ── */
+.settings-field-row { display: grid; grid-template-columns: 1fr 100px; gap: 10px; }
+.settings-field-row .settings-field { margin-bottom: 12px; }
+
+.qty-badge { font-size: .68rem; font-weight: 700; color: var(--gold); background: rgba(255,209,102,.14); border-radius: 8px; padding: 0 6px; }
+
+.status-badge.status-a-mettre       { background: #5a6178; }
+.status-badge.status-en-vente-actif { background: #4a9eff; }
+.status-badge.status-vendue         { background: #22c55e; }
+.classeur-status-btn.active[data-status="a_mettre"] { background: #5a6178; border-color: #5a6178; color: #fff; }
+.classeur-status-btn.active[data-status="en_vente"] { background: #4a9eff; border-color: #4a9eff; color: #fff; }
+
+/* Bascule "voir les cartes" dans les cartes acheteur/vendeur en mode grille */
+.order-toggle-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; cursor: pointer; padding: 2px 0; user-select: none; }
+.order-toggle-row .order-total { margin-left: auto; }
+.order-chevron { color: var(--text3); display: flex; align-items: center; transition: transform .2s; }
+.order-chevron.open { transform: rotate(180deg); }
+
+/* Étape 1 du sélecteur de carte : liste de Pokémon (sprite + nom FR + numéro) */
+.cardpicker-results { max-height: 320px; }
+.cardpicker-poke-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: .82rem; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .15s; }
+.cardpicker-poke-item:last-child { border-bottom: none; }
+.cardpicker-poke-item:hover { background: var(--bg3); }
+.cardpicker-poke-sprite { width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); border-radius: 50%; overflow: hidden; }
+.cardpicker-poke-sprite img { width: 100%; height: 100%; object-fit: contain; }
+.cardpicker-poke-name { flex: 1; font-weight: 600; }
+.cardpicker-poke-num { font-size: .7rem; color: var(--text3); }

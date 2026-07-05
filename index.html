@@ -209,8 +209,9 @@
       <div class="stats-row" id="ventes-stats"></div>
       <div class="booster-filter-bar" id="ventes-filter-bar">
         <button class="booster-filter-btn active" onclick="setVenteFilter('all',this)">Toutes</button>
-        <button class="booster-filter-btn" onclick="setVenteFilter('unlinked',this)">En vente</button>
-        <button class="booster-filter-btn" onclick="setVenteFilter('linked',this)">Vendues</button>
+        <button class="booster-filter-btn" onclick="setVenteFilter('a_mettre',this)">À mettre en vente</button>
+        <button class="booster-filter-btn" onclick="setVenteFilter('en_vente',this)">En vente</button>
+        <button class="booster-filter-btn" onclick="setVenteFilter('vendue',this)">Vendues</button>
       </div>
       <div class="sales-grid" id="ventes-grid">
         <button class="add-new-card" onclick="openAddVenteModal()">
@@ -779,8 +780,12 @@
         <option>Good</option><option>Light Played</option><option>Poor</option>
       </select>
     </div>
-    <div class="settings-field"><label>Prix (€)</label>
-      <input type="number" id="vente-prix-input" step="0.01" min="0" placeholder="0.00"></div>
+    <div class="settings-field-row">
+      <div class="settings-field"><label>Prix unitaire (€)</label>
+        <input type="number" id="vente-prix-input" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="settings-field"><label>Quantité</label>
+        <input type="number" id="vente-qty-input" step="1" min="1" value="1"></div>
+    </div>
     <div class="settings-field"><label>Type</label>
       <div class="chip-toggle-group" id="vente-type-chips"></div>
     </div>
@@ -791,11 +796,19 @@
         <option>Coréen</option><option>Chinois</option>
       </select>
     </div>
+    <div class="settings-field"><label>Statut</label>
+      <div class="classeur-status-select" id="vente-statut-select">
+        <div class="classeur-status-btn" data-status="a_mettre" onclick="setVenteStatusInput('a_mettre')">À mettre en vente</div>
+        <div class="classeur-status-btn" data-status="en_vente" onclick="setVenteStatusInput('en_vente')">En vente</div>
+      </div>
+      <input type="hidden" id="vente-statut-input" value="a_mettre">
+      <p class="form-hint" style="margin-top:6px">Devient automatiquement « Vendue » dès qu'un acheteur est rattaché ci-dessous.</p>
+    </div>
     <div class="settings-field"><label>Lien de la vente</label>
       <input type="url" id="vente-lien-input" placeholder="https://cardmarket.com/…"></div>
     <div class="settings-field"><label>Acheteur</label>
       <div style="display:flex;gap:6px">
-        <select id="vente-acheteur-select" style="flex:1"></select>
+        <select id="vente-acheteur-select" style="flex:1" onchange="_onVenteAcheteurChange(this.value)"></select>
         <button type="button" class="btn btn-secondary btn-sm" onclick="_openAcheteurFromVente()">+ Nouveau</button>
       </div>
     </div>
@@ -830,8 +843,12 @@
         <option>Good</option><option>Light Played</option><option>Poor</option>
       </select>
     </div>
-    <div class="settings-field"><label>Prix (€)</label>
-      <input type="number" id="depense-prix-input" step="0.01" min="0" placeholder="0.00"></div>
+    <div class="settings-field-row">
+      <div class="settings-field"><label>Prix unitaire (€)</label>
+        <input type="number" id="depense-prix-input" step="0.01" min="0" placeholder="0.00"></div>
+      <div class="settings-field"><label>Quantité</label>
+        <input type="number" id="depense-qty-input" step="1" min="1" value="1"></div>
+    </div>
     <div class="settings-field"><label>Type</label>
       <div class="chip-toggle-group" id="depense-type-chips"></div>
     </div>
@@ -846,7 +863,7 @@
       <input type="url" id="depense-lien-input" placeholder="https://cardmarket.com/…"></div>
     <div class="settings-field"><label>Vendeur</label>
       <div style="display:flex;gap:6px">
-        <select id="depense-vendeur-select" style="flex:1"></select>
+        <select id="depense-vendeur-select" style="flex:1" onchange="_onDepenseVendeurChange(this.value)"></select>
         <button type="button" class="btn btn-secondary btn-sm" onclick="_openVendeurFromDepense()">+ Nouveau</button>
       </div>
     </div>

@@ -3397,6 +3397,18 @@ const VENDEUR_STATUTS = [
   { id:'paye',    label:'Payé',    cls:'status-paye',    color:'#4a9eff' },
   { id:'arrive',  label:'Arrivé',  cls:'status-arrive',  color:'#22c55e' },
 ];
+// Statut d'une vente non liée à un acheteur : 'a_mettre' (à préparer/lister sur
+// Cardmarket) ou 'en_vente' (déjà en ligne). Dès qu'un acheteur est rattaché,
+// la vente est considérée "vendue" quel que soit ce champ (voir venteStatusInfo).
+const VENTE_STATUTS = [
+  { id:'a_mettre', label:'À mettre en vente', cls:'status-a-mettre',       color:'#8a93b0' },
+  { id:'en_vente', label:'En vente',          cls:'status-en-vente-actif', color:'#4a9eff' },
+];
+const VENTE_STATUT_VENDUE = { id:'vendue', label:'Vendue', cls:'status-vendue', color:'#22c55e' };
+function venteStatusInfo(v) {
+  if (v.acheteur_id) return VENTE_STATUT_VENDUE;
+  return VENTE_STATUTS.find(s => s.id === (v.statut||'a_mettre')) || VENTE_STATUTS[0];
+}
 
 const ICON_EDIT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
 const ICON_DELETE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>';
@@ -3418,28 +3430,40 @@ function _fmtDate(iso) {
 }
 
 // ── Agrégats ─────────────────────────────────────────────────────────────
+// Prix total d'une ligne (vente ou dépense) = prix unitaire × quantité.
+function _lineTotal(item) { return (parseFloat(item.prix)||0) * (parseInt(item.qty,10)||1); }
+
 function acheteurVentes(acheteurId) { return (_D.ventes||[]).filter(v => v.acheteur_id === acheteurId); }
-function acheteurTotal(acheteurId)  { return acheteurVentes(acheteurId).reduce((s,v)=>s+(parseFloat(v.prix)||0),0); }
+function acheteurTotal(acheteurId)  { return acheteurVentes(acheteurId).reduce((s,v)=>s+_lineTotal(v),0); }
 function vendeurDepenses(vendeurId) { return (_D.depenses||[]).filter(d => d.vendeur_id === vendeurId); }
-function vendeurTotal(vendeurId)    { return vendeurDepenses(vendeurId).reduce((s,d)=>s+(parseFloat(d.prix)||0),0); }
+function vendeurTotal(vendeurId)    { return vendeurDepenses(vendeurId).reduce((s,d)=>s+_lineTotal(d),0); }
 
 // ── État des filtres/recherche ──────────────────────────────────────────
 let _venteFilter = 'all', _depenseFilter = 'all', _acheteurFilter = 'all', _vendeurFilter = 'all';
 let _venteQuery = '', _depenseQuery = '', _acheteurQuery = '', _vendeurQuery = '';
 let _acheteurReturnTo = null, _vendeurReturnTo = null;
 let _lastCreatedAcheteurId = null, _lastCreatedVendeurId = null;
+// Ids d'acheteurs/vendeurs actuellement "dépliés" (liste des cartes visible).
+let _orderExpandedAcheteurs = new Set();
+let _orderExpandedVendeurs  = new Set();
+function _toggleOrderExpand(kind, id) {
+  const set = kind === 'acheteur' ? _orderExpandedAcheteurs : _orderExpandedVendeurs;
+  if (set.has(id)) set.delete(id); else set.add(id);
+  if (kind === 'acheteur') renderAcheteurs(); else renderVendeurs();
+}
 
 // ── Item row (utilisé dans les cartes Acheteur/Vendeur) ─────────────────
 function _orderItemRowHtml(item, kind) {
   const editFn = kind === 'vente' ? 'editVente' : 'editDepense';
   const delFn  = kind === 'vente' ? 'deleteVente' : 'deleteDepense';
+  const qty = parseInt(item.qty,10) || 1;
   return `<div class="order-item-row">
     <div class="order-item-thumb">${item.card_image ? `<img src="${item.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
     <div class="order-item-info">
-      <div class="order-item-name">${item.card_name || item.pokemon_name || '—'}</div>
+      <div class="order-item-name">${item.card_name || item.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
       <div class="order-item-meta">${item.set_name||''}${item.number?' · N°'+item.number:''} · ${item.etat||''}</div>
     </div>
-    <div class="order-item-price">${(parseFloat(item.prix)||0).toFixed(2)} €</div>
+    <div class="order-item-price">${_lineTotal(item).toFixed(2)} €</div>
     <div class="order-item-actions">
       <button class="btn btn-icon btn-sm" title="Modifier" onclick="${editFn}('${item.id}')">${ICON_EDIT}</button>
       <button class="btn btn-icon btn-sm btn-danger" title="Retirer" onclick="${delFn}('${item.id}')">${ICON_DELETE}</button>
@@ -3460,8 +3484,7 @@ function renderVentes() {
   grid.className = mode === 'list' ? 'sales-list-wrap' : 'sales-grid';
 
   let items = [...(_D.ventes||[])];
-  if (_venteFilter === 'unlinked') items = items.filter(v => !v.acheteur_id);
-  if (_venteFilter === 'linked')   items = items.filter(v => !!v.acheteur_id);
+  if (_venteFilter !== 'all') items = items.filter(v => venteStatusInfo(v).id === _venteFilter);
   if (_venteQuery) {
     const q = _normalizeStr(_venteQuery);
     items = items.filter(v => _normalizeStr(v.card_name||'').includes(q) || _normalizeStr(v.pokemon_name||'').includes(q));
@@ -3480,18 +3503,22 @@ function renderVentes() {
 function renderVentesStats() {
   const el = document.getElementById('ventes-stats'); if (!el) return;
   const all = _D.ventes||[];
-  const linked   = all.filter(v => v.acheteur_id);
-  const unlinked = all.filter(v => !v.acheteur_id);
-  const sum = arr => arr.reduce((s,v)=>s+(parseFloat(v.prix)||0),0);
+  const aMettre = all.filter(v => venteStatusInfo(v).id === 'a_mettre');
+  const enVente = all.filter(v => venteStatusInfo(v).id === 'en_vente');
+  const vendues = all.filter(v => venteStatusInfo(v).id === 'vendue');
+  const sum = arr => arr.reduce((s,v)=>s+_lineTotal(v),0);
   el.innerHTML = `
     <div class="stat-card" style="--accent-color:var(--accent)"><div class="val">${all.length}</div><div class="lbl">Cartes au total</div></div>
-    <div class="stat-card" style="--accent-color:var(--blue)"><div class="val">${unlinked.length}</div><div class="lbl">En vente</div><div class="sub">${sum(unlinked).toFixed(2)} €</div></div>
-    <div class="stat-card" style="--accent-color:var(--green)"><div class="val">${linked.length}</div><div class="lbl">Vendues</div><div class="sub">${sum(linked).toFixed(2)} €</div></div>
+    <div class="stat-card" style="--accent-color:var(--text2)"><div class="val">${aMettre.length}</div><div class="lbl">À mettre en vente</div></div>
+    <div class="stat-card" style="--accent-color:var(--blue)"><div class="val">${enVente.length}</div><div class="lbl">En vente</div><div class="sub">${sum(enVente).toFixed(2)} €</div></div>
+    <div class="stat-card" style="--accent-color:var(--green)"><div class="val">${vendues.length}</div><div class="lbl">Vendues</div><div class="sub">${sum(vendues).toFixed(2)} €</div></div>
     <div class="stat-card" style="--accent-color:var(--gold)"><div class="val">${sum(all).toFixed(2)} €</div><div class="lbl">Valeur totale</div></div>`;
 }
 
 function buildVenteCard(v) {
   const acheteur = v.acheteur_id ? (_D.acheteurs||[]).find(a=>a.id===v.acheteur_id) : null;
+  const st = venteStatusInfo(v);
+  const qty = parseInt(v.qty,10) || 1;
   const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
   const card = document.createElement('div');
   card.className = 'sale-card';
@@ -3499,8 +3526,9 @@ function buildVenteCard(v) {
     <div class="sale-card-top">
       <div class="sale-card-thumb">${v.card_image ? `<img src="${v.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
       <div class="sale-card-info">
-        <div class="sale-card-name">${v.card_name || v.pokemon_name || '—'}</div>
+        <div class="sale-card-name">${v.card_name || v.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
         <div class="sale-card-meta">${v.set_name||''}${v.number?' · N°'+v.number:''}</div>
+        <div class="status-badge ${st.cls}">${st.label}</div>
       </div>
       <div class="sale-card-actions">
         <button class="btn btn-icon btn-sm" title="Modifier" onclick="editVente('${v.id}')">${ICON_EDIT}</button>
@@ -3509,7 +3537,7 @@ function buildVenteCard(v) {
     </div>
     <div class="sale-card-body">
       <div class="sale-row"><span class="lbl">État</span><span class="val">${v.etat||'—'}</span></div>
-      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(v.prix)||0).toFixed(2)} €</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${_lineTotal(v).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
       ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${v.langue||'—'}</span></div>
       <div class="sale-acheteur ${acheteur ? '' : 'unlinked'}">${acheteur ? '👤 '+acheteur.pseudo : '— Pas encore vendu —'}</div>
@@ -3520,17 +3548,20 @@ function buildVenteCard(v) {
 
 function buildVenteRow(v) {
   const acheteur = v.acheteur_id ? (_D.acheteurs||[]).find(a=>a.id===v.acheteur_id) : null;
+  const st = venteStatusInfo(v);
+  const qty = parseInt(v.qty,10) || 1;
   const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
   const row = document.createElement('div');
   row.className = 'sale-list-row';
   row.innerHTML = `
     <div class="sale-list-thumb">${v.card_image ? `<img src="${v.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
     <div class="sale-list-main">
-      <div class="sale-list-name">${v.card_name || v.pokemon_name || '—'}</div>
+      <div class="sale-list-name">${v.card_name || v.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
       <div class="sale-list-meta">${v.set_name||''}${v.number?' · N°'+v.number:''} · ${v.etat||'—'} · ${v.langue||'—'}</div>
+      <div class="status-badge ${st.cls}">${st.label}</div>
       ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
     </div>
-    <div class="sale-list-price">${(parseFloat(v.prix)||0).toFixed(2)} €</div>
+    <div class="sale-list-price">${_lineTotal(v).toFixed(2)} €</div>
     <div class="sale-list-acheteur ${acheteur ? '' : 'unlinked'}">${acheteur ? '👤 '+acheteur.pseudo : '— Non vendu —'}</div>
     <div class="sale-list-actions">
       ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="btn btn-icon btn-sm" title="Lien">${ICON_LINK}</a>` : ''}
@@ -3555,6 +3586,20 @@ function populateAcheteurSelect(selected) {
   sel.innerHTML = '<option value="">— Pas encore vendu —</option>' + opts;
 }
 
+// Auto-complète le lien de la vente avec celui de l'acheteur choisi, seulement
+// si le champ est encore vide (ne jamais écraser une saisie manuelle).
+function _onVenteAcheteurChange(acheteurId) {
+  if (!acheteurId) return;
+  const a = (_D.acheteurs||[]).find(x=>x.id===acheteurId);
+  const lienInput = document.getElementById('vente-lien-input');
+  if (a && a.lien_vente && lienInput && !lienInput.value.trim()) lienInput.value = a.lien_vente;
+}
+
+function setVenteStatusInput(status) {
+  document.getElementById('vente-statut-input').value = status;
+  document.querySelectorAll('#vente-statut-select .classeur-status-btn').forEach(b => b.classList.toggle('active', b.dataset.status===status));
+}
+
 function openAddVenteModal(acheteurId) {
   const modal = document.getElementById('modal-vente');
   delete modal.dataset.editId;
@@ -3565,10 +3610,13 @@ function openAddVenteModal(acheteurId) {
   _renderCardPreview('vente');
   document.getElementById('vente-etat-select').value = 'Near Mint';
   document.getElementById('vente-prix-input').value = '';
+  document.getElementById('vente-qty-input').value = 1;
   document.getElementById('vente-langue-select').value = 'Français';
   document.getElementById('vente-lien-input').value = '';
   _setChipGroup('vente-type-chips', []);
+  setVenteStatusInput('a_mettre');
   populateAcheteurSelect(acheteurId || '');
+  if (acheteurId) _onVenteAcheteurChange(acheteurId);
   modal.classList.add('open');
 }
 
@@ -3589,9 +3637,11 @@ function editVente(id) {
   _renderCardPreview('vente');
   document.getElementById('vente-etat-select').value = v.etat||'Near Mint';
   document.getElementById('vente-prix-input').value = v.prix||'';
+  document.getElementById('vente-qty-input').value = parseInt(v.qty,10) || 1;
   document.getElementById('vente-langue-select').value = v.langue||'Français';
   document.getElementById('vente-lien-input').value = v.lien_vente||'';
   _setChipGroup('vente-type-chips', v.types||[]);
+  setVenteStatusInput(v.statut||'a_mettre');
   populateAcheteurSelect(v.acheteur_id||'');
   modal.classList.add('open');
 }
@@ -3612,9 +3662,11 @@ function saveVente() {
     pokemon_name: document.getElementById('vente-pokemon-name').value || cardName,
     etat:         document.getElementById('vente-etat-select').value,
     prix:         parseFloat(document.getElementById('vente-prix-input').value) || 0,
+    qty:          Math.max(1, parseInt(document.getElementById('vente-qty-input').value,10) || 1),
     types:        _getChipGroup('vente-type-chips'),
     langue:       document.getElementById('vente-langue-select').value,
     lien_vente:   document.getElementById('vente-lien-input').value.trim(),
+    statut:       document.getElementById('vente-statut-input').value || 'a_mettre',
     acheteur_id:  document.getElementById('vente-acheteur-select').value || null,
   };
   const editId = modal.dataset.editId;
@@ -3677,7 +3729,7 @@ function renderDepensesStats() {
   const all = _D.depenses||[];
   const linked   = all.filter(d => d.vendeur_id);
   const unlinked = all.filter(d => !d.vendeur_id);
-  const sum = arr => arr.reduce((s,d)=>s+(parseFloat(d.prix)||0),0);
+  const sum = arr => arr.reduce((s,d)=>s+_lineTotal(d),0);
   el.innerHTML = `
     <div class="stat-card" style="--accent-color:var(--accent)"><div class="val">${all.length}</div><div class="lbl">Cartes au total</div></div>
     <div class="stat-card" style="--accent-color:var(--blue)"><div class="val">${unlinked.length}</div><div class="lbl">Sans vendeur</div><div class="sub">${sum(unlinked).toFixed(2)} €</div></div>
@@ -3687,6 +3739,7 @@ function renderDepensesStats() {
 
 function buildDepenseCard(d) {
   const vendeur = d.vendeur_id ? (_D.vendeurs||[]).find(x=>x.id===d.vendeur_id) : null;
+  const qty = parseInt(d.qty,10) || 1;
   const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
   const card = document.createElement('div');
   card.className = 'sale-card';
@@ -3694,7 +3747,7 @@ function buildDepenseCard(d) {
     <div class="sale-card-top">
       <div class="sale-card-thumb">${d.card_image ? `<img src="${d.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
       <div class="sale-card-info">
-        <div class="sale-card-name">${d.card_name || d.pokemon_name || '—'}</div>
+        <div class="sale-card-name">${d.card_name || d.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
         <div class="sale-card-meta">${d.set_name||''}${d.number?' · N°'+d.number:''}</div>
       </div>
       <div class="sale-card-actions">
@@ -3704,7 +3757,7 @@ function buildDepenseCard(d) {
     </div>
     <div class="sale-card-body">
       <div class="sale-row"><span class="lbl">État</span><span class="val">${d.etat||'—'}</span></div>
-      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(d.prix)||0).toFixed(2)} €</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${_lineTotal(d).toFixed(2)} €</span></div>
       ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${d.langue||'—'}</span></div>
       <div class="sale-acheteur ${vendeur ? '' : 'unlinked'}">${vendeur ? '🏷️ '+vendeur.pseudo : '— Aucun vendeur —'}</div>
@@ -3715,17 +3768,18 @@ function buildDepenseCard(d) {
 
 function buildDepenseRow(d) {
   const vendeur = d.vendeur_id ? (_D.vendeurs||[]).find(x=>x.id===d.vendeur_id) : null;
+  const qty = parseInt(d.qty,10) || 1;
   const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
   const row = document.createElement('div');
   row.className = 'sale-list-row';
   row.innerHTML = `
     <div class="sale-list-thumb">${d.card_image ? `<img src="${d.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
     <div class="sale-list-main">
-      <div class="sale-list-name">${d.card_name || d.pokemon_name || '—'}</div>
+      <div class="sale-list-name">${d.card_name || d.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
       <div class="sale-list-meta">${d.set_name||''}${d.number?' · N°'+d.number:''} · ${d.etat||'—'} · ${d.langue||'—'}</div>
       ${typesHtml ? `<div class="sale-types">${typesHtml}</div>` : ''}
     </div>
-    <div class="sale-list-price">${(parseFloat(d.prix)||0).toFixed(2)} €</div>
+    <div class="sale-list-price">${_lineTotal(d).toFixed(2)} €</div>
     <div class="sale-list-acheteur ${vendeur ? '' : 'unlinked'}">${vendeur ? '🏷️ '+vendeur.pseudo : '— Aucun vendeur —'}</div>
     <div class="sale-list-actions">
       ${d.lien_achat ? `<a href="${d.lien_achat}" target="_blank" rel="noopener" class="btn btn-icon btn-sm" title="Lien">${ICON_LINK}</a>` : ''}
@@ -3750,6 +3804,15 @@ function populateVendeurSelect(selected) {
   sel.innerHTML = '<option value="">— Aucun vendeur —</option>' + opts;
 }
 
+// Auto-complète le lien de l'achat avec celui du vendeur choisi, seulement
+// si le champ est encore vide (ne jamais écraser une saisie manuelle).
+function _onDepenseVendeurChange(vendeurId) {
+  if (!vendeurId) return;
+  const v = (_D.vendeurs||[]).find(x=>x.id===vendeurId);
+  const lienInput = document.getElementById('depense-lien-input');
+  if (v && v.lien_vente && lienInput && !lienInput.value.trim()) lienInput.value = v.lien_vente;
+}
+
 function openAddDepenseModal(vendeurId) {
   const modal = document.getElementById('modal-depense');
   delete modal.dataset.editId;
@@ -3760,10 +3823,12 @@ function openAddDepenseModal(vendeurId) {
   _renderCardPreview('depense');
   document.getElementById('depense-etat-select').value = 'Near Mint';
   document.getElementById('depense-prix-input').value = '';
+  document.getElementById('depense-qty-input').value = 1;
   document.getElementById('depense-langue-select').value = 'Français';
   document.getElementById('depense-lien-input').value = '';
   _setChipGroup('depense-type-chips', []);
   populateVendeurSelect(vendeurId || '');
+  if (vendeurId) _onDepenseVendeurChange(vendeurId);
   modal.classList.add('open');
 }
 
@@ -3784,6 +3849,7 @@ function editDepense(id) {
   _renderCardPreview('depense');
   document.getElementById('depense-etat-select').value = d.etat||'Near Mint';
   document.getElementById('depense-prix-input').value = d.prix||'';
+  document.getElementById('depense-qty-input').value = parseInt(d.qty,10) || 1;
   document.getElementById('depense-langue-select').value = d.langue||'Français';
   document.getElementById('depense-lien-input').value = d.lien_achat||'';
   _setChipGroup('depense-type-chips', d.types||[]);
@@ -3807,6 +3873,7 @@ function saveDepense() {
     pokemon_name: document.getElementById('depense-pokemon-name').value || cardName,
     etat:         document.getElementById('depense-etat-select').value,
     prix:         parseFloat(document.getElementById('depense-prix-input').value) || 0,
+    qty:          Math.max(1, parseInt(document.getElementById('depense-qty-input').value,10) || 1),
     types:        _getChipGroup('depense-type-chips'),
     langue:       document.getElementById('depense-langue-select').value,
     lien_achat:   document.getElementById('depense-lien-input').value.trim(),
@@ -3880,6 +3947,7 @@ function buildAcheteurCard(a) {
   const ventes = acheteurVentes(a.id);
   const total  = acheteurTotal(a.id);
   const st = ACHETEUR_STATUTS.find(s=>s.id===(a.etat||'a_envoyer')) || ACHETEUR_STATUTS[0];
+  const expanded = _orderExpandedAcheteurs.has(a.id);
   const card = document.createElement('div');
   card.className = 'order-card';
   card.innerHTML = `
@@ -3896,10 +3964,16 @@ function buildAcheteurCard(a) {
       </div>
     </div>
     <div class="order-card-body">
-      <div class="order-stat-row"><span>${ventes.length} carte${ventes.length>1?'s':''}</span><span class="order-total">${total.toFixed(2)} €</span></div>
-      ${a.lien_vente ? `<a href="${a.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de la vente</a>` : ''}
-      <div class="order-items-list">${ventes.map(v=>_orderItemRowHtml(v,'vente')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
-      <button class="order-add-btn" onclick="openAddVenteModal('${a.id}')">+ Ajouter une carte</button>
+      <div class="order-toggle-row" onclick="_toggleOrderExpand('acheteur','${a.id}')">
+        <span>${ventes.length} carte${ventes.length>1?'s':''}</span>
+        <span class="order-total">${total.toFixed(2)} €</span>
+        <span class="order-chevron ${expanded?'open':''}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </div>
+      ${expanded ? `
+        ${a.lien_vente ? `<a href="${a.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de la vente</a>` : ''}
+        <div class="order-items-list">${ventes.map(v=>_orderItemRowHtml(v,'vente')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
+        <button class="order-add-btn" onclick="openAddVenteModal('${a.id}')">+ Ajouter une carte</button>
+      ` : ''}
     </div>`;
   return card;
 }
@@ -3908,11 +3982,11 @@ function buildAcheteurRow(a) {
   const ventes = acheteurVentes(a.id);
   const total  = acheteurTotal(a.id);
   const st = ACHETEUR_STATUTS.find(s=>s.id===(a.etat||'a_envoyer')) || ACHETEUR_STATUTS[0];
-  const uid = `acc-ach-${a.id}`;
+  const expanded = _orderExpandedAcheteurs.has(a.id);
   const row = document.createElement('div');
   row.className = 'classeur-list-row';
   row.innerHTML = `
-    <div class="clr-header" onclick="toggleClrAccordion('${uid}', this)">
+    <div class="clr-header" onclick="_toggleOrderExpand('acheteur','${a.id}')">
       <div class="clr-thumb" style="background:linear-gradient(135deg,${st.color}33,${st.color}55)"><span style="font-size:1.1rem">👤</span></div>
       <div class="clr-accent-bar" style="background:${st.color}"></div>
       <div class="clr-info">
@@ -3923,10 +3997,10 @@ function buildAcheteurRow(a) {
       <div class="clr-actions" onclick="event.stopPropagation()">
         <button class="btn btn-icon btn-sm" title="Modifier" onclick="editAcheteur('${a.id}')">${ICON_EDIT}</button>
         <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteAcheteur('${a.id}')">${ICON_DELETE}</button>
-        <div class="clr-chevron" id="chev-${uid}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+        <div class="clr-chevron ${expanded?'open':''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
       </div>
     </div>
-    <div class="clr-body" id="${uid}">
+    <div class="clr-body ${expanded?'open':''}">
       ${a.lien_vente ? `<a href="${a.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de la vente</a>` : ''}
       <div class="order-items-list">${ventes.map(v=>_orderItemRowHtml(v,'vente')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
       <button class="order-add-btn" onclick="openAddVenteModal('${a.id}')">+ Ajouter une carte</button>
@@ -4051,6 +4125,7 @@ function buildVendeurCard(v) {
   const st = VENDEUR_STATUTS.find(s=>s.id===(v.etat||'a_payer')) || VENDEUR_STATUTS[0];
   const card = document.createElement('div');
   card.className = 'order-card';
+  const expandedV = _orderExpandedVendeurs.has(v.id);
   card.innerHTML = `
     <div class="order-card-top">
       <div class="order-card-avatar">🏷️</div>
@@ -4065,10 +4140,16 @@ function buildVendeurCard(v) {
       </div>
     </div>
     <div class="order-card-body">
-      <div class="order-stat-row"><span>${depenses.length} carte${depenses.length>1?'s':''}</span><span class="order-total">${total.toFixed(2)} €</span></div>
-      ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de l'achat</a>` : ''}
-      <div class="order-items-list">${depenses.map(d=>_orderItemRowHtml(d,'depense')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
-      <button class="order-add-btn" onclick="openAddDepenseModal('${v.id}')">+ Ajouter une carte</button>
+      <div class="order-toggle-row" onclick="_toggleOrderExpand('vendeur','${v.id}')">
+        <span>${depenses.length} carte${depenses.length>1?'s':''}</span>
+        <span class="order-total">${total.toFixed(2)} €</span>
+        <span class="order-chevron ${expandedV?'open':''}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </div>
+      ${expandedV ? `
+        ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de l'achat</a>` : ''}
+        <div class="order-items-list">${depenses.map(d=>_orderItemRowHtml(d,'depense')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
+        <button class="order-add-btn" onclick="openAddDepenseModal('${v.id}')">+ Ajouter une carte</button>
+      ` : ''}
     </div>`;
   return card;
 }
@@ -4077,11 +4158,11 @@ function buildVendeurRow(v) {
   const depenses = vendeurDepenses(v.id);
   const total    = vendeurTotal(v.id);
   const st = VENDEUR_STATUTS.find(s=>s.id===(v.etat||'a_payer')) || VENDEUR_STATUTS[0];
-  const uid = `acc-vd-${v.id}`;
+  const expanded = _orderExpandedVendeurs.has(v.id);
   const row = document.createElement('div');
   row.className = 'classeur-list-row';
   row.innerHTML = `
-    <div class="clr-header" onclick="toggleClrAccordion('${uid}', this)">
+    <div class="clr-header" onclick="_toggleOrderExpand('vendeur','${v.id}')">
       <div class="clr-thumb" style="background:linear-gradient(135deg,${st.color}33,${st.color}55)"><span style="font-size:1.1rem">🏷️</span></div>
       <div class="clr-accent-bar" style="background:${st.color}"></div>
       <div class="clr-info">
@@ -4092,10 +4173,10 @@ function buildVendeurRow(v) {
       <div class="clr-actions" onclick="event.stopPropagation()">
         <button class="btn btn-icon btn-sm" title="Modifier" onclick="editVendeur('${v.id}')">${ICON_EDIT}</button>
         <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="deleteVendeur('${v.id}')">${ICON_DELETE}</button>
-        <div class="clr-chevron" id="chev-${uid}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+        <div class="clr-chevron ${expanded?'open':''}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
       </div>
     </div>
-    <div class="clr-body" id="${uid}">
+    <div class="clr-body ${expanded?'open':''}">
       ${v.lien_vente ? `<a href="${v.lien_vente}" target="_blank" rel="noopener" class="sale-link">${ICON_LINK} Lien de l'achat</a>` : ''}
       <div class="order-items-list">${depenses.map(d=>_orderItemRowHtml(d,'depense')).join('') || '<div class="sales-empty" style="padding:6px 0">Aucune carte pour le moment.</div>'}</div>
       <button class="order-add-btn" onclick="openAddDepenseModal('${v.id}')">+ Ajouter une carte</button>
@@ -4190,79 +4271,242 @@ function _getChipGroup(containerId) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  SÉLECTEUR DE CARTE (Choix du Pokémon → Choix de la carte)
-//  Recherche directement dans la table Supabase "cards" (déjà utilisée par
-//  le Pokédex) : étape 1 = noms distincts correspondant à la recherche,
-//  étape 2 = toutes les cartes portant ce nom exact (une par édition/set).
+//  Réutilise les données déjà chargées par l'onglet Pokédex :
+//   • Étape 1 = liste des Pokémon (+ formes), avec recherche, sprite et nom FR
+//     hydratés à la volée comme dans la grille du Pokédex (mêmes caches
+//     _fetchPokemon/_fetchSpecies), sans toucher à l'état de l'onglet Pokédex.
+//   • Étape 2 = cartes TCG de ce Pokémon, groupées par extension et triées
+//     dans le même ordre bloc+code que partout ailleurs dans l'appli.
 // ═══════════════════════════════════════════════════════════════════════════
-let _cardPickerTarget = null;      // 'vente' | 'depense'
+let _cardPickerTarget = null;       // 'vente' | 'depense'
 let _cardPickerTimer = null;
-let _cardPickerPokemonName = null;
-let _cardPickerCards = [];
+let _cardPickerPokeList = [];       // sous-ensemble courant de _pkdx.all (résultats de recherche)
+let _cardPickerSelectedPoke = null; // entrée _pkdx choisie à l'étape 1
+let _cardPickerGroups = [];         // groupes {ext, set_name, cards[]} de l'étape 2
+let _cardPickerCards = [];          // liste à plat des cartes affichées (pour la sélection par index)
+const CARD_PICKER_MAX_RESULTS = 200;
 
-function openCardPicker(target) {
+async function openCardPicker(target) {
   _cardPickerTarget = target;
-  _cardPickerPokemonName = null;
+  _cardPickerSelectedPoke = null;
+  _cardPickerGroups = [];
   _cardPickerCards = [];
   const search = document.getElementById('cardpicker-search');
   search.value = '';
-  document.getElementById('cardpicker-step1').innerHTML = '<div class="sales-empty">Tapez au moins 2 lettres pour rechercher…</div>';
+  document.getElementById('cardpicker-step1').innerHTML = '<div class="sales-empty">Chargement du Pokédex…</div>';
   document.getElementById('cardpicker-step1').style.display = '';
   document.getElementById('cardpicker-step2').style.display = 'none';
   document.getElementById('modal-card-picker').classList.add('open');
+  if (!_pkdx.initialized) {
+    try { await initPokedex(); } catch(_) {}
+  }
+  _cardPickerRenderPokeList('');
   setTimeout(() => search.focus(), 60);
 }
 
 function _cardPickerSearch(q) {
   clearTimeout(_cardPickerTimer);
-  const query = q.trim();
-  if (query.length < 2) {
-    document.getElementById('cardpicker-step1').innerHTML = '<div class="sales-empty">Tapez au moins 2 lettres pour rechercher…</div>';
-    return;
-  }
-  _cardPickerTimer = setTimeout(() => _doCardPickerSearch(query), 300);
+  _cardPickerTimer = setTimeout(() => _cardPickerRenderPokeList(q.trim()), 200);
 }
 
-async function _doCardPickerSearch(query) {
+// Construit la liste des Pokémon correspondant à la recherche à partir des
+// données déjà chargées par le Pokédex (_pkdx.all), sans jamais modifier
+// l'état/filtre de l'onglet Pokédex lui-même.
+function _cardPickerRenderPokeList(query) {
   const el = document.getElementById('cardpicker-step1');
-  el.innerHTML = '<div class="sales-empty">Recherche…</div>';
-  try {
-    const url = `${SB_URL}/rest/v1/cards?name=ilike.*${encodeURIComponent(query)}*&select=name&order=name.asc&limit=300`;
-    const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const rows = await res.json();
-    const names = [...new Set(rows.map(r=>r.name))].sort((a,b)=>a.localeCompare(b,'fr'));
-    if (!names.length) { el.innerHTML = '<div class="sales-empty">Aucun résultat.</div>'; return; }
-    el.innerHTML = names.map(n => `<div class="cardpicker-pokemon-item" onclick="_cardPickerSelectPokemon('${_jsEscape(n)}')">${n}</div>`).join('');
-  } catch(e) {
-    el.innerHTML = `<div class="sales-empty">Erreur : ${e.message}</div>`;
+  if (!el) return;
+  if (!_pkdx.all || !_pkdx.all.length) { el.innerHTML = '<div class="sales-empty">Pokédex indisponible pour le moment.</div>'; return; }
+
+  const q = _normalizeStr(query||'');
+  let list = _pkdx.all;
+  if (q) {
+    list = list.filter(p =>
+      _normalizeStr(p.name).includes(q) ||
+      _normalizeStr(p.frName||'').includes(q) ||
+      String(p.isForm ? p.baseId : p.id).startsWith(q)
+    );
+  } else {
+    // Sans recherche : uniquement les Pokémon de base (les formes restent
+    // accessibles via la recherche, ex. "mega dracaufeu"), pour ne pas noyer
+    // la liste de départ.
+    list = list.filter(p => !p.isForm);
   }
+  list = list.slice().sort((a,b) => {
+    const ida = a.isForm ? a.baseId : a.id, idb = b.isForm ? b.baseId : b.id;
+    return ida - idb || (a.isForm?1:0) - (b.isForm?1:0);
+  });
+  _cardPickerPokeList = list.slice(0, CARD_PICKER_MAX_RESULTS);
+
+  if (!_cardPickerPokeList.length) { el.innerHTML = '<div class="sales-empty">Aucun Pokémon trouvé.</div>'; return; }
+
+  el.innerHTML = _cardPickerPokeList.map((p, i) => {
+    const displayId = p.isForm ? p.baseId : p.id;
+    const label = p.frName || _capitalize(p.name.replace(/-/g,' '));
+    return `<div class="cardpicker-poke-item" onclick="_cardPickerSelectPokemon(${i})">
+      <div class="cardpicker-poke-sprite" id="cpk-sprite-${i}"></div>
+      <div class="cardpicker-poke-name" id="cpk-name-${i}">${label}</div>
+      <div class="cardpicker-poke-num">#${String(displayId).padStart(4,'0')}</div>
+    </div>`;
+  }).join('');
+
+  const hasMore = list.length > _cardPickerPokeList.length;
+  if (hasMore) {
+    el.innerHTML += `<div class="sales-empty" style="padding:8px">Affine ta recherche pour voir plus de résultats…</div>`;
+  }
+
+  // Hydrate sprite + nom FR à la volée (mêmes caches que l'onglet Pokédex).
+  _cardPickerPokeList.forEach((p, i) => _cardPickerHydratePoke(p, i));
 }
 
-async function _cardPickerSelectPokemon(name) {
-  _cardPickerPokemonName = name;
+async function _cardPickerHydratePoke(p, i) {
+  const nameEl   = document.getElementById(`cpk-name-${i}`);
+  const spriteEl = document.getElementById(`cpk-sprite-${i}`);
+  if (!nameEl && !spriteEl) return;
+  try {
+    const fetchId = p.isForm ? p.name : p.id;
+    const poke = await _fetchPokemon(fetchId);
+    const sprite = poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '';
+    if (spriteEl) spriteEl.innerHTML = sprite ? `<img src="${sprite}" alt="" loading="lazy">` : '';
+    if (!p.frName) {
+      const spec = await _fetchSpecies(poke.species.url);
+      if (spec) {
+        if (p.isForm) {
+          const baseEntry = _pkdx.all.find(e => e.id === p.baseId && !e.isForm);
+          let baseFr = baseEntry?.frName || '';
+          if (!baseFr) {
+            const fr2 = spec.names?.find(n => n.language.name === 'fr');
+            if (fr2) { baseFr = fr2.name; if (baseEntry) baseEntry.frName = fr2.name; }
+          }
+          p.frName = _buildFormFrName(baseFr, p.formType, p.name);
+        } else {
+          const fr = spec.names?.find(n => n.language.name === 'fr');
+          if (fr) p.frName = fr.name;
+        }
+      }
+    }
+    if (nameEl && p.frName) nameEl.textContent = p.frName;
+  } catch(_) { /* on garde le nom anglais de repli déjà affiché */ }
+}
+
+async function _cardPickerSelectPokemon(i) {
+  const p = _cardPickerPokeList[i]; if (!p) return;
+  _cardPickerSelectedPoke = p;
   document.getElementById('cardpicker-step1').style.display = 'none';
   document.getElementById('cardpicker-step2').style.display = '';
-  document.getElementById('cardpicker-pokemon-label').textContent = name;
+  document.getElementById('cardpicker-pokemon-label').textContent = p.frName || _capitalize(p.name.replace(/-/g,' '));
   const grid = document.getElementById('cardpicker-cards');
-  grid.innerHTML = '<div class="sales-empty">Chargement…</div>';
+  grid.innerHTML = '<div class="sales-empty">Chargement des cartes…</div>';
   try {
-    const url = `${SB_URL}/rest/v1/cards?name=eq.${encodeURIComponent(name)}&order=set_id.asc,number.asc&limit=300`;
-    const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const cards = await res.json();
-    _cardPickerCards = cards;
-    if (!cards.length) { grid.innerHTML = '<div class="sales-empty">Aucune carte trouvée.</div>'; return; }
-    grid.innerHTML = cards.map((c,i) => `
-      <div class="cardpicker-card-item" onclick="_cardPickerSelectCard(${i})">
-        <div class="cardpicker-card-thumb">${c.image_url ? `<img src="${c.image_url}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
-        <div class="cardpicker-card-info">
-          <div class="cardpicker-card-set">${c.set_name||c.set_id||''}</div>
-          <div class="cardpicker-card-num">N° ${c.number||'?'}${c.rarity?' · '+c.rarity:''}</div>
-        </div>
-      </div>`).join('');
+    const frName = p.frName || _capitalize(p.name.replace(/-/g,' '));
+    const groups = await _cardPickerFetchGroupedCards(frName, p.isForm ? p.formType : null);
+    _cardPickerGroups = groups;
+    _cardPickerRenderCardGroups();
   } catch(e) {
     grid.innerHTML = `<div class="sales-empty">Erreur : ${e.message}</div>`;
   }
+}
+
+// Récupère et groupe par extension les cartes correspondant à un Pokémon —
+// même logique (recherche, filtre de forme, tri bloc+code) que la fiche
+// Pokédex (_loadTcgCardsInModal), dupliquée ici pour rester indépendante de
+// l'état interne de la modale Pokédex (_pkdxModalTcg).
+async function _cardPickerFetchGroupedCards(frName, formType) {
+  const linkedTypes = _allLinkedFormTypes();
+  const url = `${SB_URL}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
+  const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  let cards = await res.json();
+
+  if (formType && linkedTypes.includes(formType)) {
+    cards = cards.filter(c => _cardMatchesFormType(c.name, formType));
+    const cfg = getFormLabelConfig(formType);
+    const shortLetters = [...new Set((cfg.prefixes||[]).map(p => _nnLbl(p).replace(/[-\s]/g, '')).filter(p => p.length === 1))];
+    for (const letter of shortLetters) {
+      try {
+        const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(letter + ' ' + frName)}*&order=set_id.asc,number.asc&limit=200`,
+          { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+        const extra = r2.ok ? await r2.json() : [];
+        const seen = new Set(cards.map(c => c.id));
+        extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => { if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); } });
+      } catch(_) {}
+    }
+  } else if (!formType) {
+    cards = cards.filter(c => !linkedTypes.some(t => _cardMatchesFormType(c.name, t)));
+  }
+
+  if (!cards.length) return [];
+  if (!_mapping.initialized) await initMappingView();
+
+  const allExts = getAllExtensions();
+  const extOrder = {};
+  let idx = 0;
+  getBlocs().forEach(bloc => {
+    const builtIn = (bloc.extensions||[]).filter(e => {
+      const ov = (_D.ext_overrides||{})[e.id]||{};
+      return !ov._hidden && (!ov.bloc_id_override || ov.bloc_id_override === bloc.id);
+    }).map(e => { const ov=(_D.ext_overrides||{})[e.id]||{}; return {...e,...ov}; });
+    const moved = getBlocs().filter(b=>b._builtin&&b.id!==bloc.id).flatMap(b=>
+      (b.extensions||[]).filter(e=>{const ov=(_D.ext_overrides||{})[e.id]||{};return !ov._hidden&&ov.bloc_id_override===bloc.id;})
+        .map(e=>{const ov=(_D.ext_overrides||{})[e.id]||{};return{...e,...ov};})
+    );
+    const custom = (_D.custom_exts||[]).filter(e=>e.bloc_id===bloc.id);
+    sortExts([...builtIn,...moved,...custom]).forEach(e => { extOrder[e.id] = idx++; });
+  });
+
+  const setIdToExt = {};
+  Object.entries(_mapping.mappings).forEach(([extId, m]) => {
+    const ext = allExts.find(e => e.id === extId);
+    if (ext) setIdToExt[m.set_id] = ext;
+  });
+
+  const groupMap = new Map();
+  cards.forEach(c => {
+    const key = c.set_id || '?';
+    if (!groupMap.has(key)) groupMap.set(key, { set_id: c.set_id, set_name: c.set_name, cards: [] });
+    groupMap.get(key).cards.push(c);
+  });
+
+  return Array.from(groupMap.values()).map(group => {
+    const ext = setIdToExt[group.set_id];
+    const extInfo = {
+      extId: ext ? ext.id : null,
+      code:  ext ? (ext.code || '') : '',
+      name:  ext ? (ext.nom || ext.name || group.set_name) : (group.set_name || group.set_id || '?'),
+      logo:  ext ? (ext.logo  || '') : '',
+      sigle: ext ? (ext.sigle || '') : '',
+      order: ext && extOrder[ext.id] !== undefined ? extOrder[ext.id] : 9999,
+    };
+    return { ...group, ext: extInfo };
+  }).sort((a,b) => a.ext.order - b.ext.order || (a.set_name||'').localeCompare(b.set_name||''));
+}
+
+function _cardPickerRenderCardGroups() {
+  const grid = document.getElementById('cardpicker-cards'); if (!grid) return;
+  const groups = _cardPickerGroups || [];
+  if (!groups.length) { grid.innerHTML = '<div class="sales-empty">Aucune carte trouvée pour ce Pokémon.</div>'; return; }
+  _cardPickerCards = [];
+  let html = '';
+  groups.forEach(group => {
+    const ext = group.ext;
+    html += '<div class="pkdx-tcg-ext-group">'
+      + '<div class="pkdx-tcg-ext-header">'
+      + (ext.logo  ? `<img src="${ext.logo}" alt="" class="pkdx-tcg-ext-logo" onerror="this.style.display='none'">` : '')
+      + (ext.sigle ? `<img src="${ext.sigle}" alt="" class="pkdx-tcg-ext-sigle" onerror="this.style.display='none'">` : '')
+      + `<span class="pkdx-tcg-ext-name">${_escHtml(ext.name)}</span>`
+      + (ext.code ? `<span class="pkdx-tcg-ext-code">${_escHtml(ext.code)}</span>` : '')
+      + `<span class="pkdx-tcg-ext-badge">${group.cards.length}</span>`
+      + '</div><div class="pkdx-tcg-grid">';
+    group.cards.forEach(c => {
+      const idx = _cardPickerCards.length;
+      _cardPickerCards.push(c);
+      html += `<div class="pkdx-tcg-card" onclick="_cardPickerSelectCard(${idx})" title="${_escHtml((c.set_name||'')+' — '+(c.number||'')+' — '+(c.rarity||''))}">`
+        + (c.image_url ? `<img src="${c.image_url}" alt="${_escHtml(c.name)}" loading="lazy">` : `<div class="pkdx-tcg-placeholder">${_escHtml(c.name)}</div>`)
+        + `<div class="pkdx-tcg-card-info"><span class="pkdx-tcg-num">${_escHtml(c.number||'')}</span><span class="pkdx-tcg-set">${_escHtml(c.rarity||'')}</span></div>`
+        + '</div>';
+    });
+    html += '</div></div>';
+  });
+  grid.innerHTML = html;
 }
 
 function _cardPickerBackToStep1() {
@@ -4273,6 +4517,7 @@ function _cardPickerBackToStep1() {
 function _cardPickerSelectCard(idx) {
   const c = _cardPickerCards[idx]; if (!c) return;
   const p = _cardPickerTarget; if (!p) return;
+  const pokeName = (_cardPickerSelectedPoke && (_cardPickerSelectedPoke.frName || _capitalize(_cardPickerSelectedPoke.name.replace(/-/g,' ')))) || c.name || '';
   document.getElementById(`${p}-card-id`).value = c.id||'';
   document.getElementById(`${p}-card-name`).value = c.name||'';
   document.getElementById(`${p}-card-image`).value = c.image_url||'';
@@ -4281,7 +4526,7 @@ function _cardPickerSelectCard(idx) {
   document.getElementById(`${p}-set-logo`).value = c.set_logo||'';
   document.getElementById(`${p}-number`).value = c.number||'';
   document.getElementById(`${p}-rarity`).value = c.rarity||'';
-  document.getElementById(`${p}-pokemon-name`).value = _cardPickerPokemonName || c.name || '';
+  document.getElementById(`${p}-pokemon-name`).value = pokeName;
   _renderCardPreview(p);
   closeModal('modal-card-picker');
 }
@@ -4302,6 +4547,7 @@ function _renderCardPreview(prefix) {
       </div>
     </div>`;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  POKÉDEX — v2 (noms FR, talens FR, types FR, formes spéciales, séparateurs)
