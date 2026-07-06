@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="css/base.css?v=15">
+<link rel="stylesheet" href="css/collection.css?v=15">
+<link rel="stylesheet" href="css/pokedex.css?v=15">
+<link rel="stylesheet" href="css/ventes-achats.css?v=15">
 </head>
 <body>
 
@@ -21,26 +24,26 @@
   </div>
   <div class="nav-section">
     <div class="nav-section-label">Collection</div>
-    <button class="nav-btn active" onclick="switchView('extensions',this)">
+    <button class="nav-btn active" data-view="extensions" onclick="switchView('extensions',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
         <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
       </svg>
       <span>Extensions</span><span class="nav-badge" id="nb-ext">0</span>
     </button>
-    <button class="nav-btn" onclick="switchView('classeurs',this)">
+    <button class="nav-btn" data-view="classeurs" onclick="switchView('classeurs',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
       </svg>
       <span>Classeurs</span><span class="nav-badge" id="nb-classeurs">0</span>
     </button>
-    <button class="nav-btn" onclick="switchView('boosters',this)">
+    <button class="nav-btn" data-view="boosters" onclick="switchView('boosters',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
       </svg>
       <span>Boosters</span><span class="nav-badge" id="nb-boosters">0</span>
     </button>
-    <button class="nav-btn" onclick="switchView('statistiques',this)">
+    <button class="nav-btn" data-view="statistiques" onclick="switchView('statistiques',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
       </svg>
@@ -49,34 +52,40 @@
   </div>
   <div class="nav-section">
     <div class="nav-section-label">Ventes</div>
-    <button class="nav-btn" onclick="switchView('ventes',this)">
+    <button class="nav-btn" data-view="ventes" onclick="switchView('ventes',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
       </svg>
       <span>Ventes</span><span class="nav-badge" id="nb-ventes">0</span>
     </button>
-    <button class="nav-btn" onclick="switchView('acheteurs',this)">
+    <button class="nav-btn" data-view="acheteurs" onclick="switchView('acheteurs',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
       </svg>
       <span>Acheteurs</span><span class="nav-badge" id="nb-acheteurs">0</span>
     </button>
-    <button class="nav-btn" onclick="switchView('depenses',this)">
+    <button class="nav-btn" data-view="depenses" onclick="switchView('depenses',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M6 2l1.5 3M18 2l-1.5 3M3 7h18l-1.5 12.5A2 2 0 0117.5 21h-11a2 2 0 01-2-1.5L3 7z"/>
       </svg>
       <span>Dépenses</span><span class="nav-badge" id="nb-depenses">0</span>
     </button>
-    <button class="nav-btn" onclick="switchView('vendeurs',this)">
+    <button class="nav-btn" data-view="vendeurs" onclick="switchView('vendeurs',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/>
       </svg>
       <span>Vendeurs</span><span class="nav-badge" id="nb-vendeurs">0</span>
     </button>
+    <button class="nav-btn" data-view="bilan" onclick="switchView('bilan',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+      <span>Bilan</span>
+    </button>
   </div>
   <div class="nav-section">
     <div class="nav-section-label">Pokédex</div>
-    <button class="nav-btn" onclick="switchView('pokedex',this)">
+    <button class="nav-btn" data-view="pokedex" onclick="switchView('pokedex',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/>
         <path d="M2 12h8M14 12h8M12 2v4M12 18v4"/>
@@ -87,14 +96,14 @@
   </div>
   <div class="nav-section">
     <div class="nav-section-label">Config</div>
-    <button class="nav-btn" onclick="switchView('edition',this)">
+    <button class="nav-btn" data-view="edition" onclick="switchView('edition',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
         <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
       </svg>
       <span>Édition</span>
     </button>
-    <button class="nav-btn" onclick="switchView('parametres',this)">
+    <button class="nav-btn" data-view="parametres" onclick="switchView('parametres',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="3"/>
         <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
@@ -313,6 +322,15 @@
           <span>Nouveau vendeur</span>
         </button>
       </div>
+    </div>
+
+    <!-- Bilan -->
+    <div id="view-bilan" class="view">
+      <div class="page-header">
+        <div class="page-header-left"><h1>Bilan</h1><p>Résumé mensuel des ventes et des achats</p></div>
+      </div>
+      <div class="stats-row" id="bilan-stats"></div>
+      <div id="bilan-content"></div>
     </div>
 
     <!-- Boosters -->
@@ -773,6 +791,15 @@
       <input type="hidden" id="vente-number">
       <input type="hidden" id="vente-rarity">
       <input type="hidden" id="vente-pokemon-name">
+      <input type="hidden" id="vente-ext-sigle">
+    </div>
+    <div class="settings-field"><label>Rognage de l'image</label>
+      <div class="classeur-status-select" id="vente-crop-select">
+        <div class="classeur-status-btn" data-status="top" onclick="setCropInput('vente','top')">Haut</div>
+        <div class="classeur-status-btn" data-status="center" onclick="setCropInput('vente','center')">Centre</div>
+        <div class="classeur-status-btn" data-status="bottom" onclick="setCropInput('vente','bottom')">Bas</div>
+      </div>
+      <input type="hidden" id="vente-crop-input" value="center">
     </div>
     <div class="settings-field"><label>État</label>
       <select id="vente-etat-select">
@@ -800,16 +827,20 @@
       <div class="classeur-status-select" id="vente-statut-select">
         <div class="classeur-status-btn" data-status="a_mettre" onclick="setVenteStatusInput('a_mettre')">À mettre en vente</div>
         <div class="classeur-status-btn" data-status="en_vente" onclick="setVenteStatusInput('en_vente')">En vente</div>
+        <div class="classeur-status-btn" data-status="vendue" onclick="setVenteStatusInput('vendue')">Vendue</div>
       </div>
       <input type="hidden" id="vente-statut-input" value="a_mettre">
-      <p class="form-hint" style="margin-top:6px">Devient automatiquement « Vendue » dès qu'un acheteur est rattaché ci-dessous.</p>
     </div>
-    <div class="settings-field"><label>Lien de la vente</label>
-      <input type="url" id="vente-lien-input" placeholder="https://cardmarket.com/…"></div>
-    <div class="settings-field"><label>Acheteur</label>
-      <div style="display:flex;gap:6px">
-        <select id="vente-acheteur-select" style="flex:1" onchange="_onVenteAcheteurChange(this.value)"></select>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="_openAcheteurFromVente()">+ Nouveau</button>
+    <div id="vente-vendue-section" style="display:none">
+      <div class="settings-field"><label>Acheteur</label>
+        <div style="display:flex;gap:6px">
+          <select id="vente-acheteur-select" style="flex:1" onchange="_onVenteAcheteurSelectChange()"></select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="_openAcheteurFromVente()">+ Nouveau</button>
+        </div>
+      </div>
+      <div class="settings-field"><label>Commande <span class="form-hint" style="margin:0">(date d'achat, lien, statut d'envoi)</span></label>
+        <select id="vente-commande-select" onchange="_onVenteCommandeSelectChange()"></select>
+        <div id="vente-commande-preview"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -836,6 +867,15 @@
       <input type="hidden" id="depense-number">
       <input type="hidden" id="depense-rarity">
       <input type="hidden" id="depense-pokemon-name">
+      <input type="hidden" id="depense-ext-sigle">
+    </div>
+    <div class="settings-field"><label>Rognage de l'image</label>
+      <div class="classeur-status-select" id="depense-crop-select">
+        <div class="classeur-status-btn" data-status="top" onclick="setCropInput('depense','top')">Haut</div>
+        <div class="classeur-status-btn" data-status="center" onclick="setCropInput('depense','center')">Centre</div>
+        <div class="classeur-status-btn" data-status="bottom" onclick="setCropInput('depense','bottom')">Bas</div>
+      </div>
+      <input type="hidden" id="depense-crop-input" value="center">
     </div>
     <div class="settings-field"><label>État</label>
       <select id="depense-etat-select">
@@ -859,13 +899,15 @@
         <option>Coréen</option><option>Chinois</option>
       </select>
     </div>
-    <div class="settings-field"><label>Lien de l'achat</label>
-      <input type="url" id="depense-lien-input" placeholder="https://cardmarket.com/…"></div>
     <div class="settings-field"><label>Vendeur</label>
       <div style="display:flex;gap:6px">
-        <select id="depense-vendeur-select" style="flex:1" onchange="_onDepenseVendeurChange(this.value)"></select>
+        <select id="depense-vendeur-select" style="flex:1" onchange="_onDepenseVendeurSelectChange()"></select>
         <button type="button" class="btn btn-secondary btn-sm" onclick="_openVendeurFromDepense()">+ Nouveau</button>
       </div>
+    </div>
+    <div class="settings-field"><label>Commande <span class="form-hint" style="margin:0">(date d'achat, lien, statut de paiement)</span></label>
+      <select id="depense-commande-select" onchange="_onDepenseCommandeSelectChange()"></select>
+      <div id="depense-commande-preview"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-depense')">Annuler</button>
@@ -874,26 +916,14 @@
   </div>
 </div>
 
-<!-- Modal: Acheteur -->
+<!-- Modal: Acheteur (une personne — ses commandes se gèrent séparément) -->
 <div class="modal-backdrop" id="modal-acheteur">
   <div class="modal">
     <h2 id="modal-acheteur-title">Nouvel acheteur</h2>
     <div class="settings-field"><label>Pseudo</label>
       <input type="text" id="acheteur-pseudo-input" placeholder="Pseudo Cardmarket…"></div>
-    <div class="settings-field"><label>Date d'achat</label>
-      <input type="date" id="acheteur-date-achat-input"></div>
-    <div class="settings-field"><label>Date d'arrivée</label>
-      <input type="date" id="acheteur-date-arrivee-input"></div>
-    <div class="settings-field"><label>Lien de la vente</label>
-      <input type="url" id="acheteur-lien-input" placeholder="https://cardmarket.com/…"></div>
-    <div class="settings-field">
-      <label>État</label>
-      <div class="classeur-status-select" id="acheteur-status-select">
-        <div class="classeur-status-btn" data-status="a_envoyer" onclick="setAcheteurStatusInput('a_envoyer')">À envoyer</div>
-        <div class="classeur-status-btn" data-status="envoye" onclick="setAcheteurStatusInput('envoye')">Envoyé</div>
-        <div class="classeur-status-btn" data-status="arrive" onclick="setAcheteurStatusInput('arrive')">✓ Arrivé</div>
-      </div>
-      <input type="hidden" id="acheteur-status-input" value="a_envoyer">
+    <div class="settings-field"><label>Icône</label>
+      <div class="icon-picker" id="acheteur-icon-picker"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-acheteur')">Annuler</button>
@@ -902,26 +932,40 @@
   </div>
 </div>
 
-<!-- Modal: Vendeur -->
+<!-- Modal: Commande acheteur (une date d'achat = un lien = un statut d'envoi) -->
+<div class="modal-backdrop" id="modal-acheteur-commande">
+  <div class="modal">
+    <h2 id="modal-acheteur-commande-title">Nouvelle commande</h2>
+    <div class="settings-field"><label>Date d'achat</label>
+      <input type="date" id="ac-cmd-date-achat"></div>
+    <div class="settings-field"><label>Date d'arrivée</label>
+      <input type="date" id="ac-cmd-date-arrivee"></div>
+    <div class="settings-field"><label>Lien de la vente</label>
+      <input type="url" id="ac-cmd-lien" placeholder="https://cardmarket.com/…"></div>
+    <div class="settings-field">
+      <label>État</label>
+      <div class="classeur-status-select" id="ac-cmd-status-select">
+        <div class="classeur-status-btn" data-status="a_envoyer" onclick="setAcCmdStatusInput('a_envoyer')">À envoyer</div>
+        <div class="classeur-status-btn" data-status="envoye" onclick="setAcCmdStatusInput('envoye')">Envoyé</div>
+        <div class="classeur-status-btn" data-status="arrive" onclick="setAcCmdStatusInput('arrive')">✓ Arrivé</div>
+      </div>
+      <input type="hidden" id="ac-cmd-status-input" value="a_envoyer">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-acheteur-commande')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveAcheteurCommande()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Vendeur (une personne — ses commandes se gèrent séparément) -->
 <div class="modal-backdrop" id="modal-vendeur">
   <div class="modal">
     <h2 id="modal-vendeur-title">Nouveau vendeur</h2>
     <div class="settings-field"><label>Pseudo</label>
       <input type="text" id="vendeur-pseudo-input" placeholder="Pseudo Cardmarket…"></div>
-    <div class="settings-field"><label>Date d'achat</label>
-      <input type="date" id="vendeur-date-achat-input"></div>
-    <div class="settings-field"><label>Date d'arrivée</label>
-      <input type="date" id="vendeur-date-arrivee-input"></div>
-    <div class="settings-field"><label>Lien de l'achat</label>
-      <input type="url" id="vendeur-lien-input" placeholder="https://cardmarket.com/…"></div>
-    <div class="settings-field">
-      <label>État</label>
-      <div class="classeur-status-select" id="vendeur-status-select">
-        <div class="classeur-status-btn" data-status="a_payer" onclick="setVendeurStatusInput('a_payer')">À payer</div>
-        <div class="classeur-status-btn" data-status="paye" onclick="setVendeurStatusInput('paye')">Payé</div>
-        <div class="classeur-status-btn" data-status="arrive" onclick="setVendeurStatusInput('arrive')">✓ Arrivé</div>
-      </div>
-      <input type="hidden" id="vendeur-status-input" value="a_payer">
+    <div class="settings-field"><label>Icône</label>
+      <div class="icon-picker" id="vendeur-icon-picker"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-vendeur')">Annuler</button>
@@ -930,19 +974,45 @@
   </div>
 </div>
 
+<!-- Modal: Commande vendeur (une date d'achat = un lien = un statut de paiement) -->
+<div class="modal-backdrop" id="modal-vendeur-commande">
+  <div class="modal">
+    <h2 id="modal-vendeur-commande-title">Nouvelle commande</h2>
+    <div class="settings-field"><label>Date d'achat</label>
+      <input type="date" id="vd-cmd-date-achat"></div>
+    <div class="settings-field"><label>Date d'arrivée</label>
+      <input type="date" id="vd-cmd-date-arrivee"></div>
+    <div class="settings-field"><label>Lien de l'achat</label>
+      <input type="url" id="vd-cmd-lien" placeholder="https://cardmarket.com/…"></div>
+    <div class="settings-field">
+      <label>État</label>
+      <div class="classeur-status-select" id="vd-cmd-status-select">
+        <div class="classeur-status-btn" data-status="a_payer" onclick="setVdCmdStatusInput('a_payer')">À payer</div>
+        <div class="classeur-status-btn" data-status="paye" onclick="setVdCmdStatusInput('paye')">Payé</div>
+        <div class="classeur-status-btn" data-status="arrive" onclick="setVdCmdStatusInput('arrive')">✓ Arrivé</div>
+      </div>
+      <input type="hidden" id="vd-cmd-status-input" value="a_payer">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-vendeur-commande')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveVendeurCommande()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Sélecteur de carte (partagé Ventes / Dépenses) -->
 <div class="modal-backdrop" id="modal-card-picker">
-  <div class="modal" style="width:560px">
+  <div class="modal" style="width:680px">
     <h2>Choisir une carte</h2>
     <div class="settings-field">
       <label>Rechercher un Pokémon</label>
-      <input type="text" id="cardpicker-search" placeholder="Ex. Dracaufeu, Pikachu…" oninput="_cardPickerSearch(this.value)">
+      <input type="text" id="cardpicker-search" placeholder="Rechercher un Pokémon…">
     </div>
     <div id="cardpicker-step1" class="cardpicker-results"></div>
     <div id="cardpicker-step2" style="display:none">
       <button type="button" class="btn btn-ghost btn-sm" onclick="_cardPickerBackToStep1()">← Retour à la recherche</button>
       <div class="cardpicker-pokemon-label" id="cardpicker-pokemon-label"></div>
-      <div id="cardpicker-cards" class="cardpicker-cards-grid"></div>
+      <div id="cardpicker-cards" class="pkdx-tcg-groups"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-card-picker')">Fermer</button>
@@ -951,8 +1021,9 @@
 </div>
 
 <div id="toast-container"></div>
-<script src="config.js"></script>
-<script src="data.js"></script>
+<script src="config.js?v=15"></script>
+<script src="data.js?v=15"></script>
+<script src="js/sync.js?v=15"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -992,6 +1063,13 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="app.js"></script>
+<script src="js/core.js?v=15"></script>
+<script src="js/collection.js?v=15"></script>
+<script src="js/edition.js?v=15"></script>
+<script src="js/mapping.js?v=15"></script>
+<script src="js/labels.js?v=15"></script>
+<script src="js/ventes-achats.js?v=15"></script>
+<script src="js/label-categories.js?v=15"></script>
+<script src="js/pokedex.js?v=15"></script>
 </body>
 </html>

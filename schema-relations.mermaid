@@ -1,0 +1,238 @@
+erDiagram
+    BLOCS {
+        text blo_id PK "ex. cb_1234567890"
+        text blo_user_id PK "toujours 'default' (app mono-utilisateur)"
+        text blo_nom "nom affiché, ex. Ecarlate et Violet"
+        text blo_couleur "couleur d'accent du bloc dans l'UI"
+        text blo_logo "URL du logo du bloc"
+        text blo_sigle "URL du sigle du bloc"
+        bool blo_is_hidden "masqué de l'appli sans être supprimé"
+        int blo_sort_order "position d'affichage (glisser-déposer)"
+    }
+
+    EXTENSIONS {
+        text ext_id PK "ex. cx_1234567890"
+        text ext_user_id PK "toujours 'default'"
+        text ext_bloc_id "ref souple -> BLOCS.blo_id, vide = aucun bloc"
+        text ext_code "sigle court, ex. SV01"
+        text ext_nom "nom affiché, ex. Faille Paradoxe"
+        int ext_nb_cartes "nombre total de cartes dans l'extension"
+        text ext_logo "URL du logo de l'extension"
+        text ext_sigle "URL du sigle/icône de l'extension"
+        text ext_couleur "couleur d'accent dans l'UI"
+        text ext_stat_mode "quelles cartes comptent dans les stats"
+        bool ext_sorti "extension déjà sortie (vs à venir)"
+        bool ext_is_hidden "masquée de l'appli sans être supprimée"
+        int ext_sort_order "position d'affichage"
+    }
+
+    CLASSEURS {
+        text cla_id PK "ex. cl_1234567890"
+        text cla_user_id PK "toujours 'default'"
+        text cla_nom "nom du classeur physique"
+        int cla_pages "nombre de pages du classeur"
+        int cla_slots_par_page "emplacements de cartes par page"
+        text cla_image "URL de l'image de couverture"
+        text cla_bloc_id "ref souple -> BLOCS.blo_id"
+        text cla_status "in_progress / complete"
+        int cla_sort_order "position d'affichage"
+    }
+
+    CLASSEUR_EXTENSIONS {
+        text cle_classeur_id PK,FK "classeur concerné"
+        text cle_ext_id PK,FK "extension rangée dans ce classeur"
+        text cle_user_id PK "toujours 'default'"
+        int cle_pages "nombre de pages occupées par cette extension"
+        int cle_filled "nombre de cartes déjà placées"
+        int cle_sort_order "ordre des extensions dans le classeur"
+    }
+
+    COLLECTION {
+        text col_ext_id PK,FK "extension concernée"
+        int col_number PK "numéro de la carte dans l'extension (1, 2, 3...)"
+        text col_user_id PK "toujours 'default'"
+        bool col_owned "carte possédée ou non"
+        bool col_foil "version brillante / reverse"
+        int col_qte "quantité possédée"
+    }
+
+    BOOSTERS {
+        text boo_id PK "ex. il_1234567890"
+        text boo_user_id PK "toujours 'default'"
+        text boo_ext_id FK "extension du produit"
+        text boo_product_type "toujours 'booster' dans cette table"
+        text boo_description "description / notes libres"
+        text boo_img "URL de la photo du produit"
+        bool boo_obtained "coché obtenu ou non"
+        text boo_date "date d'obtention (texte libre)"
+        int boo_sort_order "position d'affichage"
+    }
+
+    GOODIES {
+        text goo_id PK "ex. il_1234567890"
+        text goo_user_id PK "toujours 'default'"
+        text goo_ext_id FK "extension du produit"
+        text goo_product_type "deck / etb / premium / futures valeurs"
+        text goo_description "description / notes libres"
+        text goo_img "URL de la photo du produit"
+        bool goo_obtained "coché obtenu ou non"
+        text goo_date "date d'obtention (texte libre)"
+        int goo_sort_order "position d'affichage"
+    }
+
+    ACHETEURS {
+        text ach_id PK "ex. ac_1234567890"
+        text ach_user_id PK "toujours 'default'"
+        text ach_pseudo "pseudo/nom de la personne"
+        text ach_icon "emoji ou URL d'avatar"
+    }
+
+    VENDEURS {
+        text vnd_id PK "ex. vd_1234567890"
+        text vnd_user_id PK "toujours 'default'"
+        text vnd_pseudo "pseudo/nom de la personne"
+        text vnd_icon "emoji ou URL d'avatar"
+    }
+
+    ACHETEUR_COMMANDES {
+        text acc_id PK,UK "unique seule (référencée directement par VENTES)"
+        text acc_user_id PK "toujours 'default'"
+        text acc_acheteur_id FK "acheteur qui a passé cette commande"
+        text acc_date_achat "date de la commande"
+        text acc_date_arrivee "date d'arrivée prévue/réelle"
+        text acc_lien_vente "lien vers l'annonce/la conversation"
+        text acc_etat "statut d'expédition, ex. a_envoyer / envoyee"
+    }
+
+    VENDEUR_COMMANDES {
+        text vco_id PK,UK "unique seule (référencée directement par DEPENSES)"
+        text vco_user_id PK "toujours 'default'"
+        text vco_vendeur_id FK "vendeur auprès de qui on a acheté"
+        text vco_date_achat "date de l'achat"
+        text vco_date_arrivee "date d'arrivée prévue/réelle"
+        text vco_lien_achat "lien vers l'annonce/la conversation"
+        text vco_etat "statut de paiement, ex. a_payer / payee"
+    }
+
+    VENTES {
+        text ven_id PK "ex. vt_1234567890"
+        text ven_user_id PK "toujours 'default'"
+        text ven_commande_id FK "commande acheteur associée (optionnel)"
+        text ven_card_id "ref souple -> CARDS.id"
+        text ven_card_name "nom de la carte (copie, même si card_id absent)"
+        text ven_card_image "URL image de la carte"
+        text ven_set_id "extension TCGdex d'origine"
+        text ven_set_name "nom de l'extension TCGdex"
+        text ven_ext_sigle "sigle de l'extension PTCG correspondante"
+        text ven_crop "cadrage de l'image : top / center / bottom"
+        text ven_number "numéro de la carte dans l'extension"
+        text ven_rarity "rareté de la carte"
+        text ven_pokemon_name "nom du Pokémon représenté"
+        text ven_etat "état physique, ex. Near Mint"
+        numeric ven_prix "prix de vente"
+        int ven_qty "quantité"
+        jsonb ven_types "types cochés : Normale / Reverse / Holo / 1ère édition"
+        text ven_langue "langue de la carte"
+        text ven_statut "a_mettre / en_ligne / vendue..."
+    }
+
+    DEPENSES {
+        text dep_id PK "ex. dp_1234567890"
+        text dep_user_id PK "toujours 'default'"
+        text dep_commande_id FK "commande vendeur associée (optionnel)"
+        text dep_card_id "ref souple -> CARDS.id"
+        text dep_card_name "nom de la carte (copie, même si card_id absent)"
+        text dep_card_image "URL image de la carte"
+        text dep_set_id "extension TCGdex d'origine"
+        text dep_set_name "nom de l'extension TCGdex"
+        text dep_ext_sigle "sigle de l'extension PTCG correspondante"
+        text dep_crop "cadrage de l'image : top / center / bottom"
+        text dep_number "numéro de la carte dans l'extension"
+        text dep_rarity "rareté de la carte"
+        text dep_pokemon_name "nom du Pokémon représenté"
+        text dep_etat "état physique, ex. Near Mint"
+        numeric dep_prix "prix payé"
+        int dep_qty "quantité"
+        jsonb dep_types "types cochés : Normale / Reverse / Holo / 1ère édition"
+        text dep_langue "langue de la carte"
+    }
+
+    LABEL_CATEGORIES {
+        text lab_id PK "id perso (lblcat_...) ou id d'une catégorie intégrée"
+        text lab_user_id PK "toujours 'default'"
+        text lab_name "nom affiché de la catégorie, ex. Deoxys"
+        bool lab_is_hidden "catégorie intégrée masquée par l'utilisateur"
+        int lab_sort_order "position d'affichage"
+    }
+
+    FORM_LABEL_OVERRIDES {
+        text for_form_type PK "identifiant de la forme, ex. mega / gmax / alolan"
+        text for_user_id PK "toujours 'default'"
+        text for_category_id "ref souple -> LABEL_CATEGORIES.lab_id"
+        bool for_is_custom "label créé par l'utilisateur (vs intégré modifié)"
+        bool for_is_deleted "label intégré supprimé/masqué"
+        text for_fr "nom affiché en français"
+        text for_badge "texte court du badge, ex. M / GM"
+        text for_color "couleur du badge"
+        bool for_enabled "label actif ou désactivé"
+        jsonb for_prefixes "préfixes reconnus dans le nom PokéAPI"
+        jsonb for_suffixes "suffixes reconnus dans le nom PokéAPI"
+        int for_sort_order "position d'affichage"
+    }
+
+    POKEMON_LABEL_ASSIGNMENTS {
+        text pok_pokemon_key PK "nom interne PokéAPI du Pokémon"
+        text pok_user_id PK "toujours 'default'"
+        text pok_label_id "ref souple -> FORM_LABEL_OVERRIDES.for_form_type"
+    }
+
+    SETTINGS {
+        text set_user_id PK "toujours 'default' (une seule ligne)"
+        text set_display_mode "logo / autre mode d'affichage des extensions"
+        text set_sort_dir "asc / desc, tri des extensions"
+        numeric set_ui_scale "zoom global de l'interface"
+        jsonb set_bloc_order "ordre d'affichage des blocs"
+        jsonb set_tab_view_modes "mode d'affichage mémorisé par onglet"
+        bigint set_data_ts "horodatage global de sync (équivalent _D._ts)"
+    }
+
+    CARDS {
+        text id PK "identifiant TCGdex de la carte"
+        text name "nom de la carte"
+        text image_url "URL de l'image"
+        text set_id "extension TCGdex d'origine"
+        text set_name "nom de l'extension TCGdex"
+        text number "numéro dans l'extension"
+        text rarity "rareté"
+        text[] types "types de la carte"
+    }
+
+    SET_MAPPING {
+        uuid stm_id PK "généré automatiquement"
+        text stm_tcgdex_set_id "identifiant de l'extension côté TCGdex"
+        text stm_tcgdex_set_name "nom de l'extension côté TCGdex"
+        text stm_ptcg_ext_id "extension PTCG correspondante (EXTENSIONS.ext_id)"
+        text stm_ptcg_ext_name "nom de l'extension PTCG au moment du mapping"
+        text stm_ptcg_sigle "sigle de l'extension PTCG au moment du mapping"
+    }
+
+    %% ── Relations avec FK stricte (contrainte + ON DELETE), libellées avec
+    %%    les colonnes exactes de la jointure : "clé_parent -> clé_enfant" ──
+    CLASSEURS          ||--o{ CLASSEUR_EXTENSIONS : "cla_id -> cle_classeur_id (CASCADE)"
+    EXTENSIONS          ||--o{ CLASSEUR_EXTENSIONS : "ext_id -> cle_ext_id (CASCADE)"
+    EXTENSIONS          ||--o{ COLLECTION          : "ext_id -> col_ext_id (CASCADE)"
+    EXTENSIONS          ||--o{ BOOSTERS            : "ext_id -> boo_ext_id (CASCADE)"
+    EXTENSIONS          ||--o{ GOODIES             : "ext_id -> goo_ext_id (CASCADE)"
+    ACHETEURS           ||--o{ ACHETEUR_COMMANDES  : "ach_id -> acc_acheteur_id (CASCADE)"
+    VENDEURS            ||--o{ VENDEUR_COMMANDES   : "vnd_id -> vco_vendeur_id (CASCADE)"
+    ACHETEUR_COMMANDES  ||--o{ VENTES              : "acc_id -> ven_commande_id (SET NULL)"
+    VENDEUR_COMMANDES   ||--o{ DEPENSES            : "vco_id -> dep_commande_id (SET NULL)"
+
+    %% ── Références "souples" (même valeur des deux côtés, sans contrainte
+    %%    FK en base) — libellées pareil, avec le mot "souple" en plus ──────
+    BLOCS            |o..o{ EXTENSIONS            : "blo_id -> ext_bloc_id (souple)"
+    BLOCS            |o..o{ CLASSEURS             : "blo_id -> cla_bloc_id (souple)"
+    CARDS            |o..o{ VENTES                : "id -> ven_card_id (souple)"
+    CARDS            |o..o{ DEPENSES              : "id -> dep_card_id (souple)"
+    LABEL_CATEGORIES |o..o{ FORM_LABEL_OVERRIDES  : "lab_id -> for_category_id (souple)"
+    FORM_LABEL_OVERRIDES |o..o{ POKEMON_LABEL_ASSIGNMENTS : "for_form_type -> pok_label_id (souple)"
