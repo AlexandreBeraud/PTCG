@@ -77,42 +77,111 @@ function _validExtIds() {
 var _SYNC_DOMAINS = [
   {
     table: 'blocs', keyCols: ['blo_id'], userCol: 'blo_user_id', orderBy: 'blo_sort_order.asc',
+    // BUG corrigé : _D.bloc_overrides (masquer un bloc intégré, le renommer,
+    // changer son logo/sigle…) n'était synchronisé nulle part — jamais
+    // poussé ni relu, alors que les colonnes existent déjà côté Supabase
+    // (blo_is_hidden notamment). Ces personnalisations restaient donc
+    // uniquement locales, perdues sur un autre appareil ou après une
+    // restauration cloud. On les pousse maintenant dans la même table que
+    // les blocs personnalisés (même structure de ligne), distingués à la
+    // lecture par leur id : un bloc personnalisé a toujours un id préfixé
+    // "cb_" (généré via addBloc), un override de bloc intégré non.
     toRows: function () {
-      return (_D.custom_blocs || []).map(function (b, i) {
-        return {
+      var out = [];
+      (_D.custom_blocs || []).forEach(function (b, i) {
+        out.push({
           blo_user_id: _cloudUserId(), blo_id: b.id, blo_nom: b.nom || '', blo_short: b.short || '',
-          blo_couleur: b.couleur || '', blo_logo: b.logo || '', blo_sort_order: i, blo_updated_at: _isoNow(),
-        };
+          blo_couleur: b.couleur || '', blo_logo: b.logo || '', blo_sigle: b.sigle || '', blo_is_hidden: false,
+          blo_sort_order: i, blo_updated_at: _isoNow(),
+        });
       });
+      Object.keys(_D.bloc_overrides || {}).forEach(function (blocId) {
+        var ov = _D.bloc_overrides[blocId] || {};
+        out.push({
+          blo_user_id: _cloudUserId(), blo_id: blocId, blo_nom: ov.nom || '', blo_short: ov.short || '',
+          blo_couleur: ov.couleur || '', blo_logo: ov.logo || '', blo_sigle: ov.sigle || '', blo_is_hidden: !!ov._hidden,
+          blo_sort_order: 9999, blo_updated_at: _isoNow(),
+        });
+      });
+      return out;
     },
     apply: function (rows) {
-      rows.sort(function (a, b) { return (a.blo_sort_order || 0) - (b.blo_sort_order || 0); });
-      _D.custom_blocs = rows.map(function (r) {
-        return { id: r.blo_id, short: r.blo_short || '', nom: r.blo_nom || '', couleur: r.blo_couleur || '', logo: r.blo_logo || '', extensions: [], _custom_bloc: true };
+      var customRows    = rows.filter(function (r) { return String(r.blo_id).indexOf('cb_') === 0; });
+      var overrideRows   = rows.filter(function (r) { return String(r.blo_id).indexOf('cb_') !== 0; });
+      customRows.sort(function (a, b) { return (a.blo_sort_order || 0) - (b.blo_sort_order || 0); });
+      _D.custom_blocs = customRows.map(function (r) {
+        return { id: r.blo_id, short: r.blo_short || '', nom: r.blo_nom || '', couleur: r.blo_couleur || '', logo: r.blo_logo || '', sigle: r.blo_sigle || '', extensions: [], _custom_bloc: true };
       });
+      var overrides = {};
+      overrideRows.forEach(function (r) {
+        var ov = {};
+        if (r.blo_short)   ov.short   = r.blo_short;
+        if (r.blo_nom)     ov.nom     = r.blo_nom;
+        if (r.blo_couleur) ov.couleur = r.blo_couleur;
+        if (r.blo_logo)    ov.logo    = r.blo_logo;
+        if (r.blo_sigle)   ov.sigle   = r.blo_sigle;
+        if (r.blo_is_hidden) ov._hidden = true;
+        overrides[r.blo_id] = ov;
+      });
+      _D.bloc_overrides = overrides;
     },
   },
   {
     table: 'extensions', keyCols: ['ext_id'], userCol: 'ext_user_id', orderBy: 'ext_sort_order.asc',
+    // Même principe que pour "blocs" ci-dessus : _D.ext_overrides (masquer
+    // une extension intégrée, la déplacer vers un autre bloc via
+    // bloc_id_override, changer son stat_mode…) n'était pas synchronisé.
+    // Même table que les extensions personnalisées ; distingué à la lecture
+    // par le préfixe "cx_" de l'id (généré via addExtension).
     toRows: function () {
-      return (_D.custom_exts || []).map(function (e, i) {
-        return {
-          ext_user_id: _cloudUserId(), ext_id: e.id, ext_bloc_id: e.bloc_id || '', ext_code: e.code || '',
-          ext_nom: e.nom || '', ext_nb_cartes: e.nb_cartes || 0, ext_logo: e.logo || '', ext_sigle: e.sigle || '',
-          ext_couleur: e.couleur || '', ext_stat_mode: e.stat_mode || 'all', ext_sorti: e.sorti !== false,
+      var out = [];
+      (_D.custom_exts || []).forEach(function (e, i) {
+        out.push({
+          ext_user_id: _cloudUserId(), ext_id: e.id, ext_bloc_id: e.bloc_id || '', ext_bloc_id_override: '',
+          ext_code: e.code || '', ext_nom: e.nom || '', ext_nb_cartes: e.nb_cartes || 0,
+          ext_logo: e.logo || '', ext_sigle: e.sigle || '', ext_couleur: e.couleur || '',
+          ext_stat_mode: e.stat_mode || 'all', ext_sorti: e.sorti !== false, ext_is_hidden: false,
           ext_sort_order: i, ext_updated_at: _isoNow(),
-        };
+        });
       });
+      Object.keys(_D.ext_overrides || {}).forEach(function (extId) {
+        var ov = _D.ext_overrides[extId] || {};
+        out.push({
+          ext_user_id: _cloudUserId(), ext_id: extId, ext_bloc_id: '', ext_bloc_id_override: ov.bloc_id_override || '',
+          ext_code: ov.code || '', ext_nom: ov.nom || '', ext_nb_cartes: ov.nb_cartes || 0,
+          ext_logo: ov.logo || '', ext_sigle: ov.sigle || '', ext_couleur: ov.couleur || '',
+          ext_stat_mode: ov.stat_mode || '', ext_sorti: false, ext_is_hidden: !!ov._hidden,
+          ext_sort_order: 9999, ext_updated_at: _isoNow(),
+        });
+      });
+      return out;
     },
     apply: function (rows) {
-      rows.sort(function (a, b) { return (a.ext_sort_order || 0) - (b.ext_sort_order || 0); });
-      _D.custom_exts = rows.map(function (r) {
+      var customRows   = rows.filter(function (r) { return String(r.ext_id).indexOf('cx_') === 0; });
+      var overrideRows = rows.filter(function (r) { return String(r.ext_id).indexOf('cx_') !== 0; });
+      customRows.sort(function (a, b) { return (a.ext_sort_order || 0) - (b.ext_sort_order || 0); });
+      _D.custom_exts = customRows.map(function (r) {
         return {
           id: r.ext_id, code: r.ext_code || '', nom: r.ext_nom || '', nb_cartes: r.ext_nb_cartes || 0,
           bloc_id: r.ext_bloc_id || '', logo: r.ext_logo || '', sigle: r.ext_sigle || '', couleur: r.ext_couleur || '',
           stat_mode: r.ext_stat_mode || 'all', sorti: r.ext_sorti !== false, _custom: true,
         };
       });
+      var overrides = {};
+      overrideRows.forEach(function (r) {
+        var ov = {};
+        if (r.ext_code)     ov.code     = r.ext_code;
+        if (r.ext_nom)      ov.nom      = r.ext_nom;
+        if (r.ext_nb_cartes) ov.nb_cartes = r.ext_nb_cartes;
+        if (r.ext_logo)     ov.logo     = r.ext_logo;
+        if (r.ext_sigle)    ov.sigle    = r.ext_sigle;
+        if (r.ext_couleur)  ov.couleur  = r.ext_couleur;
+        if (r.ext_stat_mode) ov.stat_mode = r.ext_stat_mode;
+        if (r.ext_bloc_id_override) ov.bloc_id_override = r.ext_bloc_id_override;
+        if (r.ext_is_hidden) ov._hidden = true;
+        overrides[r.ext_id] = ov;
+      });
+      _D.ext_overrides = overrides;
     },
   },
   {
@@ -221,7 +290,7 @@ var _SYNC_DOMAINS = [
     apply: function (rows) {
       _applyBoosterLikeRows(rows, {
         idCol: 'boo_id', extCol: 'boo_ext_id', typeCol: 'boo_product_type', descCol: 'boo_description',
-        imgCol: 'boo_img', obtainedCol: 'boo_obtained', dateCol: 'boo_date', sortCol: 'boo_sort_order',
+        imgCol: 'boo_img', obtainedCol: 'boo_obtained', dateCol: 'boo_date', sortCol: 'boo_sort_order', isBooster: true,
       });
     },
   },
@@ -248,7 +317,7 @@ var _SYNC_DOMAINS = [
     apply: function (rows) {
       _applyBoosterLikeRows(rows, {
         idCol: 'goo_id', extCol: 'goo_ext_id', typeCol: 'goo_product_type', descCol: 'goo_description',
-        imgCol: 'goo_img', obtainedCol: 'goo_obtained', dateCol: 'goo_date', sortCol: 'goo_sort_order',
+        imgCol: 'goo_img', obtainedCol: 'goo_obtained', dateCol: 'goo_date', sortCol: 'goo_sort_order', isBooster: false,
       });
     },
   },
@@ -351,7 +420,7 @@ var _SYNC_DOMAINS = [
           ven_ext_sigle: v.ext_sigle || '', ven_crop: v.crop || 'center', ven_number: v.number || '', ven_rarity: v.rarity || '',
           ven_pokemon_name: v.pokemon_name || '', ven_etat: v.etat || 'Near Mint', ven_prix: v.prix || 0, ven_qty: v.qty || 1,
           ven_types: v.types || [], ven_langue: v.langue || 'Français', ven_statut: v.statut || 'a_mettre',
-          ven_commande_id: v.commande_id || null,
+          ven_commande_id: v.commande_id || null, ven_cardmarket_url: v.cardmarket_url || '',
           ven_created_at: new Date(v.created_at || Date.now()).toISOString(), ven_updated_at: _isoNow(),
         };
       });
@@ -363,7 +432,7 @@ var _SYNC_DOMAINS = [
           set_id: r.ven_set_id || '', set_name: r.ven_set_name || '', set_logo: r.ven_set_logo || '', ext_sigle: r.ven_ext_sigle || '',
           crop: r.ven_crop || 'center', number: r.ven_number || '', rarity: r.ven_rarity || '', pokemon_name: r.ven_pokemon_name || '',
           etat: r.ven_etat || 'Near Mint', prix: r.ven_prix || 0, qty: r.ven_qty || 1, types: r.ven_types || [], langue: r.ven_langue || 'Français',
-          statut: r.ven_statut || 'a_mettre', commande_id: r.ven_commande_id || null,
+          statut: r.ven_statut || 'a_mettre', commande_id: r.ven_commande_id || null, cardmarket_url: r.ven_cardmarket_url || '',
           created_at: r.ven_created_at ? new Date(r.ven_created_at).getTime() : Date.now(),
           updated_at: r.ven_updated_at ? new Date(r.ven_updated_at).getTime() : Date.now(),
         };
@@ -381,6 +450,7 @@ var _SYNC_DOMAINS = [
           dep_ext_sigle: d.ext_sigle || '', dep_crop: d.crop || 'center', dep_number: d.number || '', dep_rarity: d.rarity || '',
           dep_pokemon_name: d.pokemon_name || '', dep_etat: d.etat || 'Near Mint', dep_prix: d.prix || 0, dep_qty: d.qty || 1,
           dep_types: d.types || [], dep_langue: d.langue || 'Français', dep_commande_id: d.commande_id || null,
+          dep_cardmarket_url: d.cardmarket_url || '',
           dep_created_at: new Date(d.created_at || Date.now()).toISOString(), dep_updated_at: _isoNow(),
         };
       });
@@ -392,7 +462,7 @@ var _SYNC_DOMAINS = [
           set_id: r.dep_set_id || '', set_name: r.dep_set_name || '', set_logo: r.dep_set_logo || '', ext_sigle: r.dep_ext_sigle || '',
           crop: r.dep_crop || 'center', number: r.dep_number || '', rarity: r.dep_rarity || '', pokemon_name: r.dep_pokemon_name || '',
           etat: r.dep_etat || 'Near Mint', prix: r.dep_prix || 0, qty: r.dep_qty || 1, types: r.dep_types || [], langue: r.dep_langue || 'Français',
-          commande_id: r.dep_commande_id || null,
+          commande_id: r.dep_commande_id || null, cardmarket_url: r.dep_cardmarket_url || '',
           created_at: r.dep_created_at ? new Date(r.dep_created_at).getTime() : Date.now(),
           updated_at: r.dep_updated_at ? new Date(r.dep_updated_at).getTime() : Date.now(),
         };
@@ -453,9 +523,38 @@ var _SYNC_DOMAINS = [
 // Les deux tables "boosters" et "goodies" partagent la même forme de ligne
 // et le même objet JS cible (_D.boosters_data) — factorisé ici pour éviter
 // de dupliquer la logique deux fois.
+//
+// BUG corrigé : cette fonction faisait un simple .push() sur
+// _D.boosters_data[extId] sans jamais le vider d'abord. Résultat : à chaque
+// pull cloud (bouton Synchroniser, ou restauration automatique au chargement
+// si le cloud est plus récent), les lignes fraîchement récupérées
+// s'ajoutaient à celles déjà en mémoire au lieu de les remplacer → doublons
+// visibles à l'écran qui grossissent à chaque sync. Comme chaque ligne
+// rejouée garde l'id d'origine (boo_id/goo_id venant de Supabase), un push
+// ultérieur vers le cloud fait un upsert sur le même id : la base elle-même
+// ne se retrouve jamais dupliquée, seul l'état local (_D) l'est — exactement
+// le symptôme observé.
+//
+// Le vrai piège : boosters et goodies écrivent dans LE MÊME objet
+// _D.boosters_data[extId], juste filtré par product_type. On ne peut donc
+// pas se contenter de vider tout _D.boosters_data au début de l'apply d'un
+// des deux domaines, sous peine d'effacer ce que l'autre domaine venait d'y
+// mettre. La solution : chaque appel ne remplace QUE le sous-ensemble qui le
+// concerne (booster, ou non-booster) dans chaque extension déjà connue —
+// y compris les extensions qui n'apparaissent plus du tout dans les
+// nouvelles lignes (ex. tous les boosters d'une extension supprimés côté
+// cloud doivent bien disparaître localement).
 function _applyBoosterLikeRows(rows, cols) {
   rows.sort(function (a, b) { return (a[cols.sortCol] || 0) - (b[cols.sortCol] || 0); });
   if (!_D.boosters_data) _D.boosters_data = {};
+
+  Object.keys(_D.boosters_data).forEach(function (extId) {
+    _D.boosters_data[extId] = (_D.boosters_data[extId] || []).filter(function (il) {
+      var ilIsBooster = (il.product_type || 'booster') === 'booster';
+      return cols.isBooster ? !ilIsBooster : ilIsBooster;
+    });
+  });
+
   rows.forEach(function (r) {
     var extId = r[cols.extCol];
     if (!_D.boosters_data[extId]) _D.boosters_data[extId] = [];
@@ -463,6 +562,10 @@ function _applyBoosterLikeRows(rows, cols) {
       id: r[cols.idCol], desc: r[cols.descCol] || '', img: r[cols.imgCol] || '',
       obtained: !!r[cols.obtainedCol], date: r[cols.dateCol] || '', product_type: r[cols.typeCol] || 'booster',
     });
+  });
+
+  Object.keys(_D.boosters_data).forEach(function (extId) {
+    if (!_D.boosters_data[extId].length) delete _D.boosters_data[extId];
   });
 }
 
@@ -499,6 +602,16 @@ var _pushRerunNeeded = false;
 // "duplicate key" (23505) quand les deux écritures s'entrelacent.
 async function _cloudPushAll() {
   if (!_cloudReady()) return;
+  if (_pullInProgress) {
+    // Un pull est en cours (restauration au chargement, bouton Synchroniser
+    // ou Récupérer depuis le cloud) : ne surtout pas pousser par-dessus. Le
+    // push fait un DELETE puis un INSERT par table ; s'il s'intercale au
+    // milieu d'un pull qui n'a pas fini de lire/appliquer toutes les tables,
+    // il peut vider des lignes que le pull n'a pas encore traitées. On
+    // réessaie simplement un peu plus tard plutôt que de forcer.
+    setTimeout(_cloudPushAll, 400);
+    return;
+  }
   if (_pushInProgress) {
     // Une synchro tourne déjà : on ne lance pas une deuxième écriture en
     // parallèle, on redemande juste un passage juste après celui en cours,
@@ -555,31 +668,77 @@ async function _cloudPushAll() {
   }
 }
 
-// ── Pull : uniquement si le cloud est strictement plus récent ─────────────
-async function _cloudPullAll() {
+// ── Pull : uniquement si le cloud est strictement plus récent (sauf si
+//    force=true, voir forceRestoreFromCloud ci-dessous) ────────────────────
+//
+// Deux bugs corrigés ici, tous deux responsables du même symptôme (collection
+// entière vidée juste après le message "Données restaurées depuis le
+// cloud", sur une page/un navigateur sans donnée locale) :
+//
+// 1. Les ~20 tables étaient lues une par une (boucle avec await séquentiel) :
+//    plusieurs secondes au total. Largement le temps qu'un push automatique
+//    (_scheduleCloudPush, déclenché par n'importe quel saveData() ailleurs
+//    dans l'appli, débouncé 1.2s) se déclenche PENDANT que le pull tourne
+//    encore. Comme le push fait un DELETE puis un INSERT par table (voir
+//    _cloudPushAll), un push qui s'intercale au milieu d'un pull peut
+//    supprimer des lignes que le pull n'a pas encore lues, ou les réinsérer
+//    avec un _D encore partiellement (voire pas du tout) peuplé — ce qui
+//    vide réellement le cloud, pas juste l'affichage local. Fix : les
+//    tables sont maintenant toutes lues EN PARALLÈLE (Promise.all), ce qui
+//    réduit la fenêtre de course à la durée d'UNE seule requête plutôt que
+//    vingt, et un vrai verrou (_pullInProgress) fait maintenant patienter
+//    tout push tant qu'un pull est en cours.
+// 2. Si malgré tout une table revient vide (RLS mal configurée, ou push
+//    concurrent qui a quand même réussi à passer), l'ancien code appliquait
+//    ce résultat vide tel quel. On récupère maintenant TOUT d'abord sans
+//    rien appliquer, et si LITTÉRALEMENT AUCUNE table ne renvoie la moindre
+//    ligne alors que settings.set_data_ts existe, on refuse d'appliquer quoi
+//    que ce soit plutôt que de vider la collection locale par erreur.
+var _pullInProgress = false;
+async function _cloudPullAll(force) {
   if (!_cloudReady()) return false;
-  var res = await fetch(SB_URL + '/rest/v1/settings?set_user_id=eq.' + encodeURIComponent(_cloudUserId()), { headers: _sbHeaders() });
-  if (!res.ok) return false;
-  var rows = await res.json();
-  if (!rows.length) return false;
-  var cloudTs = rows[0].set_data_ts || 0;
-  if (cloudTs <= (_D._ts || 0)) return false;
+  _pullInProgress = true;
+  try {
+    var res = await fetch(SB_URL + '/rest/v1/settings?set_user_id=eq.' + encodeURIComponent(_cloudUserId()), { headers: _sbHeaders() });
+    if (!res.ok) return false;
+    var rows = await res.json();
+    if (!rows.length) return false;
+    var cloudTs = rows[0].set_data_ts || 0;
+    if (!force && cloudTs <= (_D._ts || 0)) return false;
 
-  for (var i = 0; i < _SYNC_DOMAINS.length; i++) {
-    var d = _SYNC_DOMAINS[i];
-    var url = SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()) + (d.orderBy ? '&order=' + d.orderBy : '');
-    var r = await fetch(url, { headers: _sbHeaders() });
-    if (!r.ok) continue;
-    var domainRows = await r.json();
-    d.apply(domainRows);
+    var fetched = await Promise.all(_SYNC_DOMAINS.map(async function (d) {
+      var url = SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()) + (d.orderBy ? '&order=' + d.orderBy : '');
+      try {
+        var r = await fetch(url, { headers: _sbHeaders() });
+        if (!r.ok) return { domain: d, rows: null };
+        return { domain: d, rows: await r.json() };
+      } catch (e) {
+        return { domain: d, rows: null }; // échec réseau : ce domaine ne sera pas touché
+      }
+    }));
+
+    var anyRowsFound = fetched.some(function (f) { return f.rows && f.rows.length; });
+    if (!anyRowsFound) {
+      throw new Error("le cloud a répondu mais TOUTES les tables sont vides — vérifie les policies RLS dans Supabase (lecture SELECT autorisée pour la clé anon, sur chaque table). Rien n'a été modifié en local.");
+    }
+
+    fetched.forEach(function (f) { if (f.rows) f.domain.apply(f.rows); });
+
+    var s = rows[0];
+    // On préserve les éventuels réglages purement locaux (ex. sales_cards_per_row,
+    // qui n'a pas encore de colonne dédiée côté cloud) au lieu d'écraser tout
+    // _D.settings — seuls les champs réellement gérés par la table cloud sont
+    // remplacés.
+    _D.settings = {
+      ..._D.settings,
+      display_mode: s.set_display_mode || 'logo', sort_dir: s.set_sort_dir || 'asc', ui_scale: s.set_ui_scale || 1,
+      bloc_order: s.set_bloc_order || [], tab_view_modes: s.set_tab_view_modes || {},
+    };
+    _D._ts = cloudTs;
+    return true;
+  } finally {
+    _pullInProgress = false;
   }
-  var s = rows[0];
-  _D.settings = {
-    display_mode: s.set_display_mode || 'logo', sort_dir: s.set_sort_dir || 'asc', ui_scale: s.set_ui_scale || 1,
-    bloc_order: s.set_bloc_order || [], tab_view_modes: s.set_tab_view_modes || {},
-  };
-  _D._ts = cloudTs;
-  return true;
 }
 
 // ── Débounce du push automatique après chaque saveData() ──────────────────
@@ -595,20 +754,30 @@ function _scheduleCloudPush() {
 }
 
 // ── Synchronisation initiale (au chargement de la page) ───────────────────
+// Au chargement de la page, on ne fait QUE récupérer depuis le cloud, jamais
+// écrire dessus — c'est ce que "récupération seule" veut dire concrètement :
+// ni saveData() (qui programme un push), ni le moindre appel à
+// _cloudPushAll(), quel que soit le résultat du pull. Pousser au chargement
+// est exactement ce qui pouvait écraser le cloud avec un état local pas
+// encore stabilisé (voir _persistLocalOnly dans core.js). Si l'utilisateur
+// modifie ensuite quoi que ce soit, le push automatique habituel
+// (_scheduleCloudPush via saveData()) prend le relais normalement.
 async function _cloudInitialSync() {
   try {
     var pulled = await _cloudPullAll();
     if (pulled) {
-      saveData();
+      _persistLocalOnly();
       renderAll();
       toast('Données restaurées depuis le cloud.', 'success');
-    } else {
-      // Rien de plus récent côté cloud : on pousse notre état local, pour
-      // que les autres appareils voient nos données existantes.
-      _scheduleCloudPush();
     }
+    // Sinon (rien de plus récent côté cloud, ou pull impossible) : on ne fait
+    // STRICTEMENT RIEN d'autre ici. Pas de push automatique au chargement.
   } catch (e) {
+    // Une erreur ici (ex. le garde-fou "toutes les tables sont vides"
+    // ci-dessus) ne doit pas rester invisible dans la seule console : c'est
+    // potentiellement une collection entière qui a failli disparaître.
     console.warn('[PTCG] sync initiale cloud :', e.message);
+    toast('Restauration cloud interrompue : ' + e.message, 'error');
   }
   // form_label_overrides garde son mécanisme dédié (une ligne par form_type).
   try {
@@ -624,7 +793,7 @@ async function syncCloud() {
   try {
     var pulled = await _cloudPullAll();
     if (pulled) {
-      saveData(); renderAll();
+      _persistLocalOnly(); renderAll();
       toast('Données importées du cloud.', 'success');
       return;
     }
@@ -633,6 +802,31 @@ async function syncCloud() {
   } catch (e) {
     console.error('[PTCG] syncCloud a échoué :', e);
     toast('Erreur sync : ' + e.message, 'error');
+  }
+}
+
+// ── Bouton "Récupérer depuis le cloud" (Paramètres) ────────────────────────
+// Contrairement à syncCloud(), qui compare les horodatages et peut décider de
+// POUSSER le local (s'il paraît plus récent), celui-ci ne fait QUE récupérer :
+// il applique toujours ce qu'il y a sur Supabase, quel que soit l'horodatage
+// local — utile si le local a été poussé par erreur après coup (état
+// corrompu, doublons…) et paraît donc à tort "plus récent" que le cloud, ce
+// qui empêcherait syncCloud() de le rattraper.
+async function forceRestoreFromCloud() {
+  if (!_cloudReady()) { toast('Configurez Supabase.', 'error'); return; }
+  if (!confirm('Récupérer les données depuis Supabase et remplacer tout ce qui est affiché ici ?\n\nRien ne sera envoyé vers le cloud, uniquement récupéré. Les modifications locales pas encore synchronisées seront perdues.')) return;
+  try {
+    var pulled = await _cloudPullAll(true);
+    if (!pulled) { toast('Aucune donnée trouvée sur Supabase pour cet utilisateur.', 'error'); return; }
+    _persistLocalOnly();
+    renderAll();
+    await _pullLabelOverridesFromCloud();
+    renderLabelsList();
+    _refreshPokedexAfterLabelChange();
+    toast('Données récupérées depuis le cloud.', 'success');
+  } catch (e) {
+    console.error('[PTCG] forceRestoreFromCloud a échoué :', e);
+    toast('Erreur de récupération : ' + e.message, 'error');
   }
 }
 

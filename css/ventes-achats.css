@@ -3,8 +3,6 @@
    Ventes / Achats / Acheteurs / Vendeurs / Bilan
    ══════════════════════════════════════════════════════════════════════ */
 
-}
-
 
 /* ═══════════════════════════════════════════════════════════════════════
    VENTES / ACHETEURS / DÉPENSES / VENDEURS
@@ -16,26 +14,40 @@
 }
 .sales-search-input:focus { border-color: var(--accent); }
 
-.sales-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.sales-grid-wide { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; margin-bottom: 24px; }
-.sales-list-wrap { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+/* Nombre de cartes par ligne réglable (Paramètres › Affichage), 5 par défaut.
+   --sales-cards-per-row est posée sur <html> par applyCardsPerRow() (js/ventes-achats.js). */
+.sales-grid { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.sales-grid-wide { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.sales-list-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
+.sales-compact-wrap { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
 .sales-empty { color: var(--text2); font-size: .82rem; padding: 28px 8px; text-align: center; grid-column: 1/-1; }
 
-/* Cartes Vente / Dépense (item unique) */
-.sale-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
-.sale-card:hover { border-color: var(--text3); }
+/* Barre de tri/filtre Ventes & Dépenses (extension + tri) */
+.sales-sort-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.sales-sort-select {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 10px; font-size: .76rem; color: var(--text); cursor: pointer; outline: none; transition: border-color .15s;
+}
+.sales-sort-select:focus, .sales-sort-select:hover { border-color: var(--accent); }
+
+/* Cartes Vente / Dépense (item unique) — toute la carte est cliquable pour
+   ouvrir la modification (voir le addEventListener('click', ...) dans le JS) ;
+   les boutons internes stoppent la propagation pour ne pas déclencher les deux. */
+.sale-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; }
+.sale-card:hover { border-color: var(--accent); }
 .sale-card-top { height: 72px; display: flex; align-items: center; padding: 0 14px; gap: 12px; position: relative; }
 .sale-top-info { flex: 1; min-width: 0; }
 .sale-card-top .sale-card-name { color: #fff; }
-.sale-card-top .sale-card-meta { color: rgba(255,255,255,.75); }
 .sale-card-name { font-size: .86rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sale-card-meta { font-size: .68rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sale-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.sale-card-meta-row { display: flex; align-items: center; gap: 5px; margin-top: 3px; min-width: 0; }
+.sale-card-sigle-inline { height: 13px; max-width: 20px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.sale-card-ext-name { flex: 1; min-width: 0; font-size: .68rem; color: rgba(255,255,255,.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.sale-card-footer-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .sale-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
-.sale-row { display: flex; align-items: center; justify-content: space-between; font-size: .76rem; }
-.sale-row .lbl { color: var(--text2); }
+.sale-row { display: flex; align-items: center; justify-content: space-between; font-size: .76rem; gap: 8px; }
+.sale-row .lbl { color: var(--text2); flex-shrink: 0; }
 .sale-row .val.price { color: var(--green); font-weight: 700; }
-.sale-types { display: flex; flex-wrap: wrap; gap: 4px; }
+.sale-types-val { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .type-chip { font-size: .62rem; font-weight: 600; background: rgba(74,158,255,.14); color: var(--blue); border: 1px solid rgba(74,158,255,.3); border-radius: 10px; padding: 2px 8px; }
 .type-chip.sm { padding: 1px 6px; }
 .sale-acheteur { font-size: .74rem; color: var(--text); background: var(--bg3); border-radius: var(--radius-sm); padding: 5px 8px; }
@@ -43,17 +55,46 @@
 .sale-link { font-size: .72rem; color: var(--blue); display: inline-flex; align-items: center; gap: 4px; }
 .sale-link:hover { text-decoration: underline; }
 
-/* Lignes Vente / Dépense (mode liste) */
-.sale-list-row { display: flex; align-items: center; gap: 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; transition: border-color .15s; }
-.sale-list-row:hover { border-color: var(--text3); }
-.sale-list-thumb { width: 36px; height: 50px; border-radius: 5px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); font-size: 1.1rem; }
-.sale-list-main { flex: 1; min-width: 0; }
+/* Lignes Vente / Dépense (mode liste) — <details>/<summary> natif : la ligne
+   d'aperçu (image/nom/statut/prix/acheteur/actions) est toujours alignée en
+   grille, les infos secondaires (état, type, langue) se déplient au clic. */
+.sale-list-row { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
+.sale-list-row:hover { border-color: var(--accent); }
+.sale-list-summary {
+  display: grid; cursor: pointer; list-style: none;
+  grid-template-columns: 14px 40px minmax(120px,1.7fr) 92px 84px minmax(110px,1fr) auto;
+  align-items: center; gap: 12px; padding: 8px 14px;
+}
+.sale-list-summary::-webkit-details-marker { display: none; }
+.sale-list-chevron { font-size: .62rem; color: var(--text3); transition: transform .15s; justify-self: center; }
+.sale-list-row[open] .sale-list-chevron { transform: rotate(90deg); }
+.sale-list-thumb { width: 40px; height: 40px; border-radius: 6px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); font-size: 1.1rem; }
+.sale-list-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.sale-list-main { min-width: 0; }
 .sale-list-name { font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sale-list-meta { font-size: .68rem; color: var(--text2); margin-top: 2px; }
-.sale-list-price { font-size: .82rem; font-weight: 700; color: var(--green); min-width: 70px; text-align: right; flex-shrink: 0; }
-.sale-list-acheteur { font-size: .72rem; color: var(--text); min-width: 130px; text-align: right; flex-shrink: 0; }
+.sale-list-meta { font-size: .68rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.sale-list-price { font-size: .82rem; font-weight: 700; color: var(--green); text-align: right; }
+.sale-list-acheteur { font-size: .72rem; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sale-list-acheteur.unlinked { color: var(--text3); font-style: italic; }
 .sale-list-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.sale-list-details { padding: 2px 14px 12px 66px; display: flex; flex-direction: column; gap: 5px; border-top: 1px solid var(--border); margin-top: 2px; }
+
+/* Mode "Carte à gauche" : l'image occupe toute la hauteur à gauche, les infos
+   (état, prix, type, langue, acheteur) sont listées à droite. */
+.sale-compact-row { display: flex; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; }
+.sale-compact-row:hover { border-color: var(--accent); }
+.sale-compact-thumb {
+  flex: 0 0 42%; min-height: 150px; position: relative; background-size: cover; background-repeat: no-repeat;
+  background-position: center; background-color: var(--bg3);
+  display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+}
+.sale-compact-body { flex: 1; min-width: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.sale-compact-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.sale-compact-head-text { min-width: 0; }
+.sale-compact-name { font-size: .84rem; font-weight: 700; overflow-wrap: break-word; }
+.sale-compact-meta { font-size: .68rem; color: var(--text2); margin: 2px 0 5px; }
+.sale-compact-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.sale-compact-rows { display: flex; flex-direction: column; gap: 3px; }
 
 /* Cartes commande Acheteur / Vendeur (grid) */
 .order-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
@@ -154,10 +195,12 @@
 /* Liste de commandes à l'intérieur d'une carte Acheteur/Vendeur dépliée */
 .commandes-list { display: flex; flex-direction: column; gap: 6px; }
 .commande-row { background: var(--bg3); border-radius: var(--radius-sm); overflow: hidden; }
-.commande-row-header { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; font-size: .76rem; }
-.commande-date { color: var(--text); font-weight: 600; white-space: nowrap; }
-.commande-count { color: var(--text2); white-space: nowrap; }
-.commande-total { font-weight: 700; color: var(--gold); margin-left: auto; white-space: nowrap; }
+.commande-row-header { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; cursor: pointer; font-size: .76rem; }
+.commande-row-line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.commande-row-line2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.commande-date { color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.commande-count { color: var(--text2); white-space: nowrap; margin-right: auto; }
+.commande-total { font-weight: 700; color: var(--gold); white-space: nowrap; flex-shrink: 0; }
 .commande-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .commande-row .order-items-list { padding: 0 10px 10px; }
 .commande-row .order-add-btn { padding-left: 10px; padding-bottom: 8px; }
@@ -195,6 +238,24 @@
 .bilan-solde.positive { color: var(--green); }
 .bilan-solde.negative { color: var(--accent2); }
 
+/* Graphiques Bilan (Chart.js — voir js/ventes-achats.js) : même approche que
+   le budget de référence (bascule camembert/barres, wrapper à hauteur fixe
+   pour que Chart.js calcule un canvas responsive correctement). */
+.bilan-charts-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.bilan-chart-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; flex: 1; min-width: 300px; margin-bottom: 16px;
+}
+.bilan-chart-card h3 { font-size: .86rem; margin: 0; display: flex; align-items: baseline; gap: 8px; }
+.bilan-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.bilan-chart-type-toggle { display: flex; gap: 3px; background: var(--bg3); padding: 3px; border-radius: 8px; flex-shrink: 0; }
+.bilan-ctt-btn { width: 26px; height: 22px; border-radius: 5px; font-size: 12px; color: var(--text3); transition: all .15s; }
+.bilan-ctt-btn:hover { color: var(--text); }
+.bilan-ctt-btn.active { background: var(--bg2); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.bilan-chart-wrapper { position: relative; height: 260px; }
+.bilan-chart-wrapper-tall { height: 320px; }
+.bilan-chart-empty { color: var(--text3); font-size: .8rem; padding: 20px; text-align: center; width: 100%; display: flex; align-items: center; justify-content: center; height: 100%; }
+
 /* ── Ajouts feedback round 6 (sigle, rognage, prévisualisation carte) ────── */
 
 /* Sigle d'extension affiché à gauche de la bannière (comme dans les classeurs) */
@@ -213,3 +274,46 @@
 .cardpicker-preview-name { font-size: .86rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .cardpicker-preview-sigle { height: 16px; max-width: 26px; object-fit: contain; flex-shrink: 0; }
 .cardpicker-preview-meta { font-size: .7rem; color: var(--text2); margin-top: 2px; }
+
+/* ── Ajouts feedback round 7 (cartes/ligne réglable, rognage interactif,
+   vente partielle d'un lot multi-exemplaires) ──────────────────────────── */
+
+/* Rognage interactif : bannière de prévisualisation + curseur vertical
+   glissable. La position (0 = haut de l'image, 100 = bas) est stockée
+   directement en % dans crop, remplaçant l'ancien choix figé Haut/Centre/Bas
+   (toujours lu correctement par _cropPosition() pour les anciennes ventes). */
+.crop-picker { display: flex; flex-direction: column; gap: 8px; }
+.crop-picker-preview {
+  position: relative; width: 100%; height: 130px; border-radius: var(--radius-sm);
+  overflow: hidden; background-color: var(--bg3); background-size: cover; background-repeat: no-repeat;
+  border: 1px solid var(--border); cursor: ns-resize; user-select: none; touch-action: none;
+}
+.crop-picker-preview.is-empty { display: flex; align-items: center; justify-content: center; cursor: default; }
+.crop-picker-preview.is-empty::after {
+  content: 'Choisis une carte pour régler le rognage'; text-align: center; padding: 0 18px;
+  font-size: .72rem; color: var(--text3);
+}
+.crop-picker-handle {
+  position: absolute; left: 0; right: 0; top: 50%; height: 0; border-top: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.45); pointer-events: none;
+}
+.crop-picker-handle::before {
+  content: ''; position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%);
+  width: 15px; height: 15px; border-radius: 50%; background: var(--accent);
+  border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.5);
+}
+.crop-picker-row { display: flex; align-items: center; gap: 10px; }
+.crop-picker-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+.crop-picker-value { font-size: .74rem; color: var(--text2); min-width: 36px; text-align: right; flex-shrink: 0; }
+
+/* Bouton "Marquer des exemplaires vendus" sur une vente en plusieurs
+   exemplaires (qty > 1) : ouvre modal-vente-split. */
+.sale-split-btn { width: 100%; justify-content: center; margin-top: 2px; }
+.sale-list-split-btn { flex-shrink: 0; }
+
+/* Modal de vente partielle : rappel du lot concerné */
+.split-info-box {
+  background: var(--bg3); border-radius: var(--radius-sm); padding: 8px 10px;
+  font-size: .78rem; color: var(--text); display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.split-info-box .split-info-qty { color: var(--gold); font-weight: 700; }

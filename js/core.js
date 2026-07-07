@@ -45,6 +45,11 @@ var _illusEditId     = null;
 var _boosterDetail   = null;
 var _boosterFilter   = 'all';
 
+// Goodies (même mécanisme que Boosters, mais product_type !== 'booster' —
+// voir js/sync.js pour la répartition boosters/goodies côté cloud)
+var _goodieDetail    = null;
+var _goodieFilter    = 'all';
+
 // ── Routage par URL (#/section) ─────────────────────────────────────────────
 // Chaque section a sa propre URL (ex. index.html#/ventes), pour pouvoir la
 // partager, la mettre en favori, ou naviguer avec Précédent/Suivant — sans
@@ -52,7 +57,7 @@ var _boosterFilter   = 'all';
 // seul _D en mémoire, aucun rechargement. On modifie juste le fragment
 // (#...) de l'URL, jamais le chemin du fichier — ça marche donc pareil en
 // local (file://) et une fois déployé sur Netlify.
-var _VALID_VIEWS = ['extensions','classeurs','boosters','statistiques','edition','parametres','pokedex','ventes','acheteurs','depenses','vendeurs','bilan'];
+var _VALID_VIEWS = ['extensions','classeurs','boosters','goodies','statistiques','edition','parametres','pokedex','ventes','acheteurs','depenses','vendeurs','bilan'];
 var _lastSelfHash = null; // dernier hash qu'on a posé nous-mêmes (voir hashchange plus bas)
 
 function _setHash(view, sub) {
@@ -113,12 +118,16 @@ window.addEventListener('DOMContentLoaded', () => {
   );
   // Delegated handlers — avoids apostrophe/escaping issues in onclick
   document.addEventListener('click', e => {
-    // bea-add-btn
+    // bea-add-btn (Boosters ET Goodies partagent la même classe ; data-kind
+    // distingue laquelle des deux modales/valeurs par défaut utiliser)
     const addBtn = e.target.closest('.bea-add-btn[data-ext-id]');
     if (addBtn) {
       const extId = addBtn.dataset.extId;
       const ext   = getExt(extId);
-      if (ext) openAddIllus(extId, ext.nom);
+      if (ext) {
+        if (addBtn.dataset.kind === 'goodie') openAddGoodie(extId, ext.nom);
+        else openAddIllus(extId, ext.nom);
+      }
       return;
     }
     // illus panel action buttons
@@ -261,19 +270,28 @@ function _migrateSalesToCommandes() {
   _D._sales_commandes_migrated = true;
 }
 
-function saveData() {
-  _D._ts = Date.now();
+// Persiste _D en local (localStorage) SANS déclencher de push cloud — utilisé
+// juste après un pull réussi (chargement de page, bouton Synchroniser,
+// Récupérer depuis le cloud, pull des labels) : on vient de RECEVOIR l'état
+// depuis Supabase, il n'y a donc rien à renvoyer, et le renvoyer quand même
+// est exactement ce qui provoquait la collection vidée sur une page neuve
+// (le push, avec son DELETE-puis-INSERT par table, pouvait s'intercaler
+// avant que le pull ait fini d'appliquer toutes les tables). saveData() reste
+// la fonction à utiliser pour toute modification faite PAR l'utilisateur.
+function _persistLocalOnly() {
   const s = { ..._D };
   delete s._tpl_blocs; delete s.blocs;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch(e) {
-    // Une erreur ici (quota dépassé, storage désactivé…) était jusqu'ici
-    // totalement silencieuse : la donnée semblait enregistrée en mémoire mais
-    // ne survivait à aucune actualisation. On la rend visible.
-    console.error('[PTCG] saveData a échoué :', e);
+    console.error('[PTCG] _persistLocalOnly a échoué :', e);
     toast('Échec de la sauvegarde locale : ' + e.message, 'error');
   }
+}
+
+function saveData() {
+  _D._ts = Date.now();
+  _persistLocalOnly();
   // Chaque sauvegarde locale déclenche aussi une synchronisation cloud
   // (silencieuse, débouncée) : c'est ce qui manquait pour que les autres
   // appareils/navigateurs voient les mêmes données.
@@ -294,6 +312,7 @@ function renderAll() {
   safe(renderBilan,         'renderBilan');
   safe(updateGlobalProgress,'updateGlobalProgress');
   safe(updateBadges,        'updateBadges');
+  safe(() => applyCardsPerRow(_D.settings?.sales_cards_per_row || 5), 'applyCardsPerRow');
   setTimeout(applyRainbow, 0);
 }
 

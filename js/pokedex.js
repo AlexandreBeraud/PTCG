@@ -124,6 +124,15 @@ async function initPokedex() {
 
     _buildGenFilters();
     _pkdx.page = 0;
+    // Charge en UNE seule requête les noms FR de TOUTE la liste (voir
+    // _bulkLoadFrNames) — sans ça, un Pokémon jamais encore affiché dans la
+    // grille n'a pas de nom FR connu et la recherche par nom (Pokédex ET
+    // sélecteur de carte Ventes/Dépenses) ne le trouve pas, alors que la
+    // recherche par numéro fonctionne toujours (elle ne dépend d'aucun appel
+    // réseau). Ce chargement groupé élimine ce problème pour tout le Pokédex
+    // d'un coup, plutôt que de dépendre de l'affichage carte par carte.
+    document.getElementById('pokedex-subtitle').textContent = 'Chargement des noms français…';
+    await _bulkLoadFrNames();
     document.getElementById('pokedex-subtitle').textContent = 'Chargement des formes…';
     await _loadFormsList();
     document.getElementById('pokedex-subtitle').textContent =
@@ -135,6 +144,54 @@ async function initPokedex() {
     document.getElementById('pokedex-error').style.display   = 'block';
     document.getElementById('pokedex-error').textContent     = 'Erreur : ' + err.message;
   }
+}
+
+// Récupère en UNE seule requête (endpoint GraphQL public de PokéAPI) le nom
+// français de TOUTES les espèces, au lieu de 1000+ appels REST individuels
+// (un par Pokémon, comme le fait l'ancienne hydratation "à la volée" au fil
+// de l'affichage de la grille — _hydrateCard). C'est ce chargement groupé qui
+// garantit que la recherche par nom trouve n'importe quel Pokémon dès
+// l'ouverture du Pokédex, qu'il ait déjà été affiché ou non.
+async function _bulkLoadFrNames() {
+  try {
+    const query = `query {
+      species: pokemon_v2_pokemonspecies(order_by: {id: asc}) {
+        id
+        pokemon_v2_pokemonspeciesnames(where: {language_id: {_eq: 5}}) { name }
+      }
+    }`;
+    const res = await fetch('https://beta.pokeapi.co/graphql/v1beta2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    const rows = (json.data && json.data.species) || [];
+    const byId = {};
+    rows.forEach(s => {
+      const n = s.pokemon_v2_pokemonspeciesnames && s.pokemon_v2_pokemonspeciesnames[0];
+      if (n && n.name) byId[s.id] = n.name;
+    });
+    _pkdx.all.forEach(p => { if (!p.isForm && byId[p.id]) p.frName = byId[p.id]; });
+  } catch (e) {
+    // Pas bloquant : si l'appel groupé échoue (réseau, endpoint
+    // indisponible…), l'ancienne hydratation carte par carte (_hydrateCard)
+    // prend le relais au fil de l'affichage — dégradé mais fonctionnel.
+    console.warn('[Pokédex] Chargement groupé des noms FR échoué, repli sur le chargement à la volée :', e.message);
+  }
+}
+
+// Calcule le nom FR de chaque forme à partir du nom FR (déjà chargé par
+// _bulkLoadFrNames) de son Pokémon de base — même construction que dans
+// _hydrateCard, mais faite une fois pour toutes pour toute forme déjà
+// connue plutôt qu'au moment où elle s'affiche à l'écran.
+function _applyFrNamesToForms() {
+  _pkdx.all.forEach(p => {
+    if (!p.isForm || p.frName) return;
+    const base = _pkdx.all.find(e => !e.isForm && e.id === p.baseId);
+    if (base && base.frName) p.frName = _buildFormFrName(base.frName, p.formType, p.name);
+  });
 }
 
 function _buildGenFilters() {
@@ -438,6 +495,11 @@ async function _loadFormsList() {
 
     _pkdx.formsLoaded = true;
     _pkdx.showForms   = true;
+    // Les noms FR des bases sont normalement déjà chargés en masse
+    // (_bulkLoadFrNames, appelé avant _loadFormsList dans initPokedex) : on
+    // peut donc calculer immédiatement le nom de chaque forme, sans attendre
+    // qu'elle soit affichée à l'écran.
+    _applyFrNamesToForms();
     _applyPokedexFilter();
     const fp = document.getElementById('pkdx-forms-panel');
     if (fp && fp.style.display !== 'none') _buildFormTypeFilterList();
@@ -548,30 +610,36 @@ async function _hydrateCard(p) {
     const displayId = isForm ? p.baseId : p.id;
     const numStr    = '#' + String(displayId).padStart(4, '0');
 
-    let frName = _capitalize(poke.name.replace(/-/g, ' '));
-    try {
-      const spec = await _fetchSpecies(poke.species.url);
-      if (spec) {
-        if (isForm) {
-          const baseEntry = _pkdx.all.find(e => e.id === p.baseId && !e.isForm);
-          let baseFr = baseEntry?.frName || '';
-          if (!baseFr) {
-            // Base not hydrated yet — fetch its species
-            try {
-              const fr2 = spec.names?.find(n => n.language.name === 'fr');
-              if (fr2) { baseFr = fr2.name; if (baseEntry) baseEntry.frName = fr2.name; }
-            } catch(_) {}
+    // Le nom FR est presque toujours déjà connu à ce stade (chargé en masse
+    // par _bulkLoadFrNames à l'ouverture du Pokédex) : on ne refait l'appel
+    // espèce que dans les cas résiduels où il manquerait encore (échec du
+    // chargement groupé, ou forme ajoutée après coup sans base hydratée).
+    let frName = p.frName || _capitalize(poke.name.replace(/-/g, ' '));
+    if (!p.frName) {
+      try {
+        const spec = await _fetchSpecies(poke.species.url);
+        if (spec) {
+          if (isForm) {
+            const baseEntry = _pkdx.all.find(e => e.id === p.baseId && !e.isForm);
+            let baseFr = baseEntry?.frName || '';
+            if (!baseFr) {
+              // Base not hydrated yet — fetch its species
+              try {
+                const fr2 = spec.names?.find(n => n.language.name === 'fr');
+                if (fr2) { baseFr = fr2.name; if (baseEntry) baseEntry.frName = fr2.name; }
+              } catch(_) {}
+            }
+            frName = _buildFormFrName(baseFr, p.formType, p.name);
+            p.frName = frName;
+          } else {
+            const fr = spec.names?.find(n => n.language.name === 'fr');
+            if (fr) frName = fr.name;
+            const entry = _pkdx.all.find(e => e.id === p.id && !e.isForm);
+            if (entry) entry.frName = frName;
           }
-          frName = _buildFormFrName(baseFr, p.formType, p.name);
-          p.frName = frName;
-        } else {
-          const fr = spec.names?.find(n => n.language.name === 'fr');
-          if (fr) frName = fr.name;
-          const entry = _pkdx.all.find(e => e.id === p.id && !e.isForm);
-          if (entry) entry.frName = frName;
         }
-      }
-    } catch(_) {}
+      } catch(_) {}
+    }
 
     const sprite   = _spriteUrl(poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '');
     const types    = poke.types.map(t => t.type.name);
@@ -696,8 +764,12 @@ async function openPokedexModal(id) {
       </div>`;
     }
 
-    // Special forms HTML
+    // Special forms HTML — on garde aussi la liste des types de forme
+    // réellement associés à CE Pokémon (ownFormTypes), pour que la vue "carte
+    // de base" ci-dessous n'exclue que les cartes correspondant à une forme
+    // qui existe vraiment ici (voir _fetchCardsGroupedByExtension).
     let formsHtml = '';
+    const ownFormTypes = [];
     if (varieties.length > 0) {
       const formCards = await Promise.all(varieties.map(async v => {
         try {
@@ -707,6 +779,7 @@ async function openPokedexModal(id) {
           const formTypes  = formPoke.types.map(t => t.type.name);
           const formColor  = TYPE_COLORS[formTypes[0]] || '#888';
           const formType   = _resolveFormType(v.pokemon.name, poke.name);
+          if (formType) ownFormTypes.push(formType);
           const formMeta   = formType ? getFormLabelConfig(formType) : null;
           if (formMeta && !formMeta.enabled) return '';
 
@@ -775,7 +848,7 @@ async function openPokedexModal(id) {
         ${_pkdxTcgSectionHtml()}
       </div>
     `;
-    _loadTcgCardsInModal(frName, assignedLabelType || undefined);
+    _loadTcgCardsInModal(frName, assignedLabelType || undefined, ownFormTypes);
   } catch(err) {
     inner.innerHTML = `<p style="color:var(--accent2);padding:24px">Erreur : ${err.message}</p>`;
   }
@@ -811,7 +884,16 @@ function _pkdxTcgSectionHtml() {
 // sélecteur de carte des Ventes/Dépenses, pour garantir un comportement
 // strictement identique aux deux endroits (une seule implémentation, jamais
 // deux copies qui pourraient diverger).
-async function _fetchCardsGroupedByExtension(frName, formType) {
+// `ownFormTypes` (optionnel) : types de forme réellement liés à CE Pokémon
+// précis (ex. ['mega-x','mega-y','gmax'] pour Dracaufeu) — quand fourni, sert
+// à restreindre l'exclusion de la vue "Pokémon de base" à ces seuls types au
+// lieu de TOUS les types globalement configurés dans l'appli. Sans ça, une
+// carte "XXX VMAX" d'un Pokémon qui n'a jamais eu de forme Gigamax dans les
+// jeux disparaissait quand même de sa vue de base (parce que le motif
+// générique "gmax" existe ailleurs dans l'appli), sans qu'aucune fiche de
+// forme ne l'affiche non plus puisqu'aucune forme Gigamax n'existe réellement
+// pour ce Pokémon — la carte devenait introuvable nulle part.
+async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
   const linkedTypes = _allLinkedFormTypes();
 
   const url = `${SB_URL}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
@@ -821,31 +903,38 @@ async function _fetchCardsGroupedByExtension(frName, formType) {
 
   if (formType && linkedTypes.includes(formType)) {
     cards = cards.filter(card => _cardMatchesFormType(card.name, formType));
-    // Certaines cartes au format court ("M Dracaufeu") peuvent se trouver hors
-    // de la fenêtre limit=500 de la requête principale. On détecte les
-    // préfixes réduits à une seule lettre (ex. "M", "M ", "M-" désignent
-    // tous la même lettre "M") et on refait une recherche dédiée pour
-    // chacun, quelle que soit la façon dont l'utilisateur les a saisis.
+    // Certaines cartes au format court ("M Dracaufeu", "M-Dracaufeu") peuvent
+    // se trouver hors de la fenêtre limit=500 de la requête principale. On
+    // détecte les préfixes/suffixes réduits à une seule lettre ou un seul mot
+    // court (ex. "M ", "M-" désignent tous la lettre "M") et on refait une
+    // recherche dédiée pour chacun, en testant à la fois la jointure espace
+    // ET la jointure tiret (les deux se rencontrent selon les imports TCGdex),
+    // quelle que soit la façon dont l'utilisateur les a saisis dans Édition › Labels.
     const cfg = getFormLabelConfig(formType);
-    const shortLetters = [...new Set(
+    const shortTokens = [...new Set(
       (cfg.prefixes||[])
-        .map(p => _nnLbl(p).replace(/[-\s]/g, ''))
-        .filter(p => p.length === 1)
+        .map(p => _nnLbl(p).replace(/[-\s]+$/, '').replace(/^[-\s]+/, ''))
+        .filter(Boolean)
     )];
-    for (const letter of shortLetters) {
-      try {
-        const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(letter + ' ' + frName)}*&order=set_id.asc,number.asc&limit=200`,
-          { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-        const extra = r2.ok ? await r2.json() : [];
-        const seen = new Set(cards.map(c => c.id));
-        extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
-          if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
-        });
-      } catch(_) {}
+    const seen = new Set(cards.map(c => c.id));
+    for (const token of shortTokens) {
+      for (const joiner of [' ', '-']) {
+        try {
+          const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(token + joiner + frName)}*&order=set_id.asc,number.asc&limit=200`,
+            { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+          const extra = r2.ok ? await r2.json() : [];
+          extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
+            if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
+          });
+        } catch(_) {}
+      }
     }
   } else if (!formType) {
-    // Base Pokémon : exclure les cartes qui appartiennent à une forme spéciale liée
-    cards = cards.filter(c => !linkedTypes.some(t => _cardMatchesFormType(c.name, t)));
+    // Base Pokémon : exclure les cartes qui appartiennent à une forme spéciale
+    // liée — mais seulement parmi les formes qui existent VRAIMENT pour ce
+    // Pokémon (ownFormTypes) quand on les connaît, jamais la liste globale.
+    const excludeTypes = Array.isArray(ownFormTypes) ? linkedTypes.filter(t => ownFormTypes.includes(t)) : linkedTypes;
+    cards = cards.filter(c => !excludeTypes.some(t => _cardMatchesFormType(c.name, t)));
   }
   if (!cards.length) return { groups: [], cardsById: new Map() };
 
@@ -922,7 +1011,7 @@ async function _resolveFormTypeForPkdxEntry(p) {
   }
 }
 
-async function _loadTcgCardsInModal(frName, formType) {
+async function _loadTcgCardsInModal(frName, formType, ownFormTypes) {
   const grid  = document.getElementById('pkdx-tcg-grid');
   const chip  = document.getElementById('pkdx-tcg-filter-chip');
   if (!grid) return;
@@ -931,7 +1020,7 @@ async function _loadTcgCardsInModal(frName, formType) {
   if (chip) chip.style.display = 'none';
 
   try {
-    const { groups, cardsById } = await _fetchCardsGroupedByExtension(frName, formType);
+    const { groups, cardsById } = await _fetchCardsGroupedByExtension(frName, formType, ownFormTypes);
     if (!document.getElementById('pkdx-tcg-grid')) return;
     if (!groups.length) { grid.innerHTML = '<p style="color:var(--text3);font-size:.82rem">Aucune carte trouvée.</p>'; return; }
 
@@ -1143,8 +1232,13 @@ function openCardDetailModal(cardId) {
           <label>URL de l'illustration</label>
           <input type="url" id="pkdx-card-edit-img" value="${_escHtml(card.image_url||'')}" placeholder="https://…">
         </div>
+        <div class="settings-field">
+          <label>Lien CardMarket</label>
+          <input type="url" id="pkdx-card-edit-cardmarket" value="${_escHtml(card.cardmarket_url||'')}" placeholder="https://www.cardmarket.com/…">
+        </div>
         <div class="modal-footer" style="justify-content:flex-start">
           <button class="btn btn-primary btn-sm" onclick="saveCardEdits('${_escJs(String(cardId))}')">Enregistrer dans Supabase</button>
+          ${card.cardmarket_url ? `<a href="${_escHtml(card.cardmarket_url)}" target="_blank" rel="noopener" class="sale-link" style="margin-left:10px">Voir sur CardMarket ↗</a>` : ''}
         </div>
       </div>
     </div>
@@ -1157,15 +1251,17 @@ async function saveCardEdits(cardId) {
   if (!card) return;
   const nameInp = document.getElementById('pkdx-card-edit-name');
   const imgInp  = document.getElementById('pkdx-card-edit-img');
+  const cmInp   = document.getElementById('pkdx-card-edit-cardmarket');
   const newName = (nameInp?.value || '').trim();
   const newImg  = (imgInp?.value || '').trim();
+  const newCm   = (cmInp?.value || '').trim();
   if (!newName) { toast('Le nom ne peut pas être vide.', 'error'); return; }
 
   try {
     const res = await fetch(`${SB_URL}/rest/v1/cards?id=eq.${encodeURIComponent(cardId)}`, {
       method: 'PATCH',
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ name: newName, image_url: newImg || null }),
+      body: JSON.stringify({ name: newName, image_url: newImg || null, cardmarket_url: newCm || null }),
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
 
@@ -1173,6 +1269,7 @@ async function saveCardEdits(cardId) {
     // référencé par groups[].cards et cardsById → un seul endroit à mettre à jour).
     card.name = newName;
     card.image_url = newImg;
+    card.cardmarket_url = newCm;
     _renderPkdxTcgGroups();
     closeModal('modal-card-detail');
     toast('Carte mise à jour dans Supabase !', 'success');

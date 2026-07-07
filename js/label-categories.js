@@ -334,7 +334,15 @@ function setLabelCategory(type, categoryId) {
   if (normalized === defaultCat) delete _D.label_category_assignments[type];
   else _D.label_category_assignments[type] = normalized || '';
   saveData();
-  _pushLabelSettingsToCloud();
+  // BUG corrigé : for_category_id vit dans la table form_label_overrides (une
+  // ligne par label), PAS dans label_categories (une ligne par catégorie) ni
+  // dans aucun autre domaine du moteur générique. Appeler seulement
+  // _pushLabelSettingsToCloud() ici ne poussait donc jamais cette assignation
+  // vers Supabase : elle survivait en local (localStorage) mais disparaissait
+  // au prochain pull cloud (autre appareil, ou après un rechargement une fois
+  // le cloud repassé "plus récent") — d'où l'impression que la catégorie
+  // choisie dans Édition › Labels n'était pas prise en compte.
+  _pushLabelOverrideToCloud(type);
   renderLabelsList();
   toast('Catégorie mise à jour.', 'success');
 }
@@ -401,14 +409,20 @@ function deleteLabelCategory(id) {
       if (!(type in (_D.label_category_assignments||{}))) _D.label_category_assignments[type] = '';
     });
   }
+  const clearedTypes = [];
   if (_D.label_category_assignments) {
     Object.keys(_D.label_category_assignments).forEach(type => {
-      if (_D.label_category_assignments[type] === id) delete _D.label_category_assignments[type];
+      if (_D.label_category_assignments[type] === id) { delete _D.label_category_assignments[type]; clearedTypes.push(type); }
     });
   }
   if (_D.label_category_order) _D.label_category_order = _D.label_category_order.filter(cid => cid !== id);
   saveData();
   _pushLabelSettingsToCloud();
+  // Chaque label déplacé vers "Non classé" doit aussi voir son for_category_id
+  // remis à null dans form_label_overrides (voir la note dans setLabelCategory
+  // ci-dessus) — sinon la table cloud garde une référence vers une catégorie
+  // qui n'existe plus.
+  clearedTypes.forEach(type => _pushLabelOverrideToCloud(type));
   renderLabelsList();
   toast(custom ? 'Catégorie supprimée.' : 'Catégorie masquée.', 'success');
 }

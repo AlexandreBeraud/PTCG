@@ -40,28 +40,28 @@ function renderLabelsList() {
       // n'est active, pour pouvoir toujours la réorganiser/renommer/supprimer
       // ou y glisser des labels par la suite.
       if (!cat._custom || q) return;
-      html += `<div class="lbl-group">
+      html += `<details class="lbl-group" open>
         ${_labelCategoryHeaderHtml(cat)}
         <p style="color:var(--text3);font-size:.74rem;padding:2px 10px 10px">Catégorie vide — assigne-lui des labels via le menu « Catégorie » ci-dessous.</p>
-      </div>`;
+      </details>`;
       return;
     }
-    html += `<div class="lbl-group">
+    html += `<details class="lbl-group" open>
       ${_labelCategoryHeaderHtml(cat)}
       ${colsHtml}
       ${rows}
-    </div>`;
+    </details>`;
   });
 
   // Non classés (aucune catégorie par défaut ni assignée)
   const unclassified = allTypes.filter(t => _labelCategoryOf(t) === null);
   const unclassifiedRows = rowsForTypes(unclassified);
   if (unclassifiedRows) {
-    html += `<div class="lbl-group">
-      <div class="lbl-group-header lbl-group-header-static">Non classés</div>
+    html += `<details class="lbl-group" open>
+      <summary class="lbl-group-header lbl-group-header-static"><span class="lbl-cat-chevron">▸</span>Non classés</summary>
       ${colsHtml}
       ${unclassifiedRows}
-    </div>`;
+    </details>`;
   }
 
   // Labels supprimés définitivement (repliable, avec restauration possible)
@@ -106,16 +106,17 @@ function renderLabelsList() {
 // et reste restaurable).
 function _labelCategoryHeaderHtml(cat) {
   const safe = _escJs(cat.id);
-  return `<div class="lbl-group-header" draggable="true" data-cat-id="${_escHtml(cat.id)}"
+  return `<summary class="lbl-group-header" draggable="true" data-cat-id="${_escHtml(cat.id)}"
       ondragstart="onLabelCatDragStart(event)" ondragover="onLabelCatDragOver(event)"
       ondragleave="this.classList.remove('drag-target')" ondrop="onLabelCatDrop(event)">
+    <span class="lbl-cat-chevron">▸</span>
     <span class="lbl-cat-handle" title="Glisser pour réorganiser">⠿</span>
     <span class="lbl-cat-name">${_escHtml(cat.name)}</span>
     <span class="lbl-cat-actions">
-      <button class="mbadge-clear" title="Renommer" onclick="renameLabelCategory('${safe}')">✎</button>
-      <button class="mbadge-clear" title="${cat._custom ? 'Supprimer la catégorie' : 'Masquer la catégorie'}" onclick="deleteLabelCategory('${safe}')">🗑</button>
+      <button class="mbadge-clear" title="Renommer" onclick="event.preventDefault();event.stopPropagation();renameLabelCategory('${safe}')">✎</button>
+      <button class="mbadge-clear" title="${cat._custom ? 'Supprimer la catégorie' : 'Masquer la catégorie'}" onclick="event.preventDefault();event.stopPropagation();deleteLabelCategory('${safe}')">🗑</button>
     </span>
-  </div>`;
+  </summary>`;
 }
 
 function _renderLabelRow(type, cfg) {
@@ -393,7 +394,7 @@ async function _pullLabelOverridesFromCloud() {
       if (Object.keys(ov).length) _D.form_label_overrides[r.for_form_type] = ov;
       else delete _D.form_label_overrides[r.for_form_type];
     });
-    if (changed) saveData();
+    if (changed) _persistLocalOnly();
   } catch(e) { console.warn('[PTCG] pull labels cloud error:', e.message); }
 }
 

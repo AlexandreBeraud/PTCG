@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=15">
-<link rel="stylesheet" href="css/collection.css?v=15">
-<link rel="stylesheet" href="css/pokedex.css?v=15">
-<link rel="stylesheet" href="css/ventes-achats.css?v=15">
+<link rel="stylesheet" href="css/base.css?v=16">
+<link rel="stylesheet" href="css/collection.css?v=16">
+<link rel="stylesheet" href="css/pokedex.css?v=16">
+<link rel="stylesheet" href="css/ventes-achats.css?v=16">
 </head>
 <body>
 
@@ -42,6 +42,12 @@
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
       </svg>
       <span>Boosters</span><span class="nav-badge" id="nb-boosters">0</span>
+    </button>
+    <button class="nav-btn" data-view="goodies" onclick="switchView('goodies',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 12v9H4v-9"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/>
+      </svg>
+      <span>Goodies</span><span class="nav-badge" id="nb-goodies">0</span>
     </button>
     <button class="nav-btn" data-view="statistiques" onclick="switchView('statistiques',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -135,13 +141,18 @@
       <span>Code</span><span id="sort-icon">↑</span>
     </button>
     <div class="view-toggle" id="topbar-view-toggle">
-      <button class="active" title="Grille" onclick="setViewMode('grid',this)">
+      <button class="active" data-mode="grid" title="Grille" onclick="setViewMode('grid',this)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
           <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
         </svg>
       </button>
-      <button title="Liste" onclick="setViewMode('list',this)">
+      <button data-mode="compact" title="Carte à gauche" id="topbar-view-toggle-compact" style="display:none" onclick="setViewMode('compact',this)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="6" height="16" rx="1"/><line x1="12" y1="8" x2="21" y2="8"/><line x1="12" y1="13" x2="21" y2="13"/><line x1="12" y1="18" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <button data-mode="list" title="Liste" onclick="setViewMode('list',this)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
           <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
@@ -222,6 +233,22 @@
         <button class="booster-filter-btn" onclick="setVenteFilter('en_vente',this)">En vente</button>
         <button class="booster-filter-btn" onclick="setVenteFilter('vendue',this)">Vendues</button>
       </div>
+      <div class="sales-sort-bar">
+        <select id="ventes-ext-filter" class="sales-sort-select" onchange="setVenteExtFilter(this.value)">
+          <option value="all">Toutes les extensions</option>
+        </select>
+        <select id="ventes-sort-select" class="sales-sort-select" onchange="setVenteSort(this.value)">
+          <option value="date_desc">Date (récent d'abord)</option>
+          <option value="date_asc">Date (ancien d'abord)</option>
+          <option value="ext_asc">Extension (A→Z)</option>
+          <option value="name_asc">Nom (A→Z)</option>
+          <option value="number_asc">Numéro (dans l'extension)</option>
+          <option value="pokedex_asc">Numéro Pokédex national</option>
+          <option value="price_desc">Prix (élevé d'abord)</option>
+          <option value="price_asc">Prix (bas d'abord)</option>
+          <option value="etat_asc">État</option>
+        </select>
+      </div>
       <div class="sales-grid" id="ventes-grid">
         <button class="add-new-card" onclick="openAddVenteModal()">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4">
@@ -283,6 +310,22 @@
         <button class="booster-filter-btn" onclick="setDepenseFilter('unlinked',this)">Sans vendeur</button>
         <button class="booster-filter-btn" onclick="setDepenseFilter('linked',this)">Avec vendeur</button>
       </div>
+      <div class="sales-sort-bar">
+        <select id="depenses-ext-filter" class="sales-sort-select" onchange="setDepenseExtFilter(this.value)">
+          <option value="all">Toutes les extensions</option>
+        </select>
+        <select id="depenses-sort-select" class="sales-sort-select" onchange="setDepenseSort(this.value)">
+          <option value="date_desc">Date (récent d'abord)</option>
+          <option value="date_asc">Date (ancien d'abord)</option>
+          <option value="ext_asc">Extension (A→Z)</option>
+          <option value="name_asc">Nom (A→Z)</option>
+          <option value="number_asc">Numéro (dans l'extension)</option>
+          <option value="pokedex_asc">Numéro Pokédex national</option>
+          <option value="price_desc">Prix (élevé d'abord)</option>
+          <option value="price_asc">Prix (bas d'abord)</option>
+          <option value="etat_asc">État</option>
+        </select>
+      </div>
       <div class="sales-grid" id="depenses-grid">
         <button class="add-new-card" onclick="openAddDepenseModal()">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4">
@@ -327,7 +370,7 @@
     <!-- Bilan -->
     <div id="view-bilan" class="view">
       <div class="page-header">
-        <div class="page-header-left"><h1>Bilan</h1><p>Résumé mensuel des ventes et des achats</p></div>
+        <div class="page-header-left"><h1>Bilan</h1><p>Résumé mensuel des ventes et des achats — seules les commandes marquées "Arrivé" comptent dans les totaux</p></div>
       </div>
       <div class="stats-row" id="bilan-stats"></div>
       <div id="bilan-content"></div>
@@ -337,13 +380,6 @@
     <div id="view-boosters" class="view">
       <div class="page-header">
         <div class="page-header-left"><h1>Boosters / Illustrations</h1><p>Suivez vos illustrations et leur statut d'obtention</p></div>
-      </div>
-      <div class="booster-filter-bar">
-        <button class="booster-filter-btn active" onclick="setBoosterFilter('all',this)">Tous</button>
-        <button class="booster-filter-btn" onclick="setBoosterFilter('booster',this)">Boosters</button>
-        <button class="booster-filter-btn" onclick="setBoosterFilter('deck',this)">Decks</button>
-        <button class="booster-filter-btn" onclick="setBoosterFilter('etb',this)">ETB</button>
-        <button class="booster-filter-btn" onclick="setBoosterFilter('premium',this)">Premium</button>
       </div>
       <div class="boosters-layout">
         <div id="boosters-main"></div>
@@ -363,6 +399,45 @@
           <div class="bstat-row"><span class="lbl">Extensions trackées</span><span class="val" id="bs-exts">0</span></div>
           <div class="bstat-row"><span class="lbl">Favorite</span><span class="val" id="bs-fav">—</span></div>
           <div class="bstat-row"><span class="lbl">Dernière obtention</span><span class="val" id="bs-last">—</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Goodies : copie de l'onglet Boosters, mais pour tout ce qui n'est pas
+         un booster (decks, ETB, coffrets premium, portfolios…). Même moteur
+         (_renderIllusTab dans collection.js), table cloud "goodies" séparée
+         déjà en place côté sync.js. -->
+    <div id="view-goodies" class="view">
+      <div class="page-header">
+        <div class="page-header-left"><h1>Goodies</h1><p>Decks, ETB, coffrets premium, portfolios… et leur statut d'obtention</p></div>
+      </div>
+      <div class="booster-filter-bar">
+        <button class="booster-filter-btn active" onclick="setGoodieFilter('all',this)">Tous</button>
+        <button class="booster-filter-btn" onclick="setGoodieFilter('deck',this)">Decks</button>
+        <button class="booster-filter-btn" onclick="setGoodieFilter('etb',this)">ETB</button>
+        <button class="booster-filter-btn" onclick="setGoodieFilter('premium',this)">Premium</button>
+        <button class="booster-filter-btn" onclick="setGoodieFilter('portfolio',this)">Portfolios</button>
+        <button class="booster-filter-btn" onclick="setGoodieFilter('autre',this)">Autres</button>
+      </div>
+      <div class="boosters-layout">
+        <div id="goodies-main"></div>
+        <div class="booster-right-col">
+          <div id="goodie-detail-panel" class="booster-detail-panel">
+            <div style="padding:20px;color:var(--text3);font-size:.8rem;text-align:center">
+              Cliquez sur une extension pour voir les détails
+            </div>
+          </div>
+          <div class="booster-stat-panel">
+          <h3>Statistiques</h3>
+          <div class="bs-global-wrap">
+            <div class="bs-global-label"><span>Obtention globale</span><span id="gs-global-pct">0%</span></div>
+            <div class="bs-global-bar"><div class="bs-global-fill" id="gs-global-bar-fill" style="width:0%"></div></div>
+          </div>
+          <div class="bstat-row"><span class="lbl">Goodies</span><span class="val" id="gs-total">0</span></div>
+          <div class="bstat-row"><span class="lbl">Extensions trackées</span><span class="val" id="gs-exts">0</span></div>
+          <div class="bstat-row"><span class="lbl">Favorite</span><span class="val" id="gs-fav">—</span></div>
+          <div class="bstat-row"><span class="lbl">Dernière obtention</span><span class="val" id="gs-last">—</span></div>
           </div>
         </div>
       </div>
@@ -452,17 +527,19 @@
           <span id="labels-counter" style="font-size:.78rem;color:var(--text2)"></span>
         </div>
         <p class="form-hint" style="margin-bottom:14px">Nom affiché sur le badge de la forme spéciale, visibilité dans le Pokédex, et préfixes/suffixes (séparés par des virgules) utilisés pour retrouver les cartes TCG correspondantes (ex : <code>Méga-, M </code> pour Méga, <code>VMAX, Gigamax</code> pour Gigamax). Chaque label peut être modifié ou supprimé définitivement ; les labels intégrés supprimés restent restaurables en bas de liste.</p>
-        <div class="lbl-new-form">
-          <input type="text" id="new-label-cat" placeholder="Nom de la nouvelle catégorie (ex : Événementielles)" style="flex:1">
-          <button class="btn btn-secondary" onclick="addLabelCategory()">+ Nouvelle catégorie</button>
+        <div class="lbl-new-forms-row">
+          <div class="lbl-new-form">
+            <input type="text" id="new-label-cat" placeholder="Nom de la nouvelle catégorie (ex : Événementielles)" style="flex:1">
+            <button class="btn btn-secondary" onclick="addLabelCategory()">+ Catégorie</button>
+          </div>
+          <div class="lbl-new-form">
+            <input type="text" id="new-label-fr" placeholder="Nom du nouveau label (ex : Forme Alpha)" style="flex:1">
+            <input type="text" id="new-label-badge" placeholder="Badge (ex : ALPHA)" maxlength="10" style="width:100px">
+            <input type="color" id="new-label-color" value="#7038F8">
+            <button class="btn btn-primary" onclick="addCustomLabel()">+ Label</button>
+          </div>
         </div>
-        <p class="form-hint" style="margin-bottom:14px">Glisse l'en-tête ⠿ d'une catégorie pour la réorganiser. Change la « Catégorie » d'un label depuis sa ligne pour le déplacer.</p>
-        <div class="lbl-new-form">
-          <input type="text" id="new-label-fr" placeholder="Nom du nouveau label (ex : Forme Alpha)" style="flex:1">
-          <input type="text" id="new-label-badge" placeholder="Badge (ex : ALPHA)" maxlength="10" style="width:120px">
-          <input type="color" id="new-label-color" value="#7038F8">
-          <button class="btn btn-primary" onclick="addCustomLabel()">+ Nouveau label</button>
-        </div>
+        <p class="form-hint" style="margin-bottom:14px">Clique sur l'en-tête d'une catégorie pour la replier/déplier ; glisse son icône ⠿ pour la réorganiser. Change la « Catégorie » d'un label depuis sa ligne pour le déplacer.</p>
         <div id="labels-list"></div>
       </div>
     </div>
@@ -478,6 +555,12 @@
             <input type="range" id="settings-ui-scale" min="0.7" max="1.4" step="0.05" value="1"
               style="flex:1;accent-color:var(--accent)" oninput="applyUiScale(this.value)">
             <button class="btn btn-primary btn-sm" onclick="saveUiScale()">Sauvegarder</button>
+          </div>
+          <div class="settings-display-row" style="margin-top:10px">
+            <label>Cartes par ligne (Ventes/Achats) :</label>
+            <input type="number" id="settings-cards-per-row" min="2" max="10" step="1" value="5"
+              style="width:70px" oninput="applyCardsPerRow(this.value)">
+            <button class="btn btn-primary btn-sm" onclick="saveCardsPerRow()">Sauvegarder</button>
           </div>
         </div>
         <div class="settings-card">
@@ -513,7 +596,9 @@
           <div class="settings-actions">
             <button class="btn btn-secondary" onclick="saveCloudConfig()">Sauvegarder</button>
             <button class="btn btn-secondary" onclick="syncCloud()">Synchroniser</button>
+            <button class="btn btn-secondary" onclick="forceRestoreFromCloud()">Récupérer depuis le cloud</button>
           </div>
+          <p class="form-hint" style="margin-top:8px">« Synchroniser » envoie ou reçoit selon ce qui est le plus récent. « Récupérer depuis le cloud » ignore ça et applique toujours ce qu'il y a sur Supabase ici, sans rien envoyer.</p>
         </div>
         <div class="settings-card">
           <h3>Zone de danger</h3>
@@ -756,6 +841,8 @@
         <option value="deck">Deck</option>
         <option value="etb">ETB (Elite Trainer Box)</option>
         <option value="premium">Pack Premium</option>
+        <option value="portfolio">Portfolio</option>
+        <option value="autre">Autre</option>
       </select>
     </div>
     <div class="settings-field">
@@ -793,13 +880,21 @@
       <input type="hidden" id="vente-pokemon-name">
       <input type="hidden" id="vente-ext-sigle">
     </div>
-    <div class="settings-field"><label>Rognage de l'image</label>
-      <div class="classeur-status-select" id="vente-crop-select">
-        <div class="classeur-status-btn" data-status="top" onclick="setCropInput('vente','top')">Haut</div>
-        <div class="classeur-status-btn" data-status="center" onclick="setCropInput('vente','center')">Centre</div>
-        <div class="classeur-status-btn" data-status="bottom" onclick="setCropInput('vente','bottom')">Bas</div>
+    <div class="settings-field"><label>Lien CardMarket <span class="form-hint" style="margin:0">(partagé avec la fiche carte du Pokédex)</span></label>
+      <input type="url" id="vente-cardmarket-url" placeholder="https://www.cardmarket.com/…">
+    </div>
+    <div class="settings-field"><label>Rognage de l'image <span class="form-hint" style="margin:0">(glisse sur l'image ou utilise le curseur)</span></label>
+      <div class="crop-picker">
+        <div class="crop-picker-preview" id="vente-crop-preview"
+             onmousedown="_cropPreviewPointerDown('vente',event)" ontouchstart="_cropPreviewPointerDown('vente',event)">
+          <div class="crop-picker-handle" id="vente-crop-handle"></div>
+        </div>
+        <div class="crop-picker-row">
+          <input type="range" min="0" max="100" step="1" value="50" id="vente-crop-range" oninput="_onCropRangeInput('vente', this.value)">
+          <span class="crop-picker-value" id="vente-crop-value">50%</span>
+        </div>
       </div>
-      <input type="hidden" id="vente-crop-input" value="center">
+      <input type="hidden" id="vente-crop-input" value="50">
     </div>
     <div class="settings-field"><label>État</label>
       <select id="vente-etat-select">
@@ -850,6 +945,34 @@
   </div>
 </div>
 
+<!-- Modal: Vente partielle d'un lot (qty > 1) -->
+<div class="modal-backdrop" id="modal-vente-split">
+  <div class="modal" style="width:420px">
+    <h2>Marquer des exemplaires vendus</h2>
+    <div class="split-info-box">
+      <span id="vente-split-title">—</span>
+      <span><span class="split-info-qty" id="vente-split-qty-total">1</span> en stock</span>
+    </div>
+    <div class="settings-field"><label>Combien d'exemplaires viennent d'être vendus ?</label>
+      <input type="number" id="vente-split-qty-input" step="1" min="1" value="1">
+    </div>
+    <div class="settings-field"><label>Acheteur</label>
+      <div style="display:flex;gap:6px">
+        <select id="vente-split-acheteur-select" style="flex:1" onchange="_onVenteSplitAcheteurChange()"></select>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="_openAcheteurFromVenteSplit()">+ Nouveau</button>
+      </div>
+    </div>
+    <div class="settings-field"><label>Commande <span class="form-hint" style="margin:0">(date d'achat, lien, statut d'envoi)</span></label>
+      <select id="vente-split-commande-select" onchange="_onVenteSplitCommandeChange()"></select>
+      <div id="vente-split-commande-preview"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-vente-split')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmVenteSplit()">Confirmer</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Dépense -->
 <div class="modal-backdrop" id="modal-depense">
   <div class="modal" style="width:480px">
@@ -869,13 +992,21 @@
       <input type="hidden" id="depense-pokemon-name">
       <input type="hidden" id="depense-ext-sigle">
     </div>
-    <div class="settings-field"><label>Rognage de l'image</label>
-      <div class="classeur-status-select" id="depense-crop-select">
-        <div class="classeur-status-btn" data-status="top" onclick="setCropInput('depense','top')">Haut</div>
-        <div class="classeur-status-btn" data-status="center" onclick="setCropInput('depense','center')">Centre</div>
-        <div class="classeur-status-btn" data-status="bottom" onclick="setCropInput('depense','bottom')">Bas</div>
+    <div class="settings-field"><label>Lien CardMarket <span class="form-hint" style="margin:0">(partagé avec la fiche carte du Pokédex)</span></label>
+      <input type="url" id="depense-cardmarket-url" placeholder="https://www.cardmarket.com/…">
+    </div>
+    <div class="settings-field"><label>Rognage de l'image <span class="form-hint" style="margin:0">(glisse sur l'image ou utilise le curseur)</span></label>
+      <div class="crop-picker">
+        <div class="crop-picker-preview" id="depense-crop-preview"
+             onmousedown="_cropPreviewPointerDown('depense',event)" ontouchstart="_cropPreviewPointerDown('depense',event)">
+          <div class="crop-picker-handle" id="depense-crop-handle"></div>
+        </div>
+        <div class="crop-picker-row">
+          <input type="range" min="0" max="100" step="1" value="50" id="depense-crop-range" oninput="_onCropRangeInput('depense', this.value)">
+          <span class="crop-picker-value" id="depense-crop-value">50%</span>
+        </div>
       </div>
-      <input type="hidden" id="depense-crop-input" value="center">
+      <input type="hidden" id="depense-crop-input" value="50">
     </div>
     <div class="settings-field"><label>État</label>
       <select id="depense-etat-select">
@@ -1021,9 +1152,11 @@
 </div>
 
 <div id="toast-container"></div>
-<script src="config.js?v=15"></script>
-<script src="data.js?v=15"></script>
-<script src="js/sync.js?v=15"></script>
+<!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="config.js?v=16"></script>
+<script src="data.js?v=16"></script>
+<script src="js/sync.js?v=16"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1063,13 +1196,13 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=15"></script>
-<script src="js/collection.js?v=15"></script>
-<script src="js/edition.js?v=15"></script>
-<script src="js/mapping.js?v=15"></script>
-<script src="js/labels.js?v=15"></script>
-<script src="js/ventes-achats.js?v=15"></script>
-<script src="js/label-categories.js?v=15"></script>
-<script src="js/pokedex.js?v=15"></script>
+<script src="js/core.js?v=16"></script>
+<script src="js/collection.js?v=16"></script>
+<script src="js/edition.js?v=16"></script>
+<script src="js/mapping.js?v=16"></script>
+<script src="js/labels.js?v=16"></script>
+<script src="js/ventes-achats.js?v=16"></script>
+<script src="js/label-categories.js?v=16"></script>
+<script src="js/pokedex.js?v=16"></script>
 </body>
 </html>

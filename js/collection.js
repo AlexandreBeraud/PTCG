@@ -207,7 +207,10 @@ function updateBadges() {
   document.getElementById('nb-ext').textContent       = getAllExtensions().filter(e=>e.sorti||e._custom).length;
   document.getElementById('nb-classeurs').textContent = _D.classeurs.length;
   const bd = _D.boosters_data || {};
-  document.getElementById('nb-boosters').textContent  = Object.values(bd).reduce((a,arr)=>a+(arr?arr.length:0),0);
+  let boosterCount = 0, goodieCount = 0;
+  Object.values(bd).forEach(arr => (arr||[]).forEach(il => (il.product_type||'booster')==='booster' ? boosterCount++ : goodieCount++));
+  document.getElementById('nb-boosters').textContent  = boosterCount;
+  const nbGoodies = document.getElementById('nb-goodies'); if (nbGoodies) nbGoodies.textContent = goodieCount;
   const nbVentes = document.getElementById('nb-ventes');       if (nbVentes)    nbVentes.textContent    = (_D.ventes||[]).length;
   const nbAcheteurs = document.getElementById('nb-acheteurs'); if (nbAcheteurs) nbAcheteurs.textContent = (_D.acheteurs||[]).length;
   const nbDepenses = document.getElementById('nb-depenses');   if (nbDepenses)  nbDepenses.textContent  = (_D.depenses||[]).length;
@@ -1019,24 +1022,16 @@ function updateExtPages(classeurId, extId, value) {
 }
 
 // ── Boosters / Illustrations ───────────────────────────────────────────────
-function openBoosterDetail(el, extId) {
-  const ext = getExt(extId); if (!ext) return;
-  const bloc = getBlocForExt(extId);
-  _boosterDetail = { ext, bloc };
-
-  document.querySelectorAll('.bea-hcard-left.active').forEach(e=>e.classList.remove('active'));
-  if (el) el.classList.add('active');
-
-  const panel = document.getElementById('booster-detail-panel');
+// Panneau de détail partagé par Boosters ET Goodies (même structure visuelle,
+// seuls le conteneur ciblé et le sous-ensemble de product_type affiché changent).
+function _renderIllusDetailPanel(panelId, ext, bloc, illus, addFn, addLabel) {
+  const panel = document.getElementById(panelId); if (!panel) return;
   const color    = extColor(ext);
   const logoSrc  = ext.logo  || bloc.logo  || '';
   const sigleSrc = ext.sigle || bloc?.sigle || '';
-  const bd = _D.boosters_data || {};
-  const illus = bd[ext.id] || [];
   const obtained = illus.filter(il=>il.obtained!==false).length;
   const pct = illus.length>0?Math.round(obtained/illus.length*100):0;
 
-  // Logo zone: large logo + sigle badge bottom-right
   const logoZoneHtml = `
     <div class="bpd-logo-zone" style="border-color:${color}">
       ${logoSrc
@@ -1064,26 +1059,52 @@ function openBoosterDetail(el, extId) {
     </div>
     <div class="bpd-bar"><div style="width:${pct}%;background:${pctBg(pct)}"></div></div>
     <div style="padding:0 16px 16px">
-      <button class="bea-add-btn" onclick="openAddIllus('${ext.id}','${ext.nom}')">
+      <button class="bea-add-btn" onclick="${addFn}('${ext.id}','${(ext.nom||'').replace(/'/g,"\\'")}')">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
-        Ajouter une illustration
+        ${addLabel}
       </button>
     </div>`;
   panel.classList.add('open');
 }
 
-var PRODUCT_TYPE_LABELS = {booster:'Boosters',deck:'Decks',etb:'ETB',premium:'Premium'};
+function openBoosterDetail(el, extId) {
+  const ext = getExt(extId); if (!ext) return;
+  const bloc = getBlocForExt(extId);
+  _boosterDetail = { ext, bloc };
+  document.querySelectorAll('.bea-hcard-left.active').forEach(e=>e.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const illus = (_D.boosters_data?.[ext.id]||[]).filter(il=>(il.product_type||'booster')==='booster');
+  _renderIllusDetailPanel('booster-detail-panel', ext, bloc, illus, 'openAddIllus', 'Ajouter une illustration');
+}
+
+function openGoodieDetail(el, extId) {
+  const ext = getExt(extId); if (!ext) return;
+  const bloc = getBlocForExt(extId);
+  _goodieDetail = { ext, bloc };
+  document.querySelectorAll('.bea-hcard-left.active').forEach(e=>e.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const illus = (_D.boosters_data?.[ext.id]||[]).filter(il=>(il.product_type||'booster')!=='booster');
+  _renderIllusDetailPanel('goodie-detail-panel', ext, bloc, illus, 'openAddGoodie', 'Ajouter un goodie');
+}
+
+var PRODUCT_TYPE_LABELS = {booster:'Boosters',deck:'Decks',etb:'ETB',premium:'Premium',portfolio:'Portfolios',autre:'Autres'};
+// Types affichés dans l'onglet Goodies (tout sauf 'booster', qui reste dans
+// l'onglet Boosters — voir renderGoodies ci-dessous).
+var GOODIE_TYPE_ORDER = ['deck','etb','premium','portfolio','autre'];
 
 function setBoosterFilter(val, btn) {
   _boosterFilter = val;
-  document.querySelectorAll('.booster-filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#view-boosters .booster-filter-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   renderBoosters();
 }
 
-function buildGroupedIllus(container, illus, extId) {
+// `typeOrder` : ordre + liste des product_type à afficher dans ce groupe de
+// sections (par défaut celui des Boosters) — même fonction pour Boosters et
+// Goodies plutôt que deux copies qui pourraient diverger.
+function buildGroupedIllus(container, illus, extId, typeOrder) {
   if (illus.length === 0) return;
   const groups = {};
   illus.forEach(il => {
@@ -1091,8 +1112,8 @@ function buildGroupedIllus(container, illus, extId) {
     if (!groups[t]) groups[t] = [];
     groups[t].push(il);
   });
-  const typeOrder = ['booster', 'deck', 'etb', 'premium'];
-  const presentTypes = typeOrder.filter(t => groups[t] && groups[t].length > 0);
+  const order = typeOrder || ['booster', 'deck', 'etb', 'premium', 'portfolio', 'autre'];
+  const presentTypes = order.filter(t => groups[t] && groups[t].length > 0);
   // Each type = one horizontal section (label + row of cards), stacked vertically
   presentTypes.forEach((t, tIdx) => {
     if (tIdx > 0) {
@@ -1114,18 +1135,30 @@ function buildGroupedIllus(container, illus, extId) {
   });
 }
 
-function renderBoosters() {
-  const main = document.getElementById('boosters-main');
+function setGoodieFilter(val, btn) {
+  _goodieFilter = val;
+  document.querySelectorAll('#view-goodies .booster-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderGoodies();
+}
+
+// Rendu générique partagé par Boosters et Goodies : même structure de grille
+// accordéon/hcard/liste, seuls le sous-ensemble de product_type affiché, le
+// conteneur ciblé et les id de stats changent selon `opts`.
+function _renderIllusTab(opts) {
+  const main = document.getElementById(opts.containerId);
+  if (!main) return;
   const openUIDs = [...main.querySelectorAll('.bea-body.open')].map(e=>e.id);
   main.innerHTML = '';
   const bd = _D.boosters_data || {};
+  const forTab = arr => (arr||[]).filter(il => opts.typeFilter(il.product_type||'booster'));
 
   let gT=0, gO=0;
-  Object.values(bd).forEach(arr=>{ if(!arr)return; gT+=arr.length; gO+=arr.filter(il=>il.obtained!==false).length; });
+  Object.values(bd).forEach(arr=>{ const a=forTab(arr); gT+=a.length; gO+=a.filter(il=>il.obtained!==false).length; });
   const gPct = gT>0?Math.round(gO/gT*100):0;
-  document.getElementById('bs-global-pct').textContent           = gPct+'%';
-  document.getElementById('bs-global-bar-fill').style.width      = gPct+'%';
-  document.getElementById('bs-global-bar-fill').style.background = pctBg(gPct);
+  document.getElementById(opts.stat.globalPct).textContent           = gPct+'%';
+  document.getElementById(opts.stat.globalBar).style.width      = gPct+'%';
+  document.getElementById(opts.stat.globalBar).style.background = pctBg(gPct);
 
   getBlocs().forEach(bloc => {
     const extsToShow = [
@@ -1135,10 +1168,10 @@ function renderBoosters() {
     if (extsToShow.length===0) return;
 
     let bT=0,bO=0;
-    extsToShow.forEach(e=>{ const arr=bd[e.id]||[]; bT+=arr.length; bO+=arr.filter(il=>il.obtained!==false).length; });
+    extsToShow.forEach(e=>{ const a=forTab(bd[e.id]); bT+=a.length; bO+=a.filter(il=>il.obtained!==false).length; });
     const bPct=bT>0?Math.round(bO/bT*100):0;
 
-    const blocUid = 'booster_bloc_' + bloc.id;
+    const blocUid = opts.uidPrefix + '_bloc_' + bloc.id;
     const section=document.createElement('div');
     section.className='booster-bloc';
     const blocLogoHtml=bloc.logo?`<img src="${bloc.logo}" class="bloc-logo-sm" alt="${bloc.short}" onerror="this.style.display='none'">`:'';
@@ -1155,27 +1188,28 @@ function renderBoosters() {
         <div class="cer-chevron" id="chev-${blocUid}">▼</div>
       </div>
       <div id="${blocUid}" class="bea-bloc-body open">
-        <div class="${_tabViewModes['boosters']==='grid'?'bea-grid':'bea-list'}" id="bea-${bloc.id}"></div>
+        <div class="${_tabViewModes[opts.viewModeKey]==='grid'?'bea-grid':'bea-list'}" id="${opts.uidPrefix}-${bloc.id}"></div>
       </div>`;
     main.appendChild(section);
 
-    const list=section.querySelector(`#bea-${bloc.id}`);
+    const list=section.querySelector(`#${opts.uidPrefix}-${bloc.id}`);
     sortExts(extsToShow).forEach(ext=>{
-      const allIllus=bd[ext.id]||[];
-      const illus=_boosterFilter==='all'?allIllus:allIllus.filter(il=>(il.product_type||'booster')===_boosterFilter);
+      const allIllus=forTab(bd[ext.id]);
+      const illus=opts.activeFilter==='all'?allIllus:allIllus.filter(il=>(il.product_type||'booster')===opts.activeFilter);
       const obtained=illus.filter(il=>il.obtained!==false).length;
-      const uid=('bea_'+ext.id).replace(/[^a-z0-9_]/gi,'_');
+      const uid=(opts.uidPrefix+'_'+ext.id).replace(/[^a-z0-9_]/gi,'_');
       const accentColor=extColor(ext);
       const extPct=illus.length>0?Math.round(obtained/illus.length*100):0;
       const logoSrc=ext.logo||bloc.logo||'';
+      const addBtnAttrs = `data-ext-id="${ext.id}"${opts.kind==='goodie'?' data-kind="goodie"':''}`;
 
-      const boosterMode = _tabViewModes['boosters'] || 'grid';
-      if (boosterMode === 'grid') {
+      const mode = _tabViewModes[opts.viewModeKey] || 'grid';
+      if (mode === 'grid') {
         // Horizontal card: thumb left, illus grid right
         const card=document.createElement('div');
         card.className='bea-hcard';
         card.innerHTML=`
-          <div class="bea-hcard-left" onclick="openBoosterDetail(this,'${ext.id}')" style="cursor:pointer">
+          <div class="bea-hcard-left" onclick="${opts.detailFn}(this,'${ext.id}')" style="cursor:pointer">
             <div class="bea-hcard-thumb">
               ${logoSrc?`<img src="${logoSrc}" alt="${ext.nom}" onerror="this.style.display='none'">`:
                 `<div class="bea-hcard-code" style="color:${accentColor}">${ext.code}</div>`}
@@ -1190,7 +1224,7 @@ function renderBoosters() {
           <div class="bea-hcard-right">
             <div class="bea-body bea-hcard-illus open" id="${uid}">
               <div class="illus-grouped" id="ig-${uid}"></div>
-              <button class="bea-add-btn" data-ext-id="${ext.id}">
+              <button class="bea-add-btn" ${addBtnAttrs}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
@@ -1201,7 +1235,7 @@ function renderBoosters() {
         list.appendChild(card);
         // Populate grouped illus by product type
         const igEl = card.querySelector(`#ig-${uid}`);
-        if (igEl) buildGroupedIllus(igEl, illus, ext.id);
+        if (igEl) buildGroupedIllus(igEl, illus, ext.id, opts.typeOrder);
       } else {
         const row=document.createElement('div');
         row.className='bea-row';
@@ -1223,7 +1257,7 @@ function renderBoosters() {
           </div>
           <div class="bea-body" id="${uid}">
             <div class="illus-grouped" id="ig-${uid}"></div>
-            <button class="bea-add-btn" data-ext-id="${ext.id}">
+            <button class="bea-add-btn" ${addBtnAttrs}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
@@ -1234,9 +1268,9 @@ function renderBoosters() {
       }
 
       // List mode: populate now (grid mode already populated above)
-      if (boosterMode !== 'grid') {
+      if (mode !== 'grid') {
         const ig=section.querySelector(`#ig-${uid}`);
-        if (ig) buildGroupedIllus(ig, illus, ext.id);
+        if (ig) buildGroupedIllus(ig, illus, ext.id, opts.typeOrder);
       }
     });
   });
@@ -1248,15 +1282,36 @@ function renderBoosters() {
 
   let totalIllus=0,lastDate='',extCounts={};
   Object.entries(bd).forEach(([extId,arr])=>{
-    if(!arr)return; totalIllus+=arr.length;
-    if(arr.length>0)extCounts[extId]=arr.length;
-    arr.forEach(il=>{ if((il.date||'')>lastDate)lastDate=il.date; });
+    const a=forTab(arr); if(!a.length)return; totalIllus+=a.length;
+    extCounts[extId]=a.length;
+    a.forEach(il=>{ if((il.date||'')>lastDate)lastDate=il.date; });
   });
-  document.getElementById('bs-total').textContent=totalIllus;
-  document.getElementById('bs-exts').textContent=Object.keys(extCounts).length;
-  document.getElementById('bs-last').textContent=lastDate||'—';
+  document.getElementById(opts.stat.total).textContent=totalIllus;
+  document.getElementById(opts.stat.exts).textContent=Object.keys(extCounts).length;
+  document.getElementById(opts.stat.last).textContent=lastDate||'—';
   const favId=Object.keys(extCounts).sort((a,b)=>extCounts[b]-extCounts[a])[0];
-  document.getElementById('bs-fav').textContent=favId?(getExt(favId)?.code||favId):'—';
+  document.getElementById(opts.stat.fav).textContent=favId?(getExt(favId)?.code||favId):'—';
+}
+
+function renderBoosters() {
+  _renderIllusTab({
+    containerId: 'boosters-main', typeFilter: pt => pt === 'booster', viewModeKey: 'boosters',
+    uidPrefix: 'bea', kind: 'booster', activeFilter: _boosterFilter, typeOrder: ['booster'],
+    detailFn: 'openBoosterDetail',
+    stat: { globalPct:'bs-global-pct', globalBar:'bs-global-bar-fill', total:'bs-total', exts:'bs-exts', fav:'bs-fav', last:'bs-last' },
+  });
+}
+
+// Goodies : tout ce qui n'est PAS un booster (decks, ETB, coffrets premium,
+// portfolios…) — mêmes extensions, même structure de grille/accordéon, table
+// cloud "goodies" déjà séparée côté sync.js.
+function renderGoodies() {
+  _renderIllusTab({
+    containerId: 'goodies-main', typeFilter: pt => pt !== 'booster', viewModeKey: 'goodies',
+    uidPrefix: 'goo', kind: 'goodie', activeFilter: _goodieFilter, typeOrder: GOODIE_TYPE_ORDER,
+    detailFn: 'openGoodieDetail',
+    stat: { globalPct:'gs-global-pct', globalBar:'gs-global-bar-fill', total:'gs-total', exts:'gs-exts', fav:'gs-fav', last:'gs-last' },
+  });
 }
 
 function buildIllusCard(il,extId) {
@@ -1293,7 +1348,12 @@ function openIllusDetail(il, extId) {
   const logoSrc  = ext.logo  || bloc.logo  || '';
   const sigleSrc = ext.sigle || bloc?.sigle || '';
   const obtained = il.obtained !== false;
-  const panel = document.getElementById('booster-detail-panel');
+  // Une illustration "booster" vit dans le panneau Boosters, tout le reste
+  // (deck/etb/premium/portfolio/autre) dans celui de Goodies.
+  const isGoodie = (il.product_type||'booster') !== 'booster';
+  const panelId  = isGoodie ? 'goodie-detail-panel' : 'booster-detail-panel';
+  const backFn   = isGoodie ? 'openGoodieDetail' : 'openBoosterDetail';
+  const panel = document.getElementById(panelId); if (!panel) return;
 
   // Highlight the clicked card
   document.querySelectorAll('.illus-card.active-detail').forEach(e=>e.classList.remove('active-detail'));
@@ -1329,7 +1389,7 @@ function openIllusDetail(il, extId) {
     </div>
     <div class="bpd-illus-ext">
       <div class="bpd-header" style="padding:12px 16px;border-top:1px solid var(--border);cursor:pointer"
-           onclick="openBoosterDetail(null,'${extId}')">
+           onclick="${backFn}(null,'${extId}')">
         <div class="panel-logo-zone bpd-ext-logo" style="border-color:${color};width:48px;height:48px">
           ${logoSrc?`<img class="panel-logo-main" src="${logoSrc}" alt="${ext.code}" onerror="this.style.display='none'">`:
             `<div class="panel-logo-placeholder" style="color:${color};font-size:.8rem">${ext.code}</div>`}
@@ -1399,8 +1459,20 @@ function openAddIllus(extId,extNom) {
   document.getElementById('illus-img').value     = '';
   document.getElementById('illus-date').value    = '';
   document.getElementById('illus-obtained').checked = false;
+  const ptEl = document.getElementById('illus-product-type');
+  if (ptEl) ptEl.value = 'booster';
   toggleIllusDate(false);
   document.getElementById('modal-add-illus').classList.add('open');
+}
+
+// Même modale que Boosters (réutilisation totale : champs, sauvegarde,
+// suppression…), seul le type de produit par défaut change pour ne pas avoir
+// à le resélectionner à chaque ajout depuis l'onglet Goodies.
+function openAddGoodie(extId,extNom) {
+  openAddIllus(extId, extNom);
+  document.getElementById('modal-illus-title').textContent = 'Ajouter un goodie';
+  const ptEl = document.getElementById('illus-product-type');
+  if (ptEl) ptEl.value = 'deck';
 }
 
 function openEditIllus(extId,ilId) {

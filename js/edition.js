@@ -563,18 +563,20 @@ function switchView(view,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   if(btn)btn.classList.add('active');
-  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres',pokedex:'Pokédex',ventes:'Ventes',acheteurs:'Acheteurs',depenses:'Dépenses',vendeurs:'Vendeurs',bilan:'Bilan'};
+  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',goodies:'Goodies',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres',pokedex:'Pokédex',ventes:'Ventes',acheteurs:'Acheteurs',depenses:'Dépenses',vendeurs:'Vendeurs',bilan:'Bilan'};
   document.getElementById('topbar-title').textContent=titles[view]||view;
   const showSearch=view==='extensions';
-  const showToggle=['extensions','classeurs','boosters','edition','ventes','acheteurs','depenses','vendeurs'].includes(view);
+  const showToggle=['extensions','classeurs','boosters','goodies','edition','ventes','acheteurs','depenses','vendeurs'].includes(view);
+  const showCompactMode=['ventes','depenses'].includes(view);
   const showSortBtn=!['ventes','acheteurs','depenses','vendeurs','bilan'].includes(view);
   document.getElementById('topbar-search-wrap').style.display  =showSearch?'flex':'none';
   document.getElementById('topbar-sort-btn').style.display     =showSortBtn?'flex':'none';
   document.getElementById('topbar-view-toggle').style.display  =showToggle?'flex':'none';
+  document.getElementById('topbar-view-toggle-compact').style.display = showCompactMode?'':'none';
   if (showToggle) {
     const mode = _tabViewModes[view] || 'grid';
     const toggleBtns = document.querySelectorAll('#topbar-view-toggle button');
-    toggleBtns.forEach((b,i) => b.classList.toggle('active', (i===0) === (mode==='grid')));
+    toggleBtns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   }
   document.getElementById('global-progress-wrap').style.display=showSearch?'flex':'none';
   closeDetail();
@@ -587,6 +589,7 @@ function switchView(view,btn){
   if(view==='depenses')renderDepenses();
   if(view==='vendeurs')renderVendeurs();
   if(view==='bilan')renderBilan();
+  if(view==='goodies')renderGoodies();
   // Le sous-onglet d'Édition (#/edition/mapping) est géré uniquement par
   // switchEditionTab, pas ici — sinon les deux se marchent dessus au moment
   // où on arrive sur #/edition/xxx directement par l'URL.
@@ -597,11 +600,17 @@ function switchView(view,btn){
 function closeModal(id){
   document.getElementById(id).classList.remove('open');
   if(id==='modal-classeur')delete document.getElementById('modal-classeur').dataset.editId;
-  if(id==='modal-acheteur' && _acheteurReturnTo==='vente'){
-    document.getElementById('modal-vente').classList.add('open');
+  if(id==='modal-acheteur' && (_acheteurReturnTo==='vente' || _acheteurReturnTo==='vente-split')){
+    const isSplit = _acheteurReturnTo === 'vente-split';
+    document.getElementById(isSplit ? 'modal-vente-split' : 'modal-vente').classList.add('open');
     if (_lastCreatedAcheteurId) {
-      populateAcheteurSelect(_lastCreatedAcheteurId);
-      populateVenteCommandeSelect(_lastCreatedAcheteurId, null);
+      if (isSplit) {
+        populateAcheteurSelect(_lastCreatedAcheteurId, 'vente-split-acheteur-select');
+        populateVenteCommandeSelect(_lastCreatedAcheteurId, null, 'vente-split-commande-select', 'vente-split-commande-preview');
+      } else {
+        populateAcheteurSelect(_lastCreatedAcheteurId);
+        populateVenteCommandeSelect(_lastCreatedAcheteurId, null);
+      }
     }
     _acheteurReturnTo = null; _lastCreatedAcheteurId = null;
   }
@@ -613,11 +622,16 @@ function closeModal(id){
     }
     _vendeurReturnTo = null; _lastCreatedVendeurId = null;
   }
-  if(id==='modal-acheteur-commande' && _acheteurCommandeReturnTo==='vente'){
-    document.getElementById('modal-vente').classList.add('open');
+  if(id==='modal-acheteur-commande' && (_acheteurCommandeReturnTo==='vente' || _acheteurCommandeReturnTo==='vente-split')){
+    const isSplit = _acheteurCommandeReturnTo === 'vente-split';
+    document.getElementById(isSplit ? 'modal-vente-split' : 'modal-vente').classList.add('open');
     if (_lastCreatedAcheteurCommandeId) {
-      populateVenteCommandeSelect(document.getElementById('vente-acheteur-select').value, _lastCreatedAcheteurCommandeId);
-      setVenteStatusInput('vendue');
+      if (isSplit) {
+        populateVenteCommandeSelect(document.getElementById('vente-split-acheteur-select').value, _lastCreatedAcheteurCommandeId, 'vente-split-commande-select', 'vente-split-commande-preview');
+      } else {
+        populateVenteCommandeSelect(document.getElementById('vente-acheteur-select').value, _lastCreatedAcheteurCommandeId);
+        setVenteStatusInput('vendue');
+      }
     }
     _acheteurCommandeReturnTo = null; _lastCreatedAcheteurCommandeId = null;
   }
@@ -640,5 +654,7 @@ function initSettingsView(){
   const inp=document.getElementById('settings-ui-scale');
   if(inp)inp.value=_D.settings?.ui_scale||1;
   if(_D.settings?.ui_scale) applyUiScale(_D.settings.ui_scale);
+  const rowInp=document.getElementById('settings-cards-per-row');
+  if(rowInp)rowInp.value=_D.settings?.sales_cards_per_row||5;
 }
 

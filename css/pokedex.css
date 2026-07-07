@@ -430,9 +430,13 @@
   font-size: .8rem; font-weight: 700; color: var(--text);
   padding: 7px 10px; background: var(--bg3); border-radius: var(--radius-sm);
   margin-bottom: 4px; transition: outline-color .12s;
+  list-style: none; /* .lbl-group-header est maintenant un <summary> */
 }
+.lbl-group-header::-webkit-details-marker { display: none; }
 .lbl-group-header.drag-target { outline: 2px solid var(--accent); }
-.lbl-group-header-static { cursor: default; }
+.lbl-group-header-static { cursor: pointer; }
+.lbl-cat-chevron { display: inline-block; font-size: .65rem; color: var(--text3); flex-shrink: 0; transition: transform .15s; }
+.lbl-group[open] > .lbl-group-header .lbl-cat-chevron { transform: rotate(90deg); }
 .lbl-cat-handle { color: var(--text3); font-size: .85rem; flex-shrink: 0; }
 .lbl-cat-name { flex: 1; min-width: 0; }
 .lbl-cat-actions { display: flex; gap: 4px; flex-shrink: 0; }
@@ -484,6 +488,8 @@
 }
 .lbl-reset-cell .mbadge-clear:hover { color: var(--accent2); border-color: var(--accent2); }
 
+.lbl-new-forms-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.lbl-new-forms-row .lbl-new-form { flex: 1; min-width: 260px; margin-bottom: 0; }
 .lbl-new-form {
   display: flex; gap: 8px; align-items: center; margin-bottom: 16px;
   background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -517,3 +523,4 @@
 .pkdx-label-assign select {
   background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.25); border-radius: var(--radius-sm);
   color: #fff; font-size: .74rem; padding: 3px 6px; outline: none; cursor: pointer;
+}

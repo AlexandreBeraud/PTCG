@@ -1,8 +1,14 @@
 erDiagram
+    %% BLOCS et EXTENSIONS accueillent 2 sortes de lignes dans la même table :
+    %% - blocs/extensions personnalisés (créés via Édition), id préfixé "cb_"/"cx_"
+    %% - overrides d'un bloc/extension intégré (masquer, renommer, changer de
+    %%   bloc...), id = celui du bloc/extension intégré d'origine (pas de préfixe)
+    %% Distingués à la lecture par ce préfixe (voir js/sync.js, apply()).
     BLOCS {
-        text blo_id PK "ex. cb_1234567890"
+        text blo_id PK "ex. cb_1234567890 (perso) ou id intégré (override)"
         text blo_user_id PK "toujours 'default' (app mono-utilisateur)"
         text blo_nom "nom affiché, ex. Ecarlate et Violet"
+        text blo_short "code court affiché, ex. EV"
         text blo_couleur "couleur d'accent du bloc dans l'UI"
         text blo_logo "URL du logo du bloc"
         text blo_sigle "URL du sigle du bloc"
@@ -11,9 +17,10 @@ erDiagram
     }
 
     EXTENSIONS {
-        text ext_id PK "ex. cx_1234567890"
+        text ext_id PK "ex. cx_1234567890 (perso) ou id intégré (override)"
         text ext_user_id PK "toujours 'default'"
-        text ext_bloc_id "ref souple -> BLOCS.blo_id, vide = aucun bloc"
+        text ext_bloc_id "bloc d'un ext perso — ref souple -> BLOCS.blo_id, vide = aucun bloc"
+        text ext_bloc_id_override "override : déplace un ext intégré vers un autre bloc — ref souple -> BLOCS.blo_id"
         text ext_code "sigle court, ex. SV01"
         text ext_nom "nom affiché, ex. Faille Paradoxe"
         int ext_nb_cartes "nombre total de cartes dans l'extension"
@@ -21,7 +28,7 @@ erDiagram
         text ext_sigle "URL du sigle/icône de l'extension"
         text ext_couleur "couleur d'accent dans l'UI"
         text ext_stat_mode "quelles cartes comptent dans les stats"
-        bool ext_sorti "extension déjà sortie (vs à venir)"
+        bool ext_sorti "extension déjà sortie (vs à venir) — toujours false pour un override"
         bool ext_is_hidden "masquée de l'appli sans être supprimée"
         int ext_sort_order "position d'affichage"
     }
@@ -72,7 +79,7 @@ erDiagram
         text goo_id PK "ex. il_1234567890"
         text goo_user_id PK "toujours 'default'"
         text goo_ext_id FK "extension du produit"
-        text goo_product_type "deck / etb / premium / futures valeurs"
+        text goo_product_type "deck / etb / premium / portfolio / autre"
         text goo_description "description / notes libres"
         text goo_img "URL de la photo du produit"
         bool goo_obtained "coché obtenu ou non"
@@ -124,7 +131,7 @@ erDiagram
         text ven_set_id "extension TCGdex d'origine"
         text ven_set_name "nom de l'extension TCGdex"
         text ven_ext_sigle "sigle de l'extension PTCG correspondante"
-        text ven_crop "cadrage de l'image : top / center / bottom"
+        text ven_crop "cadrage vertical de l'image : 0-100 (%), ou legacy top/center/bottom"
         text ven_number "numéro de la carte dans l'extension"
         text ven_rarity "rareté de la carte"
         text ven_pokemon_name "nom du Pokémon représenté"
@@ -134,6 +141,7 @@ erDiagram
         jsonb ven_types "types cochés : Normale / Reverse / Holo / 1ère édition"
         text ven_langue "langue de la carte"
         text ven_statut "a_mettre / en_ligne / vendue..."
+        text ven_cardmarket_url "copie locale du lien CardMarket (source : CARDS.cardmarket_url)"
     }
 
     DEPENSES {
@@ -146,7 +154,7 @@ erDiagram
         text dep_set_id "extension TCGdex d'origine"
         text dep_set_name "nom de l'extension TCGdex"
         text dep_ext_sigle "sigle de l'extension PTCG correspondante"
-        text dep_crop "cadrage de l'image : top / center / bottom"
+        text dep_crop "cadrage vertical de l'image : 0-100 (%), ou legacy top/center/bottom"
         text dep_number "numéro de la carte dans l'extension"
         text dep_rarity "rareté de la carte"
         text dep_pokemon_name "nom du Pokémon représenté"
@@ -155,6 +163,7 @@ erDiagram
         int dep_qty "quantité"
         jsonb dep_types "types cochés : Normale / Reverse / Holo / 1ère édition"
         text dep_langue "langue de la carte"
+        text dep_cardmarket_url "copie locale du lien CardMarket (source : CARDS.cardmarket_url)"
     }
 
     LABEL_CATEGORIES {
@@ -205,6 +214,7 @@ erDiagram
         text number "numéro dans l'extension"
         text rarity "rareté"
         text[] types "types de la carte"
+        text cardmarket_url "lien vers la fiche CardMarket — éditable depuis la fiche carte du Pokédex et depuis le formulaire vente/dépense"
     }
 
     SET_MAPPING {
