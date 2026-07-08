@@ -171,7 +171,7 @@ function toggleNonSorti() {
 
 function toggleSortDir() {
   _extSortDir = _extSortDir === 'asc' ? 'desc' : 'asc';
-  document.getElementById('sort-icon').textContent = _extSortDir === 'asc' ? '↑' : '↓';
+  document.querySelectorAll('.sort-code-icon').forEach(el => el.textContent = _extSortDir === 'asc' ? '↑' : '↓');
   if(!_D.settings) _D.settings={};
   _D.settings.sort_dir = _extSortDir;
   saveData();
@@ -930,11 +930,25 @@ function _buildAddExtClasseurList() {
   }
 
   let html = '';
-  getBlocs().forEach(bloc => {
-    const inBloc = sortExts(available.filter(e => getBlocForExt(e.id)?.id === bloc.id));
-    if (!inBloc.length) return;
-    html += `<div class="pkdx-ext-filter-bloc-label">${bloc.nom||'—'}</div>`;
-    html += inBloc.map(e => {
+  const groups = new Map(); // nom du bloc affiché -> { bloc, exts:[] }
+  available.forEach(e => {
+    const bloc = getBlocForExt(e.id) || { id:'?', nom:'Autres', sigle:'' };
+    const key = bloc.nom || 'Autres';
+    if (!groups.has(key)) groups.set(key, { bloc, exts: [] });
+    groups.get(key).exts.push(e);
+  });
+  const knownOrder = getBlocs().map(b => b.nom);
+  const groupKeys = [...groups.keys()].sort((a, b) => {
+    const ia = knownOrder.indexOf(a), ib = knownOrder.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b, 'fr');
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  groupKeys.forEach(key => {
+    const { bloc, exts } = groups.get(key);
+    html += `<div class="pkdx-ext-filter-bloc-label">${key}</div>`;
+    html += sortExts(exts).map(e => {
       const sigleSrc = e.sigle || bloc.sigle || '';
       return `<div class="pkdx-ext-filter-item" onclick="selectAddExtClasseurItem('${e.id}')">
         ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${e.code||''}</span>`}
@@ -942,14 +956,6 @@ function _buildAddExtClasseurList() {
       </div>`;
     }).join('');
   });
-  // Extensions with no matching bloc (shouldn't normally happen) still show up, grouped at the end.
-  const noBloc = available.filter(e => !getBlocForExt(e.id));
-  if (noBloc.length) {
-    html += `<div class="pkdx-ext-filter-bloc-label">Custom</div>`;
-    html += sortExts(noBloc).map(e => `<div class="pkdx-ext-filter-item" onclick="selectAddExtClasseurItem('${e.id}')">
-      <span class="pkdx-ext-filter-code">${e.code||''}</span><span>${e.nom}</span>
-    </div>`).join('');
-  }
   el.innerHTML = html;
 }
 

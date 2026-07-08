@@ -303,6 +303,7 @@ function renderAll() {
   safe(renderExtensions,    'renderExtensions');
   safe(renderClasseurs,     'renderClasseurs');
   safe(renderBoosters,      'renderBoosters');
+  safe(renderGoodies,       'renderGoodies');
   safe(renderEdition,       'renderEdition');
   safe(renderStats,         'renderStats');
   safe(renderVentes,        'renderVentes');
@@ -312,7 +313,23 @@ function renderAll() {
   safe(renderBilan,         'renderBilan');
   safe(updateGlobalProgress,'updateGlobalProgress');
   safe(updateBadges,        'updateBadges');
-  safe(() => applyCardsPerRow(_D.settings?.sales_cards_per_row || 5), 'applyCardsPerRow');
+  safe(() => {
+    const saved = _D.settings?.sales_cards_per_row;
+    const gridVal    = typeof saved === 'number' ? saved : (saved?.grid || 5);
+    const compactVal = (saved && typeof saved === 'object') ? (saved.compact || 3) : 3;
+    applyCardsPerRow('grid', gridVal);
+    applyCardsPerRow('compact', compactVal);
+  }, 'applyCardsPerRow');
+  safe(() => {
+    _extSortDir = _D.settings?.sort_dir === 'desc' ? 'desc' : 'asc';
+    document.querySelectorAll('.sort-code-icon').forEach(el => el.textContent = _extSortDir === 'asc' ? '↑' : '↓');
+  }, 'syncSortDirIcon');
+  safe(() => {
+    // _tabViewModes ne se remet à jour tout seul qu'en mémoire (setViewMode) :
+    // sans ce réveil depuis _D.settings, le choix de grille/carte à
+    // gauche/liste retombait toujours sur "grille" à chaque rechargement.
+    if (_D.settings?.tab_view_modes) Object.assign(_tabViewModes, _D.settings.tab_view_modes);
+  }, 'restoreTabViewModes');
   setTimeout(applyRainbow, 0);
 }
 

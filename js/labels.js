@@ -734,17 +734,30 @@ function exportData(){
   });
   a.click();toast('Export téléchargé.','success');
 }
-function importData(){
-  try{
-    const parsed=JSON.parse(document.getElementById('import-json').value.trim());
-    const tplBlocs = (window.__PC_DATA__ && window.__PC_DATA__.blocs) || [];
-    _D={...parsed,_tpl_blocs:tplBlocs};
-    ['boosters_data','custom_exts','ext_overrides','bloc_overrides','custom_blocs'].forEach(k=>{if(!_D[k])_D[k]=k==='boosters_data'?{}:[];});
-    if(!_D.settings)_D.settings={display_mode:'logo'};
-    saveData();renderAll();
-    document.getElementById('import-json').value='';
-    toast('Import réussi !','success');
-  }catch(e){toast('JSON invalide : '+e.message,'error');}
+// Import via un vrai sélecteur de fichier (plutôt que copier-coller un JSON
+// dans une zone de texte, peu pratique pour un gros export) : on lit le
+// fichier choisi avec FileReader, le reste de la logique est inchangé.
+function importDataFromFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(String(reader.result).trim());
+      const tplBlocs = (window.__PC_DATA__ && window.__PC_DATA__.blocs) || [];
+      _D = { ...parsed, _tpl_blocs: tplBlocs };
+      ['boosters_data','custom_exts','ext_overrides','bloc_overrides','custom_blocs'].forEach(k=>{if(!_D[k])_D[k]=k==='boosters_data'?{}:[];});
+      if (!_D.settings) _D.settings = { display_mode:'logo' };
+      saveData(); renderAll();
+      toast('Import réussi !', 'success');
+    } catch(e) {
+      toast('JSON invalide : ' + e.message, 'error');
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.onerror = () => { toast('Impossible de lire le fichier.', 'error'); input.value = ''; };
+  reader.readAsText(file);
 }
 // saveCloudConfig() et syncCloud() sont définies dans js/sync.js (moteur de
 // synchronisation générique, une ligne par table normalisée).

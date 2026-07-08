@@ -15,12 +15,24 @@
 .sales-search-input:focus { border-color: var(--accent); }
 
 /* Nombre de cartes par ligne réglable (Paramètres › Affichage), 5 par défaut.
-   --sales-cards-per-row est posée sur <html> par applyCardsPerRow() (js/ventes-achats.js). */
-.sales-grid { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
-.sales-grid-wide { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
-.sales-list-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
-.sales-compact-wrap { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+   --sales-cards-per-row-grid / --sales-cards-per-row-compact sont posées sur
+   <html> par applyCardsPerRow() (js/ventes-achats.js), une valeur par mode. */
+.sales-grid { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row-grid, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.sales-grid-wide { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row-grid, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.sales-list-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; overflow-x: auto; }
+.sales-compact-wrap { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row-compact, 3), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
 .sales-empty { color: var(--text2); font-size: .82rem; padding: 28px 8px; text-align: center; grid-column: 1/-1; }
+
+/* Bouton "Nouvelle vente" / "Nouvel achat" — plus grand, plus centré, accent
+   coloré au survol pour bien se distinguer des cartes existantes. */
+.sale-add-card { min-height: 230px; gap: 12px; font-size: .9rem; font-weight: 600; border-width: 2px; }
+.sale-add-card:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg2)); color: var(--accent); }
+.sale-add-card svg { transition: transform .15s; }
+.sale-add-card:hover svg { transform: scale(1.08); opacity: .9 !important; }
+
+/* Bouton "Choisir une carte" dans le formulaire vente/dépense — bien visible
+   puisque c'est la toute première action à faire pour remplir le formulaire. */
+.choose-card-btn { width: 100%; justify-content: center; margin-top: 10px; padding: 13px; font-size: .92rem; font-weight: 700; gap: 8px; }
 
 /* Barre de tri/filtre Ventes & Dépenses (extension + tri) */
 .sales-sort-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -35,15 +47,16 @@
    les boutons internes stoppent la propagation pour ne pas déclencher les deux. */
 .sale-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; }
 .sale-card:hover { border-color: var(--accent); }
-.sale-card-top { height: 72px; display: flex; align-items: center; padding: 0 14px; gap: 12px; position: relative; }
-.sale-top-info { flex: 1; min-width: 0; }
+.sale-card-top { min-height: 92px; display: flex; align-items: center; padding: 12px 16px; gap: 12px; position: relative; }
+.sale-top-info { flex: 1; min-width: 0; padding-right: 26px; }
 .sale-card-top .sale-card-name { color: #fff; }
-.sale-card-name { font-size: .86rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sale-card-meta-row { display: flex; align-items: center; gap: 5px; margin-top: 3px; min-width: 0; }
-.sale-card-sigle-inline { height: 13px; max-width: 20px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
-.sale-card-ext-name { flex: 1; min-width: 0; font-size: .68rem; color: rgba(255,255,255,.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.sale-card-top .sale-card-meta { color: rgba(255,255,255,.75); }
+.sale-card-top .sale-card-number { color: rgba(255,255,255,.6); }
+.sale-card-name { font-size: .86rem; font-weight: 700; white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
+.sale-card-meta { font-size: .68rem; color: var(--text2); white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; max-width: 100%; }
+.sale-card-number { font-size: .64rem; color: var(--text3); white-space: nowrap; margin-top: 1px; }
 .sale-card-footer-actions { display: flex; gap: 4px; justify-content: flex-end; }
-.sale-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.sale-card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 9px; }
 .sale-row { display: flex; align-items: center; justify-content: space-between; font-size: .76rem; gap: 8px; }
 .sale-row .lbl { color: var(--text2); flex-shrink: 0; }
 .sale-row .val.price { color: var(--green); font-weight: 700; }
@@ -55,29 +68,29 @@
 .sale-link { font-size: .72rem; color: var(--blue); display: inline-flex; align-items: center; gap: 4px; }
 .sale-link:hover { text-decoration: underline; }
 
-/* Lignes Vente / Dépense (mode liste) — <details>/<summary> natif : la ligne
-   d'aperçu (image/nom/statut/prix/acheteur/actions) est toujours alignée en
-   grille, les infos secondaires (état, type, langue) se déplient au clic. */
-.sale-list-row { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
-.sale-list-row:hover { border-color: var(--accent); }
-.sale-list-summary {
-  display: grid; cursor: pointer; list-style: none;
-  grid-template-columns: 14px 40px minmax(120px,1.7fr) 92px 84px minmax(110px,1fr) auto;
-  align-items: center; gap: 12px; padding: 8px 14px;
+/* Lignes Vente / Dépense (mode liste) — tout sur une seule ligne alignée en
+   grille (image, nom, statut, état, type, langue, prix, acheteur/vendeur,
+   lien CardMarket, actions), pas de menu dépliant. La liste défile
+   horizontalement plutôt que de tasser illisiblement les colonnes. */
+.sale-list-row {
+  display: grid; align-items: center; gap: 14px; padding: 12px 16px; min-width: 980px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; transition: border-color .15s;
+  grid-template-columns: 52px minmax(160px,1.5fr) 100px 92px 120px 92px 92px minmax(120px,1fr) 100px 96px;
 }
-.sale-list-summary::-webkit-details-marker { display: none; }
-.sale-list-chevron { font-size: .62rem; color: var(--text3); transition: transform .15s; justify-self: center; }
-.sale-list-row[open] .sale-list-chevron { transform: rotate(90deg); }
-.sale-list-thumb { width: 40px; height: 40px; border-radius: 6px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); font-size: 1.1rem; }
+.sale-list-row:hover { border-color: var(--accent); }
+.sale-list-thumb { width: 52px; height: 52px; border-radius: 7px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); font-size: 1.4rem; }
 .sale-list-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .sale-list-main { min-width: 0; }
-.sale-list-name { font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sale-list-meta { font-size: .68rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
-.sale-list-price { font-size: .82rem; font-weight: 700; color: var(--green); text-align: right; }
-.sale-list-acheteur { font-size: .72rem; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale-list-name { font-size: .94rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale-list-meta { font-size: .76rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.sale-list-number { font-size: .7rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale-list-cell { font-size: .84rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale-list-types { display: flex; flex-wrap: wrap; gap: 4px; }
+.sale-list-price { font-size: .92rem; font-weight: 700; color: var(--green); text-align: right; white-space: nowrap; }
+.sale-list-acheteur { font-size: .8rem; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sale-list-acheteur.unlinked { color: var(--text3); font-style: italic; }
-.sale-list-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.sale-list-details { padding: 2px 14px 12px 66px; display: flex; flex-direction: column; gap: 5px; border-top: 1px solid var(--border); margin-top: 2px; }
+.sale-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-shrink: 0; }
 
 /* Mode "Carte à gauche" : l'image occupe toute la hauteur à gauche, les infos
    (état, prix, type, langue, acheteur) sont listées à droite. */
@@ -91,8 +104,9 @@
 .sale-compact-body { flex: 1; min-width: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .sale-compact-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .sale-compact-head-text { min-width: 0; }
-.sale-compact-name { font-size: .84rem; font-weight: 700; overflow-wrap: break-word; }
-.sale-compact-meta { font-size: .68rem; color: var(--text2); margin: 2px 0 5px; }
+.sale-compact-name { font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sale-compact-meta { font-size: .68rem; color: var(--text2); margin: 2px 0 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sale-compact-number { font-size: .64rem; color: var(--text3); margin: 0 0 5px; }
 .sale-compact-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .sale-compact-rows { display: flex; flex-direction: column; gap: 3px; }
 
@@ -259,7 +273,7 @@
 /* ── Ajouts feedback round 6 (sigle, rognage, prévisualisation carte) ────── */
 
 /* Sigle d'extension affiché à gauche de la bannière (comme dans les classeurs) */
-.sale-card-sigle { height: 22px; max-width: 34px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.sale-card-sigle { position: absolute; top: 8px; right: 10px; height: 20px; max-width: 32px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); z-index: 1; }
 
 /* Rognage de l'image d'en-tête (Haut / Centre / Bas) */
 .classeur-status-btn.active[data-status="top"],

@@ -7,7 +7,23 @@
 //  VENTES / ACHETEURS / DÉPENSES / VENDEURS
 // ═══════════════════════════════════════════════════════════════════════════
 
-var CARD_CONDITIONS = ['Mint','Near Mint','Excellent','Good','Light Played','Poor'];
+var CARD_CONDITIONS = ['Mint','Near Mint','Excellent','Good','Light Played','Played','Poor'];
+// Couleur associée à chaque état, du meilleur (bleu) au pire (rouge) — reprise
+// partout où l'état d'une carte est affiché (grille, carte à gauche, liste).
+var CARD_CONDITION_COLORS = {
+  'Mint':          '#4a9eff',
+  'Near Mint':     '#22c55e',
+  'Excellent':     '#84cc16',
+  'Good':          '#eab308',
+  'Light Played':  '#f97316',
+  'Played':        '#fb7185',
+  'Poor':          '#ef4444',
+};
+function _etatHtml(etat) {
+  if (!etat) return '—';
+  const color = CARD_CONDITION_COLORS[etat];
+  return color ? `<span style="color:${color};font-weight:700">${_escHtml(etat)}</span>` : _escHtml(etat);
+}
 var VENTE_TYPES = [
   { id:'normale',      label:'Normale' },
   { id:'reverse',      label:'Reverse' },
@@ -86,21 +102,42 @@ async function _pushCardMarketUrl(cardId, url) {
   } catch(e) { console.warn('[PTCG] push cardmarket_url:', e.message); }
 }
 
+// Couleur d'accent de l'extension d'une vente/dépense (pour le fond du mode
+// "carte à gauche", comme les fiches du Pokédex) — retrouvée en comparant le
+// sigle enregistré sur la ligne à celui des extensions connues.
+function _extColorForSaleItem(item) {
+  if (!item.ext_sigle || typeof getAllExtensions !== 'function') return null;
+  try {
+    const ext = getAllExtensions().find(e => e.sigle && e.sigle === item.ext_sigle);
+    return ext ? extColor(ext) : null;
+  } catch(_) { return null; }
+}
+
 function _jsEscape(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 // ── Nombre de cartes par ligne (Paramètres › Affichage) ─────────────────
 // Pilote la variable CSS --sales-cards-per-row utilisée par .sales-grid /
 // .sales-grid-wide (Ventes, Achats, Acheteurs, Vendeurs). 5 par défaut.
-function applyCardsPerRow(val) {
-  const n = Math.max(2, Math.min(10, parseInt(val,10) || 5));
-  document.documentElement.style.setProperty('--sales-cards-per-row', n);
+// ── Nombre de cartes par ligne (Paramètres › Affichage) ─────────────────
+// Réglable séparément pour la grille et le mode "carte à gauche" (des cartes
+// plus larges tiennent moins bien à 5 par ligne) — chacun pilote sa propre
+// variable CSS. _D.settings.sales_cards_per_row était un simple nombre
+// avant : migré en objet {grid, compact} à la volée si besoin.
+function applyCardsPerRow(mode, val) {
+  const fallback = mode === 'compact' ? 3 : 5;
+  const n = Math.max(2, Math.min(10, parseInt(val,10) || fallback));
+  document.documentElement.style.setProperty(`--sales-cards-per-row-${mode}`, n);
   if (!_D.settings) _D.settings = {};
-  _D.settings.sales_cards_per_row = n;
+  if (typeof _D.settings.sales_cards_per_row !== 'object' || !_D.settings.sales_cards_per_row) {
+    const oldVal = typeof _D.settings.sales_cards_per_row === 'number' ? _D.settings.sales_cards_per_row : 5;
+    _D.settings.sales_cards_per_row = { grid: oldVal, compact: 3 };
+  }
+  _D.settings.sales_cards_per_row[mode] = n;
 }
-function saveCardsPerRow() {
-  const inp = document.getElementById('settings-cards-per-row');
+function saveCardsPerRow(mode) {
+  const inp = document.getElementById(`settings-cards-per-row-${mode}`);
   if (!inp) return;
-  applyCardsPerRow(inp.value);
+  applyCardsPerRow(mode, inp.value);
   saveData();
   toast('Nombre de cartes par ligne enregistré.', 'success');
 }
@@ -157,6 +194,7 @@ function _applySaleSort(items, sortId) {
   switch (sortId) {
     case 'date_asc':   arr.sort((a,b) => (a.created_at||0) - (b.created_at||0)); break;
     case 'ext_asc':     arr.sort((a,b) => (a.set_name||'').localeCompare(b.set_name||'','fr') || numFrom(a.number)-numFrom(b.number)); break;
+    case 'ext_code_asc': arr.sort((a,b) => _extSortKeyFor(a).localeCompare(_extSortKeyFor(b),'fr',{numeric:true}) || numFrom(a.number)-numFrom(b.number)); break;
     case 'name_asc':   arr.sort((a,b) => (a.card_name||a.pokemon_name||'').localeCompare(b.card_name||b.pokemon_name||'','fr')); break;
     case 'number_asc': arr.sort((a,b) => numFrom(a.number) - numFrom(b.number)); break;
     case 'pokedex_asc': arr.sort((a,b) => _pokedexNumberFor(a) - _pokedexNumberFor(b) || (a.card_name||'').localeCompare(b.card_name||'','fr')); break;
@@ -167,6 +205,15 @@ function _applySaleSort(items, sortId) {
     default:            arr.sort((a,b) => (b.created_at||0) - (a.created_at||0));
   }
   return arr;
+}
+
+// Clé de tri "Par extension (code/sigle)" — le code officiel de l'extension
+// (ex. "SV01"), pas son nom complet, retrouvé via l'extension correspondante.
+// Sans extension reconnue, on retombe sur le nom brut pour ne pas la perdre.
+function _extSortKeyFor(item) {
+  if (!item.set_name) return '';
+  const ext = (typeof getAllExtensions === 'function' ? getAllExtensions() : []).find(e => e.nom === item.set_name);
+  return (ext && ext.code) || item.set_name;
 }
 
 // Numéro national (Pokédex) du Pokémon représenté par une vente/dépense —
@@ -214,15 +261,104 @@ async function _ensurePokedexNamesLoaded() {
   return _pkdxNamesLoadingPromise;
 }
 
-// Remplit le <select> "extension" avec les extensions réellement présentes
-// dans la liste (pas toutes les extensions du jeu), triées A→Z — sans
-// resélectionner "Toutes" si l'utilisateur avait déjà choisi une extension
-// qui est toujours dans la liste.
-function _populateSaleExtFilter(selectId, items, currentValue) {
-  const sel = document.getElementById(selectId); if (!sel) return;
-  const names = [...new Set(items.map(it => it.set_name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
-  sel.innerHTML = '<option value="all">Toutes les extensions</option>' + names.map(n => `<option value="${_escHtml(n)}">${_escHtml(n)}</option>`).join('');
-  sel.value = names.includes(currentValue) ? currentValue : 'all';
+// Filtre par extension pour Ventes/Dépenses — repris tel quel du composant du
+// Pokédex (mêmes classes CSS pkdx-ext-*) : bouton + panneau déroulant groupé
+// par bloc, sigle de chaque extension, "Toutes les extensions" en tête.
+function _saleExtPanelIds(kind) {
+  const prefix = kind === 'vente' ? 'ventes' : 'depenses';
+  return { toggle: `${prefix}-ext-toggle`, panel: `${prefix}-ext-panel`, list: `${prefix}-ext-list`, label: `${prefix}-ext-filter-label` };
+}
+
+function toggleSaleExtFilterPanel(kind) {
+  const ids = _saleExtPanelIds(kind);
+  const panel = document.getElementById(ids.panel); if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  // Referme l'autre panneau (vente/dépense) au passage, un seul ouvert à la fois.
+  ['vente','depense'].forEach(k => { const p = document.getElementById(_saleExtPanelIds(k).panel); if (p && k !== kind) p.style.display = 'none'; });
+  if (isOpen) { panel.style.display = 'none'; return; }
+  _buildSaleExtFilterList(kind);
+  panel.style.display = '';
+}
+
+function _buildSaleExtFilterList(kind) {
+  const ids = _saleExtPanelIds(kind);
+  const el = document.getElementById(ids.list); if (!el) return;
+  const items = kind === 'vente' ? (_D.ventes||[]) : (_D.depenses||[]);
+  const currentFilter = kind === 'vente' ? _venteExtFilter : _depenseExtFilter;
+  const namesPresent = new Set(items.map(it => it.set_name).filter(Boolean));
+  const allExts = (typeof getAllExtensions === 'function') ? getAllExtensions() : [];
+  const relevantExts = allExts.filter(e => namesPresent.has(e.nom));
+
+  let html = `<div class="pkdx-ext-filter-item ${currentFilter==='all'?'active':''}" onclick="setSaleExtFilter('${kind}','all')">Toutes les extensions</div>`;
+
+  // BUG corrigé : on groupait en itérant getBlocs() et en exigeant
+  // getBlocForExt(e.id)?.id === bloc.id. Or pour une extension custom sans
+  // bloc_id valide, getBlocForExt() renvoie un bloc de secours synthétique
+  // (id 'cx' ou '?') qui ne correspond jamais à un vrai bloc — l'extension
+  // disparaissait alors du panneau sans jamais apparaître nulle part, même
+  // groupée sous "Autres". On regroupe maintenant directement par le bloc
+  // RÉSOLU de chaque extension (quel qu'il soit), ce qui n'en perd aucune.
+  const groups = new Map(); // nom affiché -> { bloc, exts:[] }
+  relevantExts.forEach(e => {
+    const bloc = (typeof getBlocForExt === 'function' && getBlocForExt(e.id)) || { id:'?', nom:'Autres', sigle:'' };
+    const key = bloc.nom || 'Autres';
+    if (!groups.has(key)) groups.set(key, { bloc, exts: [] });
+    groups.get(key).exts.push(e);
+  });
+
+  const knownOrder = (typeof getBlocs === 'function' ? getBlocs() : []).map(b => b.nom);
+  const groupKeys = [...groups.keys()].sort((a, b) => {
+    const ia = knownOrder.indexOf(a), ib = knownOrder.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b, 'fr');
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  groupKeys.forEach(key => {
+    const { bloc, exts } = groups.get(key);
+    html += `<div class="pkdx-ext-filter-bloc-label">${_escHtml(key)}</div>`;
+    html += sortExts(exts).map(e => {
+      const active = currentFilter === e.nom ? 'active' : '';
+      const sigleSrc = e.sigle || bloc.sigle || '';
+      return `<div class="pkdx-ext-filter-item ${active}" onclick="setSaleExtFilter('${kind}','${_escJs(e.nom)}')">
+        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
+        <span>${_escHtml(e.nom)}</span>
+      </div>`;
+    }).join('');
+  });
+  // Extensions présentes dans les ventes/dépenses mais introuvables parmi les
+  // extensions connues (ex. nom personnalisé/modifié depuis) : affichées quand
+  // même, sans bloc, pour ne jamais perdre silencieusement une entrée du filtre.
+  const matchedNames = new Set(relevantExts.map(e => e.nom));
+  const orphanNames = [...namesPresent].filter(n => !matchedNames.has(n)).sort((a,b) => a.localeCompare(b,'fr'));
+  if (orphanNames.length) {
+    html += `<div class="pkdx-ext-filter-bloc-label">Autres</div>`;
+    html += orphanNames.map(n => `<div class="pkdx-ext-filter-item ${currentFilter===n?'active':''}" onclick="setSaleExtFilter('${kind}','${_escJs(n)}')"><span class="pkdx-ext-filter-code">?</span><span>${_escHtml(n)}</span></div>`).join('');
+  }
+  el.innerHTML = html;
+  _syncSaleExtFilterLabel(kind);
+}
+
+function _syncSaleExtFilterLabel(kind) {
+  const ids = _saleExtPanelIds(kind);
+  const items = kind === 'vente' ? (_D.ventes||[]) : (_D.depenses||[]);
+  const currentFilter = kind === 'vente' ? _venteExtFilter : _depenseExtFilter;
+  const namesPresent = new Set(items.map(it => it.set_name).filter(Boolean));
+  // Si l'extension choisie a disparu de la liste (filtre de statut changé,
+  // dernière carte de cette extension supprimée…), on retombe sur "Toutes".
+  if (currentFilter !== 'all' && !namesPresent.has(currentFilter)) {
+    if (kind === 'vente') _venteExtFilter = 'all'; else _depenseExtFilter = 'all';
+  }
+  const finalFilter = kind === 'vente' ? _venteExtFilter : _depenseExtFilter;
+  const labelEl = document.getElementById(ids.label);
+  if (labelEl) labelEl.textContent = finalFilter === 'all' ? 'Toutes les extensions' : finalFilter;
+}
+
+function setSaleExtFilter(kind, name) {
+  if (kind === 'vente') { _venteExtFilter = name; renderVentes(); } else { _depenseExtFilter = name; renderDepenses(); }
+  const panel = document.getElementById(_saleExtPanelIds(kind).panel);
+  if (panel) panel.style.display = 'none';
 }
 
 function setVenteSort(sortId) {
@@ -230,13 +366,11 @@ function setVenteSort(sortId) {
   if (sortId === 'pokedex_asc') { _ensurePokedexNamesLoaded().then(renderVentes); }
   renderVentes();
 }
-function setVenteExtFilter(name) { _venteExtFilter = name; renderVentes(); }
 function setDepenseSort(sortId) {
   _depenseSort = sortId;
   if (sortId === 'pokedex_asc') { _ensurePokedexNamesLoaded().then(renderDepenses); }
   renderDepenses();
 }
-function setDepenseExtFilter(name) { _depenseExtFilter = name; renderDepenses(); }
 var _acheteurReturnTo = null, _vendeurReturnTo = null;
 var _lastCreatedAcheteurId = null, _lastCreatedVendeurId = null;
 var _acheteurCommandeReturnTo = null, _vendeurCommandeReturnTo = null;
@@ -293,8 +427,7 @@ function renderVentes() {
     const q = _normalizeStr(_venteQuery);
     items = items.filter(v => _normalizeStr(v.card_name||'').includes(q) || _normalizeStr(v.pokemon_name||'').includes(q));
   }
-  _populateSaleExtFilter('ventes-ext-filter', items, _venteExtFilter);
-  if (_venteExtFilter !== 'all' && !items.some(v => v.set_name === _venteExtFilter)) _venteExtFilter = 'all';
+  _buildSaleExtFilterList('vente');
   if (_venteExtFilter !== 'all') items = items.filter(v => v.set_name === _venteExtFilter);
   items = _applySaleSort(items, _venteSort);
 
@@ -370,12 +503,11 @@ function _saleCardTopHtml(opts) {
     : `background:linear-gradient(135deg,var(--bg3),var(--bg2))`;
   return `
     <div class="sale-card-top" style="${bg}">
+      ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="this.style.display='none'">` : ''}
       <div class="sale-top-info">
         <div class="sale-card-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
-        <div class="sale-card-meta-row">
-          ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle-inline" alt="" onerror="this.style.display='none'">` : ''}
-          <span class="sale-card-ext-name" title="${_escHtml(opts.meta)}">${opts.meta}</span>
-        </div>
+        <div class="sale-card-meta">${opts.extName}</div>
+        ${opts.number ? `<div class="sale-card-number">N°${_escHtml(opts.number)}</div>` : ''}
         ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : ''}
       </div>
     </div>`;
@@ -407,7 +539,8 @@ function _saleCompactCardHtml(opts) {
       <div class="sale-compact-head">
         <div class="sale-compact-head-text">
           <div class="sale-compact-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
-          <div class="sale-compact-meta">${opts.meta}</div>
+          <div class="sale-compact-meta">${opts.extName}</div>
+          ${opts.number ? `<div class="sale-compact-number">N°${_escHtml(opts.number)}</div>` : ''}
           ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : ''}
         </div>
         <div class="sale-compact-actions">
@@ -416,12 +549,13 @@ function _saleCompactCardHtml(opts) {
         </div>
       </div>
       <div class="sale-compact-rows">
-        <div class="sale-row"><span class="lbl">État</span><span class="val">${opts.etat||'—'}</span></div>
+        <div class="sale-row"><span class="lbl">État</span><span class="val">${_etatHtml(opts.etat)}</span></div>
         <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${opts.priceHtml}</span></div>
         ${opts.typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${opts.typesHtml}</span></div>` : ''}
         <div class="sale-row"><span class="lbl">Langue</span><span class="val">${opts.langue||'—'}</span></div>
       </div>
       ${opts.personInfoHtml ? `<div class="sale-acheteur">${opts.personInfoHtml}</div>` : ''}
+      ${opts.cardmarketUrl ? `<a href="${opts.cardmarketUrl}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
       ${opts.splitBtnHtml || ''}
     </div>`;
 }
@@ -430,28 +564,28 @@ function _saleCompactCardHtml(opts) {
 // acheteur/vendeur, actions) + détails secondaires repliables (État, Type,
 // Langue) — <details>/<summary> natif, comme les catégories de labels, pour
 // ne pas surcharger la liste quand on a beaucoup de ventes.
+// Mode liste : tout sur une seule ligne (image, nom, statut, état, type,
+// langue, prix, acheteur/vendeur, lien CardMarket, actions) — plus de menu
+// dépliant, tout est visible d'un coup d'œil.
 function _saleListRowHtml(opts) {
   return `
-    <summary class="sale-list-summary">
-      <span class="sale-list-chevron">▸</span>
-      <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
-      <div class="sale-list-main">
-        <div class="sale-list-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
-        <div class="sale-list-meta">${opts.meta}</div>
-      </div>
-      ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : '<span></span>'}
-      <div class="sale-list-price">${opts.priceHtml}</div>
-      <div class="sale-list-acheteur ${opts.personInfoHtml ? '' : 'unlinked'}">${opts.personInfoHtml || opts.personEmptyLabel}</div>
-      <div class="sale-list-actions">
-        ${opts.splitBtnHtml || ''}
-        <button class="btn btn-icon btn-sm" title="Modifier" onclick="event.preventDefault();event.stopPropagation();${opts.editFn}('${opts.id}')">${ICON_EDIT}</button>
-        <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="event.preventDefault();event.stopPropagation();${opts.delFn}('${opts.id}')">${ICON_DELETE}</button>
-      </div>
-    </summary>
-    <div class="sale-list-details">
-      <div class="sale-row"><span class="lbl">État</span><span class="val">${opts.etat||'—'}</span></div>
-      ${opts.typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${opts.typesHtml}</span></div>` : ''}
-      <div class="sale-row"><span class="lbl">Langue</span><span class="val">${opts.langue||'—'}</span></div>
+    <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+    <div class="sale-list-main">
+      <div class="sale-list-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
+      <div class="sale-list-meta">${opts.extName}</div>
+      ${opts.number ? `<div class="sale-list-number">N°${_escHtml(opts.number)}</div>` : ''}
+    </div>
+    <div class="sale-list-cell">${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : '—'}</div>
+    <div class="sale-list-cell">${_etatHtml(opts.etat)}</div>
+    <div class="sale-list-cell sale-list-types">${opts.typesHtml || '—'}</div>
+    <div class="sale-list-cell">${opts.langue||'—'}</div>
+    <div class="sale-list-price">${opts.priceHtml}</div>
+    <div class="sale-list-acheteur ${opts.personInfoHtml ? '' : 'unlinked'}">${opts.personInfoHtml || opts.personEmptyLabel}</div>
+    <div class="sale-list-cell">${opts.cardmarketUrl ? `<a href="${opts.cardmarketUrl}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">CardMarket ↗</a>` : '—'}</div>
+    <div class="sale-list-actions">
+      ${opts.splitBtnHtml || ''}
+      <button class="btn btn-icon btn-sm" title="Modifier" onclick="event.stopPropagation();${opts.editFn}('${opts.id}')">${ICON_EDIT}</button>
+      <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="event.stopPropagation();${opts.delFn}('${opts.id}')">${ICON_DELETE}</button>
     </div>`;
 }
 
@@ -462,22 +596,24 @@ function buildVenteCard(v) {
   const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
   const card = document.createElement('div');
   card.className = 'sale-card';
+  const extColorVal = _extColorForSaleItem(v);
+  if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
     _saleCardTopHtml({
       image: v.card_image, qty, sigle: v.ext_sigle, crop: v.crop,
       name: v.card_name || v.pokemon_name || '—',
-      meta: `${v.set_name||''}${v.number?' · N°'+v.number:''}`,
+      extName: v.set_name||'', number: v.number||'',
       statusCls: st.cls, statusLabel: st.label,
       editFn: 'editVente', delFn: 'deleteVente', id: v.id,
     }) + `
     <div class="sale-card-body">
-      <div class="sale-row"><span class="lbl">État</span><span class="val">${v.etat||'—'}</span></div>
-      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${_lineTotal(v).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
+      <div class="sale-row"><span class="lbl">État</span><span class="val">${_etatHtml(v.etat)}</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(v.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
       ${typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${typesHtml}</span></div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${v.langue||'—'}</span></div>
       ${acheteurInfo ? `<div class="sale-acheteur">${acheteurInfo}</div>` : ''}
       ${v.cardmarket_url ? `<a href="${v.cardmarket_url}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
-      ${qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Marquer des exemplaires vendus…</button>` : ''}
+      ${qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : ''}
       ${_saleCardFooterActionsHtml({ editFn: 'editVente', delFn: 'deleteVente', id: v.id })}
     </div>`;
   card.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editVente(v.id); });
@@ -489,17 +625,20 @@ function buildVenteRow(v) {
   const acheteurInfo = _venteAcheteurInfoHtml(v);
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
-  const row = document.createElement('details');
+  const row = document.createElement('div');
   row.className = 'sale-list-row';
+  const extColorVal = _extColorForSaleItem(v);
+  if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
   row.innerHTML = _saleListRowHtml({
     image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—',
-    meta: `${v.set_name||''}${v.number?' · N°'+v.number:''}`,
+    extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
-    priceHtml: `${_lineTotal(v).toFixed(2)} €`,
-    personInfoHtml: acheteurInfo, personEmptyLabel: '— Non vendu —',
-    splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Marquer des exemplaires vendus" onclick="event.preventDefault();event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
+    priceHtml: `${(parseFloat(v.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    personInfoHtml: acheteurInfo, personEmptyLabel: '— Non vendu —', cardmarketUrl: v.cardmarket_url,
+    splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Vente" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id,
   });
+  row.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editVente(v.id); });
   return row;
 }
 
@@ -511,14 +650,16 @@ function buildVenteCompact(v) {
   const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
   const card = document.createElement('div');
   card.className = 'sale-compact-row';
+  const extColorVal = _extColorForSaleItem(v);
+  if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
     image: v.card_image, qty, sigle: v.ext_sigle, crop: v.crop,
     name: v.card_name || v.pokemon_name || '—',
-    meta: `${v.set_name||''}${v.number?' · N°'+v.number:''}`,
+    extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
-    priceHtml: `${_lineTotal(v).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
-    personInfoHtml: acheteurInfo,
-    splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Marquer des exemplaires vendus…</button>` : '',
+    priceHtml: `${(parseFloat(v.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    personInfoHtml: acheteurInfo, cardmarketUrl: v.cardmarket_url,
+    splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id, kind: 'vente',
   });
   card.addEventListener('click', e => { if (e.target.closest('button,a,select,input,.sale-compact-thumb')) return; editVente(v.id); });
@@ -806,8 +947,7 @@ function renderDepenses() {
     const q = _normalizeStr(_depenseQuery);
     items = items.filter(d => _normalizeStr(d.card_name||'').includes(q) || _normalizeStr(d.pokemon_name||'').includes(q));
   }
-  _populateSaleExtFilter('depenses-ext-filter', items, _depenseExtFilter);
-  if (_depenseExtFilter !== 'all' && !items.some(d => d.set_name === _depenseExtFilter)) _depenseExtFilter = 'all';
+  _buildSaleExtFilterList('depense');
   if (_depenseExtFilter !== 'all') items = items.filter(d => d.set_name === _depenseExtFilter);
   items = _applySaleSort(items, _depenseSort);
 
@@ -863,17 +1003,19 @@ function buildDepenseCard(d) {
   const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
   const card = document.createElement('div');
   card.className = 'sale-card';
+  const extColorVal = _extColorForSaleItem(d);
+  if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
     _saleCardTopHtml({
       image: d.card_image, qty, sigle: d.ext_sigle, crop: d.crop,
       name: d.card_name || d.pokemon_name || '—',
-      meta: `${d.set_name||''}${d.number?' · N°'+d.number:''}`,
+      extName: d.set_name||'', number: d.number||'',
       statusCls: '', statusLabel: '',
       editFn: 'editDepense', delFn: 'deleteDepense', id: d.id,
     }) + `
     <div class="sale-card-body">
-      <div class="sale-row"><span class="lbl">État</span><span class="val">${d.etat||'—'}</span></div>
-      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${_lineTotal(d).toFixed(2)} €</span></div>
+      <div class="sale-row"><span class="lbl">État</span><span class="val">${_etatHtml(d.etat)}</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(d.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
       ${typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${typesHtml}</span></div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${d.langue||'—'}</span></div>
       <div class="sale-acheteur ${vendeurInfo ? '' : 'unlinked'}">${vendeurInfo || '— Aucun vendeur —'}</div>
@@ -888,17 +1030,20 @@ function buildDepenseRow(d) {
   const vendeurInfo = _depenseVendeurInfoHtml(d);
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
-  const row = document.createElement('details');
+  const row = document.createElement('div');
   row.className = 'sale-list-row';
+  const extColorVal = _extColorForSaleItem(d);
+  if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
   row.innerHTML = _saleListRowHtml({
     image: d.card_image, qty, name: d.card_name || d.pokemon_name || '—',
-    meta: `${d.set_name||''}${d.number?' · N°'+d.number:''}`,
+    extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
-    priceHtml: `${_lineTotal(d).toFixed(2)} €`,
-    personInfoHtml: vendeurInfo, personEmptyLabel: '— Aucun vendeur —',
+    priceHtml: `${(parseFloat(d.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    personInfoHtml: vendeurInfo, personEmptyLabel: '— Aucun vendeur —', cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id,
   });
+  row.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editDepense(d.id); });
   return row;
 }
 
@@ -909,13 +1054,15 @@ function buildDepenseCompact(d) {
   const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
   const card = document.createElement('div');
   card.className = 'sale-compact-row';
+  const extColorVal = _extColorForSaleItem(d);
+  if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
     image: d.card_image, qty, sigle: d.ext_sigle, crop: d.crop,
     name: d.card_name || d.pokemon_name || '—',
-    meta: `${d.set_name||''}${d.number?' · N°'+d.number:''}`,
+    extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
-    priceHtml: `${_lineTotal(d).toFixed(2)} €`,
-    personInfoHtml: vendeurInfo,
+    priceHtml: `${(parseFloat(d.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    personInfoHtml: vendeurInfo, cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id, kind: 'depense',
   });
@@ -1163,14 +1310,31 @@ function _acheteurCommandeRowHtml(c) {
   </div>`;
 }
 
+// Couleur d'accent de l'extension la plus représentée dans les commandes d'un
+// acheteur/vendeur (compte les cartes par extension, qty comprise) — même
+// principe que le fond coloré des ventes/dépenses individuelles.
+function _dominantExtColor(items) {
+  if (!items || !items.length) return null;
+  const counts = {};
+  items.forEach(it => { if (it.set_name) counts[it.set_name] = (counts[it.set_name]||0) + (parseInt(it.qty,10)||1); });
+  const names = Object.keys(counts);
+  if (!names.length) return null;
+  const topName = names.sort((a,b) => counts[b]-counts[a])[0];
+  const ext = (typeof getAllExtensions === 'function' ? getAllExtensions() : []).find(e => e.nom === topName);
+  return ext ? extColor(ext) : null;
+}
+
 function buildAcheteurCard(a) {
   const commandes = acheteurCommandes(a.id);
   const total  = acheteurTotal(a.id);
-  const nbCartes = acheteurVentes(a.id).length;
+  const ventes = acheteurVentes(a.id);
+  const nbCartes = ventes.length;
   const expanded = _orderExpandedAcheteurs.has(a.id);
   const card = document.createElement('div');
   card.className = 'order-card';
   card.dataset.acheteurId = a.id;
+  const extColorVal = _dominantExtColor(ventes);
+  if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML = `
     <div class="order-card-top">
       <div class="order-card-avatar">${a.icon||'👤'}</div>
@@ -1432,11 +1596,14 @@ function _vendeurCommandeRowHtml(c) {
 function buildVendeurCard(v) {
   const commandes = vendeurCommandes(v.id);
   const total    = vendeurTotal(v.id);
-  const nbCartes = vendeurDepenses(v.id).length;
+  const depensesForVendeur = vendeurDepenses(v.id);
+  const nbCartes = depensesForVendeur.length;
   const expanded = _orderExpandedVendeurs.has(v.id);
   const card = document.createElement('div');
   card.className = 'order-card';
   card.dataset.vendeurId = v.id;
+  const extColorVal = _dominantExtColor(depensesForVendeur);
+  if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML = `
     <div class="order-card-top">
       <div class="order-card-avatar">${v.icon||'🏷️'}</div>
@@ -1896,9 +2063,16 @@ function _renderBilanEvolutionChart(canvasId, months, ventesByMonth, depensesByM
 // ═══════════════════════════════════════════════════════════════════════════
 function _buildChipGroup(containerId, options, selected) {
   const el = document.getElementById(containerId); if (!el) return;
-  el.innerHTML = options.map(o => `<button type="button" class="chip-toggle-btn ${selected.includes(o.id)?'active':''}" data-value="${o.id}" onclick="_toggleChip(this)">${o.label}</button>`).join('');
+  // Un seul type à la fois (Normale / Reverse / Holo Cosmos / 1ère édition) —
+  // comportement "radio", pas de sélection multiple.
+  const first = selected && selected.length ? selected[0] : options[0].id;
+  el.innerHTML = options.map(o => `<button type="button" class="chip-toggle-btn ${o.id===first?'active':''}" data-value="${o.id}" onclick="_toggleChip(this)">${o.label}</button>`).join('');
 }
-function _toggleChip(btn) { btn.classList.toggle('active'); }
+function _toggleChip(btn) {
+  const group = btn.closest('.chip-toggle-group'); if (!group) return;
+  group.querySelectorAll('.chip-toggle-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
 function _setChipGroup(containerId, selected) { _buildChipGroup(containerId, VENTE_TYPES, selected||[]); }
 function _getChipGroup(containerId) {
   return [...document.querySelectorAll(`#${containerId} .chip-toggle-btn.active`)].map(b=>b.dataset.value);
@@ -2031,7 +2205,19 @@ async function _cardPickerSelectPokemon(i) {
   const grid = document.getElementById('cardpicker-cards');
   grid.innerHTML = '<div class="sales-empty">Chargement des cartes…</div>';
   try {
-    const frName = p.frName || _capitalize(p.name.replace(/-/g,' '));
+    // BUG corrigé : pour une forme (Méga, Gigamax, régionale…), on cherchait
+    // jusqu'ici avec le nom COMBINÉ figé dans le code (p.frName, ex.
+    // "Méga-Dracaufeu" — voir _buildFormFrName) au lieu du nom de BASE. Or les
+    // cartes réelles n'utilisent pas forcément ce gabarit exact ("Méga
+    // Dracaufeu" sans tiret, "M Dracaufeu", etc.) : la recherche ne trouvait
+    // souvent rien, et le filtrage par préfixes/suffixes personnalisés
+    // (Édition › Labels) n'avait alors plus aucune carte sur laquelle
+    // s'appliquer. La fiche Pokédex, elle, cherchait déjà avec le nom de
+    // base + le filtre de formType — c'est ce même comportement qu'on
+    // applique ici pour que le sélecteur de carte trouve exactement les
+    // mêmes cartes que la fiche.
+    const baseEntry = p.isForm ? _pkdx.all.find(e => !e.isForm && e.id === p.baseId) : p;
+    const frName = (baseEntry && baseEntry.frName) || p.frName || _capitalize(p.name.replace(/-/g,' '));
     // Résolution du type de forme identique aux fiches Pokédex (assignation
     // manuelle prioritaire, sinon détection automatique) — garantit que le
     // sélecteur trouve exactement les mêmes cartes que la fiche du Pokémon

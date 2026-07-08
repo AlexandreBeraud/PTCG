@@ -137,9 +137,6 @@
       </svg>
       <input type="text" placeholder="Rechercher…" oninput="filterExtensions(this.value)">
     </div>
-    <button class="btn btn-secondary btn-sm" id="topbar-sort-btn" onclick="toggleSortDir()" title="Trier par code" style="gap:4px">
-      <span>Code</span><span id="sort-icon">↑</span>
-    </button>
     <div class="view-toggle" id="topbar-view-toggle">
       <button class="active" data-mode="grid" title="Grille" onclick="setViewMode('grid',this)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -177,7 +174,9 @@
           <p id="ext-subtitle">Toutes les extensions du Pokémon TCG</p>
         </div>
         <div class="page-header-right">
-
+          <button class="btn btn-secondary btn-sm sort-code-btn" onclick="toggleSortDir()" title="Trier par code" style="gap:4px">
+            <span>Code</span><span class="sort-code-icon">↑</span>
+          </button>
         </div>
       </div>
       <div class="stats-row">
@@ -234,13 +233,20 @@
         <button class="booster-filter-btn" onclick="setVenteFilter('vendue',this)">Vendues</button>
       </div>
       <div class="sales-sort-bar">
-        <select id="ventes-ext-filter" class="sales-sort-select" onchange="setVenteExtFilter(this.value)">
-          <option value="all">Toutes les extensions</option>
-        </select>
+        <div style="position:relative;display:inline-block">
+          <button id="ventes-ext-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleExtFilterPanel('vente')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="14" height="20" rx="2"/><rect x="8" y="1" width="14" height="20" rx="2"/></svg>
+            <span id="ventes-ext-filter-label">Toutes les extensions</span>
+          </button>
+          <div id="ventes-ext-panel" style="display:none" class="pkdx-ext-dropdown">
+            <div id="ventes-ext-list"></div>
+          </div>
+        </div>
         <select id="ventes-sort-select" class="sales-sort-select" onchange="setVenteSort(this.value)">
           <option value="date_desc">Date (récent d'abord)</option>
           <option value="date_asc">Date (ancien d'abord)</option>
           <option value="ext_asc">Extension (A→Z)</option>
+          <option value="ext_code_asc">Par extension (code / sigle)</option>
           <option value="name_asc">Nom (A→Z)</option>
           <option value="number_asc">Numéro (dans l'extension)</option>
           <option value="pokedex_asc">Numéro Pokédex national</option>
@@ -250,8 +256,8 @@
         </select>
       </div>
       <div class="sales-grid" id="ventes-grid">
-        <button class="add-new-card" onclick="openAddVenteModal()">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4">
+        <button class="add-new-card sale-add-card" onclick="openAddVenteModal()">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
           </svg>
           <span>Nouvelle vente</span>
@@ -311,13 +317,20 @@
         <button class="booster-filter-btn" onclick="setDepenseFilter('linked',this)">Avec vendeur</button>
       </div>
       <div class="sales-sort-bar">
-        <select id="depenses-ext-filter" class="sales-sort-select" onchange="setDepenseExtFilter(this.value)">
-          <option value="all">Toutes les extensions</option>
-        </select>
+        <div style="position:relative;display:inline-block">
+          <button id="depenses-ext-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleExtFilterPanel('depense')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="14" height="20" rx="2"/><rect x="8" y="1" width="14" height="20" rx="2"/></svg>
+            <span id="depenses-ext-filter-label">Toutes les extensions</span>
+          </button>
+          <div id="depenses-ext-panel" style="display:none" class="pkdx-ext-dropdown">
+            <div id="depenses-ext-list"></div>
+          </div>
+        </div>
         <select id="depenses-sort-select" class="sales-sort-select" onchange="setDepenseSort(this.value)">
           <option value="date_desc">Date (récent d'abord)</option>
           <option value="date_asc">Date (ancien d'abord)</option>
           <option value="ext_asc">Extension (A→Z)</option>
+          <option value="ext_code_asc">Par extension (code / sigle)</option>
           <option value="name_asc">Nom (A→Z)</option>
           <option value="number_asc">Numéro (dans l'extension)</option>
           <option value="pokedex_asc">Numéro Pokédex national</option>
@@ -327,8 +340,8 @@
         </select>
       </div>
       <div class="sales-grid" id="depenses-grid">
-        <button class="add-new-card" onclick="openAddDepenseModal()">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".4">
+        <button class="add-new-card sale-add-card" onclick="openAddDepenseModal()">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
           </svg>
           <span>Nouvel achat</span>
@@ -380,6 +393,11 @@
     <div id="view-boosters" class="view">
       <div class="page-header">
         <div class="page-header-left"><h1>Boosters / Illustrations</h1><p>Suivez vos illustrations et leur statut d'obtention</p></div>
+        <div class="page-header-right">
+          <button class="btn btn-secondary btn-sm sort-code-btn" onclick="toggleSortDir()" title="Trier par code" style="gap:4px">
+            <span>Code</span><span class="sort-code-icon">↑</span>
+          </button>
+        </div>
       </div>
       <div class="boosters-layout">
         <div id="boosters-main"></div>
@@ -411,6 +429,11 @@
     <div id="view-goodies" class="view">
       <div class="page-header">
         <div class="page-header-left"><h1>Goodies</h1><p>Decks, ETB, coffrets premium, portfolios… et leur statut d'obtention</p></div>
+        <div class="page-header-right">
+          <button class="btn btn-secondary btn-sm sort-code-btn" onclick="toggleSortDir()" title="Trier par code" style="gap:4px">
+            <span>Code</span><span class="sort-code-icon">↑</span>
+          </button>
+        </div>
       </div>
       <div class="booster-filter-bar">
         <button class="booster-filter-btn active" onclick="setGoodieFilter('all',this)">Tous</button>
@@ -557,10 +580,16 @@
             <button class="btn btn-primary btn-sm" onclick="saveUiScale()">Sauvegarder</button>
           </div>
           <div class="settings-display-row" style="margin-top:10px">
-            <label>Cartes par ligne (Ventes/Achats) :</label>
-            <input type="number" id="settings-cards-per-row" min="2" max="10" step="1" value="5"
-              style="width:70px" oninput="applyCardsPerRow(this.value)">
-            <button class="btn btn-primary btn-sm" onclick="saveCardsPerRow()">Sauvegarder</button>
+            <label>Cartes par ligne — mode grille :</label>
+            <input type="number" id="settings-cards-per-row-grid" min="2" max="10" step="1" value="5"
+              style="width:70px" oninput="applyCardsPerRow('grid', this.value)">
+            <button class="btn btn-primary btn-sm" onclick="saveCardsPerRow('grid')">Sauvegarder</button>
+          </div>
+          <div class="settings-display-row" style="margin-top:10px">
+            <label>Cartes par ligne — mode carte à gauche :</label>
+            <input type="number" id="settings-cards-per-row-compact" min="2" max="10" step="1" value="3"
+              style="width:70px" oninput="applyCardsPerRow('compact', this.value)">
+            <button class="btn btn-primary btn-sm" onclick="saveCardsPerRow('compact')">Sauvegarder</button>
           </div>
         </div>
         <div class="settings-card">
@@ -576,15 +605,8 @@
             </div>
           </div>
           <div class="settings-field"><label>Importer</label>
-            <textarea id="import-json" placeholder="Collez votre JSON ici…"></textarea>
-            <div class="settings-actions" style="margin-top:8px">
-              <button class="btn btn-success" onclick="importData()">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Importer
-              </button>
-            </div>
+            <input type="file" id="import-json-file" accept="application/json,.json" onchange="importDataFromFile(this)">
+            <p class="form-hint" style="margin-top:6px">Choisis un fichier .json exporté depuis cette appli (bouton "Télécharger JSON" ci-dessus).</p>
           </div>
         </div>
         <div class="settings-card">
@@ -868,7 +890,10 @@
     <div class="settings-field">
       <label>Carte</label>
       <div id="vente-card-preview" class="cardpicker-preview-wrap"></div>
-      <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="openCardPicker('vente')">Choisir une carte</button>
+      <button type="button" class="btn btn-primary choose-card-btn" onclick="openCardPicker('vente')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Choisir une carte
+      </button>
       <input type="hidden" id="vente-card-id">
       <input type="hidden" id="vente-card-name">
       <input type="hidden" id="vente-card-image">
@@ -899,7 +924,7 @@
     <div class="settings-field"><label>État</label>
       <select id="vente-etat-select">
         <option>Mint</option><option selected>Near Mint</option><option>Excellent</option>
-        <option>Good</option><option>Light Played</option><option>Poor</option>
+        <option>Good</option><option>Light Played</option><option>Played</option><option>Poor</option>
       </select>
     </div>
     <div class="settings-field-row">
@@ -980,7 +1005,10 @@
     <div class="settings-field">
       <label>Carte</label>
       <div id="depense-card-preview" class="cardpicker-preview-wrap"></div>
-      <button type="button" class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="openCardPicker('depense')">Choisir une carte</button>
+      <button type="button" class="btn btn-primary choose-card-btn" onclick="openCardPicker('depense')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Choisir une carte
+      </button>
       <input type="hidden" id="depense-card-id">
       <input type="hidden" id="depense-card-name">
       <input type="hidden" id="depense-card-image">
@@ -1011,7 +1039,7 @@
     <div class="settings-field"><label>État</label>
       <select id="depense-etat-select">
         <option>Mint</option><option selected>Near Mint</option><option>Excellent</option>
-        <option>Good</option><option>Light Played</option><option>Poor</option>
+        <option>Good</option><option>Light Played</option><option>Played</option><option>Poor</option>
       </select>
     </div>
     <div class="settings-field-row">

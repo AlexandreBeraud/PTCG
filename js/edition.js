@@ -568,9 +568,7 @@ function switchView(view,btn){
   const showSearch=view==='extensions';
   const showToggle=['extensions','classeurs','boosters','goodies','edition','ventes','acheteurs','depenses','vendeurs'].includes(view);
   const showCompactMode=['ventes','depenses'].includes(view);
-  const showSortBtn=!['ventes','acheteurs','depenses','vendeurs','bilan'].includes(view);
   document.getElementById('topbar-search-wrap').style.display  =showSearch?'flex':'none';
-  document.getElementById('topbar-sort-btn').style.display     =showSortBtn?'flex':'none';
   document.getElementById('topbar-view-toggle').style.display  =showToggle?'flex':'none';
   document.getElementById('topbar-view-toggle-compact').style.display = showCompactMode?'':'none';
   if (showToggle) {
@@ -654,7 +652,12 @@ function initSettingsView(){
   const inp=document.getElementById('settings-ui-scale');
   if(inp)inp.value=_D.settings?.ui_scale||1;
   if(_D.settings?.ui_scale) applyUiScale(_D.settings.ui_scale);
-  const rowInp=document.getElementById('settings-cards-per-row');
-  if(rowInp)rowInp.value=_D.settings?.sales_cards_per_row||5;
+  const saved = _D.settings?.sales_cards_per_row;
+  const gridVal    = typeof saved === 'number' ? saved : (saved?.grid || 5);
+  const compactVal = (saved && typeof saved === 'object') ? (saved.compact || 3) : 3;
+  const gridInp=document.getElementById('settings-cards-per-row-grid');
+  if(gridInp)gridInp.value=gridVal;
+  const compactInp=document.getElementById('settings-cards-per-row-compact');
+  if(compactInp)compactInp.value=compactVal;
 }
 
