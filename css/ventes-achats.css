@@ -35,7 +35,9 @@
 .choose-card-btn { width: 100%; justify-content: center; margin-top: 10px; padding: 13px; font-size: .92rem; font-weight: 700; gap: 8px; }
 
 /* Barre de tri/filtre Ventes & Dépenses (extension + tri) */
-.sales-sort-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.sales-toolbar-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.sales-toolbar-row .booster-filter-bar { margin-bottom: 0; }
+.sales-sort-bar { display: flex; gap: 8px; margin-bottom: 0; flex-wrap: wrap; }
 .sales-sort-select {
   background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 6px 10px; font-size: .76rem; color: var(--text); cursor: pointer; outline: none; transition: border-color .15s;
@@ -87,28 +89,33 @@
 .sale-list-number { font-size: .7rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sale-list-cell { font-size: .84rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sale-list-types { display: flex; flex-wrap: wrap; gap: 4px; }
-.sale-list-price { font-size: .92rem; font-weight: 700; color: var(--green); text-align: right; white-space: nowrap; }
+.sale-list-price { font-size: .92rem; font-weight: 700; color: var(--green); white-space: nowrap; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .sale-list-acheteur { font-size: .8rem; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sale-list-acheteur.unlinked { color: var(--text3); font-style: italic; }
 .sale-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-shrink: 0; }
 
 /* Mode "Carte à gauche" : l'image occupe toute la hauteur à gauche, les infos
    (état, prix, type, langue, acheteur) sont listées à droite. */
-.sale-compact-row { display: flex; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; }
+.sale-compact-row { display: flex; min-height: 260px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; }
 .sale-compact-row:hover { border-color: var(--accent); }
 .sale-compact-thumb {
-  flex: 0 0 42%; min-height: 150px; position: relative; background-size: cover; background-repeat: no-repeat;
+  /* Largeur fixe calée sur les proportions réelles d'une carte (~63×88mm)
+     pour la hauteur min de la ligne (260px), plutôt qu'un pourcentage qui
+     laissait un vide ou déformait le ratio selon le nombre de cartes/ligne. */
+  flex: 0 0 186px; min-height: 260px; position: relative; background-size: cover; background-repeat: no-repeat;
   background-position: center; background-color: var(--bg3);
   display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
 }
-.sale-compact-body { flex: 1; min-width: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.sale-compact-body { flex: 1; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
 .sale-compact-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .sale-compact-head-text { min-width: 0; }
-.sale-compact-name { font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.sale-compact-meta { font-size: .68rem; color: var(--text2); margin: 2px 0 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.sale-compact-number { font-size: .64rem; color: var(--text3); margin: 0 0 5px; }
+.sale-compact-name { font-size: .92rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sale-compact-meta { font-size: .74rem; color: var(--text2); margin: 3px 0 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sale-compact-number { font-size: .7rem; color: var(--text3); margin: 0 0 5px; }
+.sale-compact-head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
 .sale-compact-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.sale-compact-rows { display: flex; flex-direction: column; gap: 3px; }
+.sale-compact-rows { display: flex; flex-direction: column; gap: 7px; }
+.sale-compact-rows .sale-row { font-size: .84rem; }
 
 /* Cartes commande Acheteur / Vendeur (grid) */
 .order-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; }
@@ -255,6 +262,7 @@
 /* Graphiques Bilan (Chart.js — voir js/ventes-achats.js) : même approche que
    le budget de référence (bascule camembert/barres, wrapper à hauteur fixe
    pour que Chart.js calcule un canvas responsive correctement). */
+.bilan-period-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .bilan-charts-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
 .bilan-chart-card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);

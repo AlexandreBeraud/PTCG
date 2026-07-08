@@ -289,6 +289,14 @@ function _persistLocalOnly() {
   }
 }
 
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar'); if (!sidebar) return;
+  const collapsed = sidebar.classList.toggle('collapsed');
+  if (!_D.settings) _D.settings = {};
+  _D.settings.sidebar_collapsed = collapsed;
+  saveData();
+}
+
 function saveData() {
   _D._ts = Date.now();
   _persistLocalOnly();
@@ -330,6 +338,10 @@ function renderAll() {
     // gauche/liste retombait toujours sur "grille" à chaque rechargement.
     if (_D.settings?.tab_view_modes) Object.assign(_tabViewModes, _D.settings.tab_view_modes);
   }, 'restoreTabViewModes');
+  safe(() => {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('collapsed', !!_D.settings?.sidebar_collapsed);
+  }, 'restoreSidebarCollapsed');
   setTimeout(applyRainbow, 0);
 }
 

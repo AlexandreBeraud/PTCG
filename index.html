@@ -21,6 +21,9 @@
       <circle cx="14" cy="14" r="4" fill="#e63946"/><circle cx="14" cy="14" r="2" fill="#0f1117"/>
     </svg>
     <span>PTCG</span>
+    <button class="sidebar-collapse-btn" onclick="toggleSidebar()" title="Réduire/déplier la barre latérale">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
   </div>
   <div class="nav-section">
     <div class="nav-section-label">Collection</div>
@@ -226,34 +229,40 @@
         </div>
       </div>
       <div class="stats-row" id="ventes-stats"></div>
-      <div class="booster-filter-bar" id="ventes-filter-bar">
-        <button class="booster-filter-btn active" onclick="setVenteFilter('all',this)">Toutes</button>
-        <button class="booster-filter-btn" onclick="setVenteFilter('a_mettre',this)">À mettre en vente</button>
-        <button class="booster-filter-btn" onclick="setVenteFilter('en_vente',this)">En vente</button>
-        <button class="booster-filter-btn" onclick="setVenteFilter('vendue',this)">Vendues</button>
-      </div>
-      <div class="sales-sort-bar">
-        <div style="position:relative;display:inline-block">
-          <button id="ventes-ext-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleExtFilterPanel('vente')">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="14" height="20" rx="2"/><rect x="8" y="1" width="14" height="20" rx="2"/></svg>
-            <span id="ventes-ext-filter-label">Toutes les extensions</span>
-          </button>
-          <div id="ventes-ext-panel" style="display:none" class="pkdx-ext-dropdown">
-            <div id="ventes-ext-list"></div>
-          </div>
+      <div class="sales-toolbar-row">
+        <div class="booster-filter-bar" id="ventes-filter-bar">
+          <button class="booster-filter-btn active" onclick="setVenteFilter('all',this)">Toutes</button>
+          <button class="booster-filter-btn" onclick="setVenteFilter('a_mettre',this)">À mettre en vente</button>
+          <button class="booster-filter-btn" onclick="setVenteFilter('en_vente',this)">En vente</button>
+          <button class="booster-filter-btn" onclick="setVenteFilter('vendue',this)">Vendues</button>
         </div>
-        <select id="ventes-sort-select" class="sales-sort-select" onchange="setVenteSort(this.value)">
-          <option value="date_desc">Date (récent d'abord)</option>
-          <option value="date_asc">Date (ancien d'abord)</option>
-          <option value="ext_asc">Extension (A→Z)</option>
-          <option value="ext_code_asc">Par extension (code / sigle)</option>
-          <option value="name_asc">Nom (A→Z)</option>
-          <option value="number_asc">Numéro (dans l'extension)</option>
-          <option value="pokedex_asc">Numéro Pokédex national</option>
-          <option value="price_desc">Prix (élevé d'abord)</option>
-          <option value="price_asc">Prix (bas d'abord)</option>
-          <option value="etat_asc">État</option>
-        </select>
+        <div class="sales-sort-bar">
+          <div style="position:relative;display:inline-block">
+            <button id="ventes-ext-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleExtFilterPanel('vente')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="14" height="20" rx="2"/><rect x="8" y="1" width="14" height="20" rx="2"/></svg>
+              <span id="ventes-ext-filter-label">Toutes les extensions</span>
+            </button>
+            <div id="ventes-ext-panel" style="display:none" class="pkdx-ext-dropdown">
+              <div id="ventes-ext-list"></div>
+            </div>
+          </div>
+          <select id="ventes-acheteur-filter" class="sales-sort-select" onchange="setVentePersonFilter(this.value)">
+            <option value="all">Tous (acheteurs)</option>
+          </select>
+          <select id="ventes-sort-select" class="sales-sort-select" onchange="setVenteSort(this.value)">
+            <option value="date_desc">Date (récent d'abord)</option>
+            <option value="date_asc">Date (ancien d'abord)</option>
+            <option value="ext_asc">Extension (A→Z)</option>
+            <option value="ext_code_asc">Par extension (code / sigle)</option>
+            <option value="name_asc">Nom (A→Z)</option>
+            <option value="number_asc">Numéro (dans l'extension)</option>
+            <option value="pokedex_asc">Numéro Pokédex national</option>
+            <option value="price_desc">Prix (élevé d'abord)</option>
+            <option value="price_asc">Prix (bas d'abord)</option>
+            <option value="etat_asc">État</option>
+            <option value="person_asc">Acheteur / Vendeur (A→Z)</option>
+          </select>
+        </div>
       </div>
       <div class="sales-grid" id="ventes-grid">
         <button class="add-new-card sale-add-card" onclick="openAddVenteModal()">
@@ -311,33 +320,39 @@
         </div>
       </div>
       <div class="stats-row" id="depenses-stats"></div>
-      <div class="booster-filter-bar" id="depenses-filter-bar">
-        <button class="booster-filter-btn active" onclick="setDepenseFilter('all',this)">Toutes</button>
-        <button class="booster-filter-btn" onclick="setDepenseFilter('unlinked',this)">Sans vendeur</button>
-        <button class="booster-filter-btn" onclick="setDepenseFilter('linked',this)">Avec vendeur</button>
-      </div>
-      <div class="sales-sort-bar">
-        <div style="position:relative;display:inline-block">
-          <button id="depenses-ext-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleExtFilterPanel('depense')">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="14" height="20" rx="2"/><rect x="8" y="1" width="14" height="20" rx="2"/></svg>
-            <span id="depenses-ext-filter-label">Toutes les extensions</span>
-          </button>
-          <div id="depenses-ext-panel" style="display:none" class="pkdx-ext-dropdown">
-            <div id="depenses-ext-list"></div>
-          </div>
+      <div class="sales-toolbar-row">
+        <div class="booster-filter-bar" id="depenses-filter-bar">
+          <button class="booster-filter-btn active" onclick="setDepenseFilter('all',this)">Toutes</button>
+          <button class="booster-filter-btn" onclick="setDepenseFilter('unlinked',this)">Sans vendeur</button>
+          <button class="booster-filter-btn" onclick="setDepenseFilter('linked',this)">Avec vendeur</button>
         </div>
-        <select id="depenses-sort-select" class="sales-sort-select" onchange="setDepenseSort(this.value)">
-          <option value="date_desc">Date (récent d'abord)</option>
-          <option value="date_asc">Date (ancien d'abord)</option>
-          <option value="ext_asc">Extension (A→Z)</option>
-          <option value="ext_code_asc">Par extension (code / sigle)</option>
-          <option value="name_asc">Nom (A→Z)</option>
-          <option value="number_asc">Numéro (dans l'extension)</option>
-          <option value="pokedex_asc">Numéro Pokédex national</option>
-          <option value="price_desc">Prix (élevé d'abord)</option>
-          <option value="price_asc">Prix (bas d'abord)</option>
-          <option value="etat_asc">État</option>
-        </select>
+        <div class="sales-sort-bar">
+          <div style="position:relative;display:inline-block">
+            <button id="depenses-ext-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleExtFilterPanel('depense')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="14" height="20" rx="2"/><rect x="8" y="1" width="14" height="20" rx="2"/></svg>
+              <span id="depenses-ext-filter-label">Toutes les extensions</span>
+            </button>
+            <div id="depenses-ext-panel" style="display:none" class="pkdx-ext-dropdown">
+              <div id="depenses-ext-list"></div>
+            </div>
+          </div>
+          <select id="depenses-vendeur-filter" class="sales-sort-select" onchange="setDepensePersonFilter(this.value)">
+            <option value="all">Tous (vendeurs)</option>
+          </select>
+          <select id="depenses-sort-select" class="sales-sort-select" onchange="setDepenseSort(this.value)">
+            <option value="date_desc">Date (récent d'abord)</option>
+            <option value="date_asc">Date (ancien d'abord)</option>
+            <option value="ext_asc">Extension (A→Z)</option>
+            <option value="ext_code_asc">Par extension (code / sigle)</option>
+            <option value="name_asc">Nom (A→Z)</option>
+            <option value="number_asc">Numéro (dans l'extension)</option>
+            <option value="pokedex_asc">Numéro Pokédex national</option>
+            <option value="price_desc">Prix (élevé d'abord)</option>
+            <option value="price_asc">Prix (bas d'abord)</option>
+            <option value="etat_asc">État</option>
+            <option value="person_asc">Acheteur / Vendeur (A→Z)</option>
+          </select>
+        </div>
       </div>
       <div class="sales-grid" id="depenses-grid">
         <button class="add-new-card sale-add-card" onclick="openAddDepenseModal()">

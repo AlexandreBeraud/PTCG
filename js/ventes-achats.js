@@ -185,6 +185,18 @@ var _venteFilter = 'all', _depenseFilter = 'all', _acheteurFilter = 'all', _vend
 var _venteQuery = '', _depenseQuery = '', _acheteurQuery = '', _vendeurQuery = '';
 var _venteSort = 'date_desc', _depenseSort = 'date_desc';
 var _venteExtFilter = 'all', _depenseExtFilter = 'all';
+var _ventePersonFilter = 'all', _depensePersonFilter = 'all';
+
+// Pseudo de l'acheteur (vente) ou du vendeur (dépense) lié à cette ligne, ou
+// chaîne vide si non vendue/liée — sert au tri ET au filtre par acheteur/vendeur.
+function _personNameFor(item) {
+  if (!item.commande_id) return '';
+  const ac = (_D.acheteur_commandes||[]).find(x => x.id === item.commande_id);
+  if (ac) { const a = (_D.acheteurs||[]).find(x => x.id === ac.acheteur_id); if (a) return a.pseudo || ''; }
+  const vc = (_D.vendeur_commandes||[]).find(x => x.id === item.commande_id);
+  if (vc) { const v = (_D.vendeurs||[]).find(x => x.id === vc.vendeur_id); if (v) return v.pseudo || ''; }
+  return '';
+}
 
 // Tri partagé par Ventes et Dépenses — "tout possible et imaginable" : date,
 // extension, nom, numéro dans l'extension, numéro national (Pokédex), prix, état.
@@ -194,13 +206,14 @@ function _applySaleSort(items, sortId) {
   switch (sortId) {
     case 'date_asc':   arr.sort((a,b) => (a.created_at||0) - (b.created_at||0)); break;
     case 'ext_asc':     arr.sort((a,b) => (a.set_name||'').localeCompare(b.set_name||'','fr') || numFrom(a.number)-numFrom(b.number)); break;
-    case 'ext_code_asc': arr.sort((a,b) => _extSortKeyFor(a).localeCompare(_extSortKeyFor(b),'fr',{numeric:true}) || numFrom(a.number)-numFrom(b.number)); break;
+    case 'ext_code_asc': arr.sort((a,b) => _blocSortIndexFor(a)-_blocSortIndexFor(b) || _extSortKeyFor(a).localeCompare(_extSortKeyFor(b),'fr',{numeric:true}) || numFrom(a.number)-numFrom(b.number)); break;
     case 'name_asc':   arr.sort((a,b) => (a.card_name||a.pokemon_name||'').localeCompare(b.card_name||b.pokemon_name||'','fr')); break;
     case 'number_asc': arr.sort((a,b) => numFrom(a.number) - numFrom(b.number)); break;
     case 'pokedex_asc': arr.sort((a,b) => _pokedexNumberFor(a) - _pokedexNumberFor(b) || (a.card_name||'').localeCompare(b.card_name||'','fr')); break;
     case 'price_desc': arr.sort((a,b) => _lineTotal(b) - _lineTotal(a)); break;
     case 'price_asc':  arr.sort((a,b) => _lineTotal(a) - _lineTotal(b)); break;
     case 'etat_asc':   arr.sort((a,b) => (a.etat||'').localeCompare(b.etat||'','fr')); break;
+    case 'person_asc': arr.sort((a,b) => _personNameFor(a).localeCompare(_personNameFor(b),'fr') || (b.created_at||0)-(a.created_at||0)); break;
     case 'date_desc':
     default:            arr.sort((a,b) => (b.created_at||0) - (a.created_at||0));
   }
@@ -214,6 +227,20 @@ function _extSortKeyFor(item) {
   if (!item.set_name) return '';
   const ext = (typeof getAllExtensions === 'function' ? getAllExtensions() : []).find(e => e.nom === item.set_name);
   return (ext && ext.code) || item.set_name;
+}
+
+// Position du bloc de cette vente/dépense dans l'ordre habituel des blocs —
+// pour trier "par bloc PUIS par extension" plutôt que juste par code
+// d'extension brut (qui mélangerait les blocs entre eux).
+function _blocSortIndexFor(item) {
+  if (!item.set_name) return 9999;
+  const ext = (typeof getAllExtensions === 'function' ? getAllExtensions() : []).find(e => e.nom === item.set_name);
+  if (!ext) return 9999;
+  const bloc = (typeof getBlocForExt === 'function') ? getBlocForExt(ext.id) : null;
+  if (!bloc) return 9999;
+  const order = (typeof getBlocs === 'function' ? getBlocs() : []).map(b => b.nom);
+  const idx = order.indexOf(bloc.nom);
+  return idx === -1 ? 9998 : idx;
 }
 
 // Numéro national (Pokédex) du Pokémon représenté par une vente/dépense —
@@ -361,6 +388,17 @@ function setSaleExtFilter(kind, name) {
   if (panel) panel.style.display = 'none';
 }
 
+// Remplit le <select> acheteur/vendeur avec les personnes réellement liées
+// aux ventes/dépenses actuellement affichées (avant filtre statut/extension).
+function _populatePersonFilter(selectId, items, currentValue) {
+  const sel = document.getElementById(selectId); if (!sel) return;
+  const names = [...new Set(items.map(it => _personNameFor(it)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
+  sel.innerHTML = '<option value="all">Tous</option>' + names.map(n => `<option value="${_escHtml(n)}">${_escHtml(n)}</option>`).join('');
+  sel.value = names.includes(currentValue) ? currentValue : 'all';
+}
+function setVentePersonFilter(name) { _ventePersonFilter = name; renderVentes(); }
+function setDepensePersonFilter(name) { _depensePersonFilter = name; renderDepenses(); }
+
 function setVenteSort(sortId) {
   _venteSort = sortId;
   if (sortId === 'pokedex_asc') { _ensurePokedexNamesLoaded().then(renderVentes); }
@@ -429,10 +467,12 @@ function renderVentes() {
   }
   _buildSaleExtFilterList('vente');
   if (_venteExtFilter !== 'all') items = items.filter(v => v.set_name === _venteExtFilter);
+  _populatePersonFilter('ventes-acheteur-filter', items, _ventePersonFilter);
+  if (_ventePersonFilter !== 'all') items = items.filter(v => _personNameFor(v) === _ventePersonFilter);
   items = _applySaleSort(items, _venteSort);
 
   if (!items.length) {
-    grid.innerHTML = `<div class="sales-empty">Aucune vente${(_venteQuery||_venteFilter!=='all'||_venteExtFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+    grid.innerHTML = `<div class="sales-empty">Aucune vente${(_venteQuery||_venteFilter!=='all'||_venteExtFilter!=='all'||_ventePersonFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
   } else {
     const builder = mode === 'list' ? buildVenteRow : mode === 'compact' ? buildVenteCompact : buildVenteCard;
     items.forEach(v => grid.appendChild(builder(v)));
@@ -541,11 +581,13 @@ function _saleCompactCardHtml(opts) {
           <div class="sale-compact-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
           <div class="sale-compact-meta">${opts.extName}</div>
           ${opts.number ? `<div class="sale-compact-number">N°${_escHtml(opts.number)}</div>` : ''}
-          ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : ''}
         </div>
-        <div class="sale-compact-actions">
-          <button class="btn btn-icon btn-sm" title="Modifier" onclick="event.stopPropagation();${opts.editFn}('${opts.id}')">${ICON_EDIT}</button>
-          <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="event.stopPropagation();${opts.delFn}('${opts.id}')">${ICON_DELETE}</button>
+        <div class="sale-compact-head-right">
+          ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : ''}
+          <div class="sale-compact-actions">
+            <button class="btn btn-icon btn-sm" title="Modifier" onclick="event.stopPropagation();${opts.editFn}('${opts.id}')">${ICON_EDIT}</button>
+            <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="event.stopPropagation();${opts.delFn}('${opts.id}')">${ICON_DELETE}</button>
+          </div>
         </div>
       </div>
       <div class="sale-compact-rows">
@@ -633,7 +675,7 @@ function buildVenteRow(v) {
     image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
-    priceHtml: `${(parseFloat(v.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(v.prix)||0).toFixed(2)} €`,
     personInfoHtml: acheteurInfo, personEmptyLabel: '— Non vendu —', cardmarketUrl: v.cardmarket_url,
     splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Vente" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id,
@@ -657,7 +699,7 @@ function buildVenteCompact(v) {
     name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
-    priceHtml: `${(parseFloat(v.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(v.prix)||0).toFixed(2)} €`,
     personInfoHtml: acheteurInfo, cardmarketUrl: v.cardmarket_url,
     splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id, kind: 'vente',
@@ -949,10 +991,12 @@ function renderDepenses() {
   }
   _buildSaleExtFilterList('depense');
   if (_depenseExtFilter !== 'all') items = items.filter(d => d.set_name === _depenseExtFilter);
+  _populatePersonFilter('depenses-vendeur-filter', items, _depensePersonFilter);
+  if (_depensePersonFilter !== 'all') items = items.filter(d => _personNameFor(d) === _depensePersonFilter);
   items = _applySaleSort(items, _depenseSort);
 
   if (!items.length) {
-    grid.innerHTML = `<div class="sales-empty">Aucun achat${(_depenseQuery||_depenseFilter!=='all'||_depenseExtFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+    grid.innerHTML = `<div class="sales-empty">Aucun achat${(_depenseQuery||_depenseFilter!=='all'||_depenseExtFilter!=='all'||_depensePersonFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
   } else {
     const builder = mode === 'list' ? buildDepenseRow : mode === 'compact' ? buildDepenseCompact : buildDepenseCard;
     items.forEach(d => grid.appendChild(builder(d)));
@@ -1038,7 +1082,7 @@ function buildDepenseRow(d) {
     image: d.card_image, qty, name: d.card_name || d.pokemon_name || '—',
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
-    priceHtml: `${(parseFloat(d.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(d.prix)||0).toFixed(2)} €`,
     personInfoHtml: vendeurInfo, personEmptyLabel: '— Aucun vendeur —', cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id,
@@ -1061,7 +1105,7 @@ function buildDepenseCompact(d) {
     name: d.card_name || d.pokemon_name || '—',
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
-    priceHtml: `${(parseFloat(d.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}`,
+    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(d.prix)||0).toFixed(2)} €`,
     personInfoHtml: vendeurInfo, cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id, kind: 'depense',
@@ -1876,6 +1920,14 @@ function renderBilan() {
   }
 
   el.innerHTML = `
+    <div class="bilan-period-row">
+      <span class="form-hint" style="margin:0">Répartition dépenses/revenus calculée sur :</span>
+      <select id="bilan-period-select" class="sales-sort-select" onchange="_setBilanPeriod(this.value)">
+        <option value="total" ${_bilanPeriod==='total'?'selected':''}>Total (tout l'historique)</option>
+        <option value="year" ${_bilanPeriod==='year'?'selected':''}>Année en cours</option>
+        <option value="month" ${_bilanPeriod==='month'?'selected':''}>Mois en cours</option>
+      </select>
+    </div>
     <div class="bilan-charts-row">
       <div class="bilan-chart-card">
         <div class="bilan-card-head">
@@ -1932,8 +1984,8 @@ function renderBilan() {
     return;
   }
 
-  const depensesByExt = _groupByExtension((_D.depenses||[]).filter(_depenseIsArrivee));
-  const ventesByExt   = _groupByExtension((_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v)));
+  const depensesByExt = _groupByExtension(_filterByBilanPeriod((_D.depenses||[]).filter(_depenseIsArrivee), _depenseMonthKey));
+  const ventesByExt   = _groupByExtension(_filterByBilanPeriod((_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v)), _venteMonthKey));
   const chronoMonths  = [...allMonths].reverse(); // plus ancien → plus récent, pour lire l'évolution dans le bon sens
 
   _bilanDepChart = _renderBilanCatChart('bilan-dep-canvas', depensesByExt, _bilanDepMode, _bilanDepChart, 'bilan-dep-wrapper');
@@ -1950,6 +2002,26 @@ function renderBilan() {
 // plutôt que par catégorie budgétaire.
 var _bilanDepMode = 'donut', _bilanRevMode = 'donut';
 var _bilanDepChart = null, _bilanRevChart = null, _bilanEvoChart = null;
+var _bilanPeriod = 'total'; // 'total' | 'year' | 'month' — période de calcul de la répartition dépenses/revenus
+
+function _setBilanPeriod(period) {
+  _bilanPeriod = period;
+  renderBilan();
+}
+
+// Restreint une liste de ventes/dépenses à l'année ou au mois en cours avant
+// de calculer la répartition par extension — "total" ne filtre rien.
+function _filterByBilanPeriod(items, dateKeyFn) {
+  if (_bilanPeriod === 'total') return items;
+  const now = new Date();
+  const curYear  = String(now.getFullYear());
+  const curMonth = curYear + '-' + String(now.getMonth()+1).padStart(2,'0');
+  return items.filter(it => {
+    const key = dateKeyFn(it);
+    if (!key) return false;
+    return _bilanPeriod === 'year' ? key.slice(0,4) === curYear : key === curMonth;
+  });
+}
 
 function _setBilanChartMode(which, mode) {
   if (which === 'dep') _bilanDepMode = mode; else _bilanRevMode = mode;
