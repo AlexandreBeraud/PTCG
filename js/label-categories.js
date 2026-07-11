@@ -48,8 +48,6 @@ var FORM_LABELS = {
   'mega-z':        { fr:'Méga Z',            badge:'MÉGA Z',    color:'#2563EB' },
   // Gigamax / Primo
   gmax:            { fr:'Gigamax',           badge:'GIGAMAX',   color:'#E63946' },
-  'amped-gmax':        { fr:'Gigamax Ampli',        badge:'GIGAMAX AMPLI',   color:'#E63946' },
-  'low-key-gmax':      { fr:'Gigamax Discret',      badge:'GIGAMAX DISCRET', color:'#E63946' },
   'single-strike-gmax':{ fr:'Gigamax Poing Unique',  badge:'POING UNIQUE',   color:'#E63946' },
   'rapid-strike-gmax': { fr:'Gigamax Style Rafale',  badge:'STYLE RAFALE',   color:'#E63946' },
   primal:          { fr:'Primo',             badge:'PRIMO',     color:'#E8553D' },
@@ -77,7 +75,6 @@ var FORM_LABELS = {
   complete:        { fr:'Complet',           badge:'COMPLET',   color:'#10B981' },
   '10':            { fr:'10%',               badge:'10%',       color:'#EF4444' },
   '50':            { fr:'50%',               badge:'50%',       color:'#6B7280' },
-  '100':           { fr:'100%',              badge:'100%',      color:'#DC2626' },
   'battle-bond':   { fr:'Résolution',        badge:'RÉSOL.',    color:'#2563EB' },
   ash:             { fr:'Sacha',             badge:'SACHA',     color:'#EF4444' },
   'teal-mask':     { fr:'Masque Turquoise',  badge:'TURQ.',     color:'#0D9488' },

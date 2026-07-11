@@ -75,18 +75,18 @@
 .sale-link { font-size: .72rem; color: var(--blue); display: inline-flex; align-items: center; gap: 4px; }
 .sale-link:hover { text-decoration: underline; }
 .sale-person-date { font-size: .68rem; color: var(--text2); }
-.sale-list-acheteur .sale-person-date { display: inline; }
-.sale-list-acheteur .sale-person-date::before { content: ' · '; }
 
 /* Lignes Vente / Dépense (mode liste) — tout sur une seule ligne alignée en
-   grille (image, nom, statut, état, type, langue, prix, acheteur/vendeur,
-   lien CardMarket, actions), pas de menu dépliant. La liste défile
+   grille (image, nom, statut, état, type, langue, prix, drapeau, pseudo,
+   date, lien CardMarket, actions), pas de menu dépliant. Drapeau/pseudo/date
+   ont chacun leur propre colonne de largeur fixe : l'alignement d'une ligne
+   à l'autre ne dépend plus de la longueur du pseudo. La liste défile
    horizontalement plutôt que de tasser illisiblement les colonnes. */
 .sale-list-row {
-  display: grid; align-items: center; gap: 14px; padding: 12px 16px; min-width: 980px;
+  display: grid; align-items: center; gap: 14px; padding: 12px 16px; min-width: 1020px;
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   cursor: pointer; transition: border-color .15s;
-  grid-template-columns: 52px minmax(160px,1.5fr) 100px 92px 120px 92px 92px minmax(120px,1fr) 100px 96px;
+  grid-template-columns: 52px minmax(160px,1.5fr) 100px 92px 120px 92px 92px 24px minmax(80px,1fr) 76px 100px 96px;
 }
 .sale-list-row:hover { border-color: var(--accent); }
 .sale-list-thumb { width: 52px; height: 52px; border-radius: 7px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg3); font-size: 1.4rem; }
@@ -98,8 +98,10 @@
 .sale-list-cell { font-size: .84rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sale-list-types { display: flex; flex-wrap: wrap; gap: 4px; }
 .sale-list-price { font-size: .92rem; font-weight: 700; color: var(--green); white-space: nowrap; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
-.sale-list-acheteur { font-size: .8rem; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sale-list-acheteur.unlinked { color: var(--text3); font-style: italic; }
+.sale-list-flag { display: flex; align-items: center; justify-content: center; }
+.sale-list-pseudo { font-size: .8rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale-list-pseudo.unlinked { color: var(--text3); font-style: italic; grid-column: 8 / span 3; text-align: center; }
+.sale-list-date { font-size: .74rem; color: var(--text2); white-space: nowrap; }
 .sale-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-shrink: 0; }
 
 /* Mode "Carte à gauche" : l'image occupe toute la hauteur à gauche, les infos
@@ -228,6 +230,12 @@
 .cardpicker-poke-sprite img { width: 100%; height: 100%; object-fit: contain; }
 .cardpicker-poke-name { flex: 1; font-weight: 600; }
 .cardpicker-poke-num { font-size: .7rem; color: var(--text3); }
+
+/* Lien "Saisie manuelle" (carte dont l'extension n'est pas indexée dans
+   TCGDex) sous la liste de Pokémon, et son formulaire (étape 3). */
+.cardpicker-manual-toggle { text-align: center; padding: 6px 0 2px; }
+.cardpicker-manual-toggle a { font-size: .76rem; color: var(--text2); text-decoration: none; }
+.cardpicker-manual-toggle a:hover { color: var(--blue); text-decoration: underline; }
 
 /* ── Ajouts feedback round 3 (commandes multiples, mise en valeur des sommes) ── */
 

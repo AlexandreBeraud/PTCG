@@ -92,13 +92,13 @@ function _personFlagCode(icon) {
 function _flagImgHtml(icon, size) {
   const code = _personFlagCode(icon);
   size = size || 22;
-  return `<img src="https://flagcdn.com/w40/${code}.png" alt="${code.toUpperCase()}" width="${size}" height="${size}" class="flag-icon-img" onerror="this.style.visibility='hidden'">`;
+  return `<img src="https://flagcdn.com/w40/${code}.png" alt="${code.toUpperCase()}" class="flag-icon-img" style="width:${size}px;height:${size}px" onerror="this.style.visibility='hidden'">`;
 }
 function _buildIconPicker(containerId, selected) {
   const el = document.getElementById(containerId); if (!el) return;
   const selCode = _personFlagCode(selected);
   el.innerHTML = PERSON_ICONS.map(code =>
-    `<button type="button" class="icon-pick-btn ${code===selCode?'active':''}" data-icon="${code}" title="${code.toUpperCase()}" onclick="_selectIcon('${containerId}', this)">${_flagImgHtml(code, 22)}</button>`
+    `<button type="button" class="icon-pick-btn ${code===selCode?'active':''}" data-icon="${code}" title="${code.toUpperCase()}" onclick="_selectIcon('${containerId}', this)">${_flagImgHtml(code, 34)}</button>`
   ).join('');
 }
 function _selectIcon(containerId, btn) {
@@ -140,15 +140,51 @@ async function _pushCardMarketUrl(cardId, url) {
   } catch(e) { console.warn('[PTCG] push cardmarket_url:', e.message); }
 }
 
+// Extension correspondant à une vente/dépense, retrouvée par son NOM
+// d'extension (set_name) plutôt que par un identifiant figé au moment de
+// l'ajout — ainsi une extension créée/liée APRÈS coup (ex. via TCGDex) est
+// quand même retrouvée pour les ventes déjà existantes, sans avoir à les
+// ré-éditer une par une. Partagé par le tri, la couleur et le sigle.
+function _extForSaleItem(item) {
+  if (!item.set_name || typeof getAllExtensions !== 'function') return null;
+  try { return getAllExtensions().find(e => e.nom === item.set_name) || null; }
+  catch(_) { return null; }
+}
+
 // Couleur d'accent de l'extension d'une vente/dépense (pour le fond du mode
-// "carte à gauche", comme les fiches du Pokédex) — retrouvée en comparant le
-// sigle enregistré sur la ligne à celui des extensions connues.
+// "carte à gauche", comme les fiches du Pokédex) — résolue dynamiquement via
+// le nom d'extension (voir _extForSaleItem), avec repli sur l'ancien système
+// (sigle figé sur la ligne) pour les très anciennes lignes sans set_name.
 function _extColorForSaleItem(item) {
+  const ext = _extForSaleItem(item);
+  if (ext) return extColor(ext);
   if (!item.ext_sigle || typeof getAllExtensions !== 'function') return null;
   try {
-    const ext = getAllExtensions().find(e => e.sigle && e.sigle === item.ext_sigle);
-    return ext ? extColor(ext) : null;
+    const ext2 = getAllExtensions().find(e => e.sigle && e.sigle === item.ext_sigle);
+    return ext2 ? extColor(ext2) : null;
   } catch(_) { return null; }
+}
+
+// Sigle affiché sur la vignette — même logique de résolution dynamique que
+// la couleur, avec repli sur le sigle figé enregistré sur la ligne.
+function _sigleForSaleItem(item) {
+  const ext = _extForSaleItem(item);
+  if (ext && ext.sigle) return ext.sigle;
+  return item.ext_sigle || '';
+}
+
+// Même contenu que _venteAcheteurInfoHtml/_depenseVendeurInfoHtml mais
+// réparti en 3 morceaux (drapeau / pseudo / date) au lieu d'un seul bloc de
+// texte — chacun peut ainsi avoir sa propre colonne alignée en mode liste
+// (voir _saleListRowHtml), plutôt que de tout empiler dans une seule
+// cellule dont l'alignement visuel dépendait de la longueur du pseudo.
+function _personInfoListParts(info, goToFn) {
+  if (!info) return { flag: '', pseudo: '', date: '' };
+  return {
+    flag: _flagImgHtml(info.icon, 20),
+    pseudo: `<span class="sale-person-link" onclick="${goToFn}('${info.id}')">${_escHtml(info.pseudo)}</span>`,
+    date: info.date ? _fmtDate(info.date) : '',
+  };
 }
 
 function _jsEscape(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
@@ -264,7 +300,7 @@ function _applySaleSort(items, sortId) {
 // Sans extension reconnue, on retombe sur le nom brut pour ne pas la perdre.
 function _extSortKeyFor(item) {
   if (!item.set_name) return '';
-  const ext = (typeof getAllExtensions === 'function' ? getAllExtensions() : []).find(e => e.nom === item.set_name);
+  const ext = _extForSaleItem(item);
   return (ext && ext.code) || item.set_name;
 }
 
@@ -273,7 +309,7 @@ function _extSortKeyFor(item) {
 // d'extension brut (qui mélangerait les blocs entre eux).
 function _blocSortIndexFor(item) {
   if (!item.set_name) return 9999;
-  const ext = (typeof getAllExtensions === 'function' ? getAllExtensions() : []).find(e => e.nom === item.set_name);
+  const ext = _extForSaleItem(item);
   if (!ext) return 9999;
   const bloc = (typeof getBlocForExt === 'function') ? getBlocForExt(ext.id) : null;
   if (!bloc) return 9999;
@@ -572,13 +608,22 @@ function renderVentesStats() {
       <div class="val">${sum(all).toFixed(2)} €</div><div class="lbl">Valeur totale</div><div class="sub">${qtySum(all)} carte${qtySum(all)>1?'s':''}</div></div>`;
 }
 
-function _venteAcheteurInfoHtml(v) {
-  if (!v.commande_id) return '';
+// Infos brutes de l'acheteur lié à une vente (id, drapeau, pseudo, date
+// d'arrivée) — séparées du HTML pour pouvoir être affichées soit en un bloc
+// (mode grille/carte à gauche, voir _venteAcheteurInfoHtml), soit réparties
+// sur plusieurs colonnes alignées (mode liste, voir buildVenteRow).
+function _venteAcheteurInfo(v) {
+  if (!v.commande_id) return null;
   const c = (_D.acheteur_commandes||[]).find(x=>x.id===v.commande_id);
-  if (!c) return '';
+  if (!c) return null;
   const a = (_D.acheteurs||[]).find(x=>x.id===c.acheteur_id);
-  if (!a) return '';
-  return `<span class="sale-person-link" onclick="_goToAcheteur('${a.id}')">${_flagImgHtml(a.icon)} ${_escHtml(a.pseudo)}</span>${c.date_arrivee ? `<span class="sale-person-date">${_fmtDate(c.date_arrivee)}</span>` : ''}`;
+  if (!a) return null;
+  return { id: a.id, icon: a.icon, pseudo: a.pseudo, date: c.date_arrivee || '' };
+}
+function _venteAcheteurInfoHtml(v) {
+  const info = _venteAcheteurInfo(v);
+  if (!info) return '';
+  return `<span class="sale-person-link" onclick="_goToAcheteur('${info.id}')">${_flagImgHtml(info.icon)} ${_escHtml(info.pseudo)}</span>${info.date ? `<span class="sale-person-date">${_fmtDate(info.date)}</span>` : ''}`;
 }
 
 // Bascule sur l'onglet Acheteurs, déplie la fiche demandée et la met en
@@ -678,6 +723,7 @@ function _saleCompactCardHtml(opts) {
 // langue, prix, acheteur/vendeur, lien CardMarket, actions) — plus de menu
 // dépliant, tout est visible d'un coup d'œil.
 function _saleListRowHtml(opts) {
+  const hasPerson = !!(opts.personPseudoHtml);
   return `
     <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
     <div class="sale-list-main">
@@ -690,7 +736,9 @@ function _saleListRowHtml(opts) {
     <div class="sale-list-cell sale-list-types">${opts.typesHtml || '—'}</div>
     <div class="sale-list-cell">${opts.langue||'—'}</div>
     <div class="sale-list-price">${opts.priceHtml}</div>
-    <div class="sale-list-acheteur ${opts.personInfoHtml ? '' : 'unlinked'}">${opts.personInfoHtml || opts.personEmptyLabel}</div>
+    <div class="sale-list-flag"${hasPerson ? '' : ' style="display:none"'}>${hasPerson ? opts.personFlagHtml||'' : ''}</div>
+    <div class="sale-list-pseudo ${hasPerson ? '' : 'unlinked'}">${hasPerson ? opts.personPseudoHtml : opts.personEmptyLabel}</div>
+    <div class="sale-list-date"${hasPerson ? '' : ' style="display:none"'}>${hasPerson ? opts.personDateHtml||'' : ''}</div>
     <div class="sale-list-cell">${opts.cardmarketUrl ? `<a href="${opts.cardmarketUrl}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">CardMarket ↗</a>` : '—'}</div>
     <div class="sale-list-actions">
       ${opts.splitBtnHtml || ''}
@@ -710,7 +758,7 @@ function buildVenteCard(v) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
     _saleCardTopHtml({
-      image: v.card_image, qty, sigle: v.ext_sigle, crop: v.crop,
+      image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop,
       name: v.card_name || v.pokemon_name || '—',
       extName: v.set_name||'', number: v.number||'',
       statusCls: st.cls, statusLabel: st.label,
@@ -734,7 +782,7 @@ function buildVenteCard(v) {
 
 function buildVenteRow(v) {
   const st = venteStatusInfo(v);
-  const acheteurInfo = _venteAcheteurInfoHtml(v);
+  const acheteurParts = _personInfoListParts(_venteAcheteurInfo(v), '_goToAcheteur');
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = _typeChipsHtml(v.types, true);
   const row = document.createElement('div');
@@ -746,7 +794,8 @@ function buildVenteRow(v) {
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
     priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(v.prix)||0).toFixed(2)} €`,
-    personInfoHtml: acheteurInfo, personEmptyLabel: '— Non vendu —', cardmarketUrl: v.cardmarket_url,
+    personFlagHtml: acheteurParts.flag, personPseudoHtml: acheteurParts.pseudo, personDateHtml: acheteurParts.date,
+    personEmptyLabel: '— Non vendu —', cardmarketUrl: v.cardmarket_url,
     splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Vente" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id,
   });
@@ -765,7 +814,7 @@ function buildVenteCompact(v) {
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
-    image: v.card_image, qty, sigle: v.ext_sigle, crop: v.crop,
+    image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop,
     name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
@@ -1099,13 +1148,19 @@ function renderDepensesStats() {
     <div class="stat-card stat-card-money" style="--accent-color:var(--green)"><div class="val">${sum(linked).toFixed(2)} €</div><div class="lbl">Avec vendeur</div><div class="sub">${qtySum(linked)} carte${qtySum(linked)>1?'s':''}</div></div>`;
 }
 
-function _depenseVendeurInfoHtml(d) {
-  if (!d.commande_id) return '';
+// Idem _venteAcheteurInfo côté Dépenses (vendeur, date d'achat).
+function _depenseVendeurInfo(d) {
+  if (!d.commande_id) return null;
   const c = (_D.vendeur_commandes||[]).find(x=>x.id===d.commande_id);
-  if (!c) return '';
+  if (!c) return null;
   const v = (_D.vendeurs||[]).find(x=>x.id===c.vendeur_id);
-  if (!v) return '';
-  return `<span class="sale-person-link" onclick="_goToVendeur('${v.id}')">${_flagImgHtml(v.icon)} ${_escHtml(v.pseudo)}</span>${c.date_achat ? `<span class="sale-person-date">${_fmtDate(c.date_achat)}</span>` : ''}`;
+  if (!v) return null;
+  return { id: v.id, icon: v.icon, pseudo: v.pseudo, date: c.date_achat || '' };
+}
+function _depenseVendeurInfoHtml(d) {
+  const info = _depenseVendeurInfo(d);
+  if (!info) return '';
+  return `<span class="sale-person-link" onclick="_goToVendeur('${info.id}')">${_flagImgHtml(info.icon)} ${_escHtml(info.pseudo)}</span>${info.date ? `<span class="sale-person-date">${_fmtDate(info.date)}</span>` : ''}`;
 }
 
 function _goToVendeur(vendeurId) {
@@ -1132,7 +1187,7 @@ function buildDepenseCard(d) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
     _saleCardTopHtml({
-      image: d.card_image, qty, sigle: d.ext_sigle, crop: d.crop,
+      image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop,
       name: d.card_name || d.pokemon_name || '—',
       extName: d.set_name||'', number: d.number||'',
       statusCls: '', statusLabel: '',
@@ -1154,7 +1209,7 @@ function buildDepenseCard(d) {
 }
 
 function buildDepenseRow(d) {
-  const vendeurInfo = _depenseVendeurInfoHtml(d);
+  const vendeurParts = _personInfoListParts(_depenseVendeurInfo(d), '_goToVendeur');
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = _typeChipsHtml(d.types, true);
   const row = document.createElement('div');
@@ -1166,7 +1221,8 @@ function buildDepenseRow(d) {
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
     priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(d.prix)||0).toFixed(2)} €`,
-    personInfoHtml: vendeurInfo, personEmptyLabel: '— Aucun vendeur —', cardmarketUrl: d.cardmarket_url,
+    personFlagHtml: vendeurParts.flag, personPseudoHtml: vendeurParts.pseudo, personDateHtml: vendeurParts.date,
+    personEmptyLabel: '— Aucun vendeur —', cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id,
   });
@@ -1184,7 +1240,7 @@ function buildDepenseCompact(d) {
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
-    image: d.card_image, qty, sigle: d.ext_sigle, crop: d.crop,
+    image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop,
     name: d.card_name || d.pokemon_name || '—',
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
@@ -1475,7 +1531,7 @@ function buildAcheteurCard(a) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML = `
     <div class="order-card-top">
-      <div class="order-card-avatar">${_flagImgHtml(a.icon, 22)}</div>
+      <div class="order-card-avatar">${_flagImgHtml(a.icon, 36)}</div>
       <div class="order-card-info">
         <div class="order-card-name">${a.pseudo}</div>
         <div class="order-card-meta">${commandes.length} commande${commandes.length>1?'s':''}</div>
@@ -1509,7 +1565,7 @@ function buildAcheteurRow(a) {
   row.dataset.acheteurId = a.id;
   row.innerHTML = `
     <div class="clr-header" onclick="_toggleOrderExpand('acheteur','${a.id}')">
-      <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#4a9eff33,#4a9eff55)">${_flagImgHtml(a.icon, 20)}</div>
+      <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#4a9eff33,#4a9eff55)">${_flagImgHtml(a.icon, 30)}</div>
       <div class="clr-accent-bar" style="background:#4a9eff"></div>
       <div class="clr-info">
         <div class="clr-name">${a.pseudo}</div>
@@ -1744,7 +1800,7 @@ function buildVendeurCard(v) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML = `
     <div class="order-card-top">
-      <div class="order-card-avatar">${_flagImgHtml(v.icon, 22)}</div>
+      <div class="order-card-avatar">${_flagImgHtml(v.icon, 36)}</div>
       <div class="order-card-info">
         <div class="order-card-name">${v.pseudo}</div>
         <div class="order-card-meta">${commandes.length} commande${commandes.length>1?'s':''}</div>
@@ -1778,7 +1834,7 @@ function buildVendeurRow(v) {
   row.dataset.vendeurId = v.id;
   row.innerHTML = `
     <div class="clr-header" onclick="_toggleOrderExpand('vendeur','${v.id}')">
-      <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#f9731633,#f9731655)">${_flagImgHtml(v.icon, 20)}</div>
+      <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#f9731633,#f9731655)">${_flagImgHtml(v.icon, 30)}</div>
       <div class="clr-accent-bar" style="background:#f97316"></div>
       <div class="clr-info">
         <div class="clr-name">${v.pseudo}</div>
@@ -2269,8 +2325,11 @@ async function openCardPicker(target) {
   _cardPickerCards = [];
   _restoreCardPickerPokeSearch();
   document.getElementById('cardpicker-step1').innerHTML = '<div class="sales-empty">Chargement du Pokédex…</div>';
+  document.getElementById('cardpicker-search-field').style.display = '';
   document.getElementById('cardpicker-step1').style.display = '';
+  document.getElementById('cardpicker-manual-toggle').style.display = '';
   document.getElementById('cardpicker-step2').style.display = 'none';
+  document.getElementById('cardpicker-step3').style.display = 'none';
   document.getElementById('modal-card-picker').classList.add('open');
   if (!_pkdx.initialized) {
     try { await initPokedex(); } catch(_) {}
@@ -2440,8 +2499,11 @@ function _cardPickerRenderCardGroups() {
 }
 
 function _cardPickerBackToStep1() {
+  document.getElementById('cardpicker-search-field').style.display = '';
   document.getElementById('cardpicker-step1').style.display = '';
+  document.getElementById('cardpicker-manual-toggle').style.display = '';
   document.getElementById('cardpicker-step2').style.display = 'none';
+  document.getElementById('cardpicker-step3').style.display = 'none';
   _restoreCardPickerPokeSearch();
 }
 
@@ -2464,6 +2526,67 @@ function _cardPickerSelectCard(idx) {
   if (cmField) cmField.value = c.cardmarket_url || '';
   _renderCardPreview(p);
   closeModal('modal-card-picker');
+}
+
+// ── Saisie manuelle (carte dont l'extension n'est pas — ou pas encore —
+// indexée dans TCGDex, ex. anciens sets Wizards) ────────────────────────────
+// Le nom d'extension choisi correspond exactement au champ `nom` d'une
+// extension existante de l'app : la vente/dépense résultante est donc
+// automatiquement coloriée/sigle-ée comme les autres (voir _extForSaleItem
+// dans buildVenteCard/buildDepenseCard), y compris si l'extension est créée
+// ou liée à TCGDex plus tard.
+function _cardPickerOpenManual() {
+  document.getElementById('cardpicker-search-field').style.display = 'none';
+  document.getElementById('cardpicker-step1').style.display = 'none';
+  document.getElementById('cardpicker-manual-toggle').style.display = 'none';
+  document.getElementById('cardpicker-step2').style.display = 'none';
+  document.getElementById('cardpicker-step3').style.display = '';
+  document.getElementById('cardpicker-manual-name').value = '';
+  document.getElementById('cardpicker-manual-number').value = '';
+  document.getElementById('cardpicker-manual-image').value = '';
+  _populateCardPickerManualExtSelect();
+  setTimeout(() => document.getElementById('cardpicker-manual-name').focus(), 60);
+}
+
+function _populateCardPickerManualExtSelect() {
+  const sel = document.getElementById('cardpicker-manual-ext'); if (!sel) return;
+  let html = '<option value="">— Choisir une extension —</option>';
+  getBlocs().forEach(bloc => {
+    const exts = sortExts(getAllExtensions().filter(e => (getBlocForExt(e.id)||{}).id === bloc.id));
+    if (!exts.length) return;
+    html += `<optgroup label="${_escHtml(bloc.nom||bloc.short||bloc.id)}">`;
+    exts.forEach(e => { html += `<option value="${e.id}">${_escHtml(e.nom||e.code||e.id)}${e.code?' ('+_escHtml(e.code)+')':''}</option>`; });
+    html += '</optgroup>';
+  });
+  sel.innerHTML = html;
+}
+
+function _cardPickerSaveManual() {
+  const p = _cardPickerTarget; if (!p) return;
+  const name   = document.getElementById('cardpicker-manual-name').value.trim();
+  const extId  = document.getElementById('cardpicker-manual-ext').value;
+  const number = document.getElementById('cardpicker-manual-number').value.trim();
+  const image  = document.getElementById('cardpicker-manual-image').value.trim();
+  if (!name)  { toast('Indique le nom de la carte.','error'); return; }
+  if (!extId) { toast('Choisis une extension.','error'); return; }
+  const ext = getExt(extId);
+  if (!ext) { toast('Extension introuvable.','error'); return; }
+  document.getElementById(`${p}-card-id`).value = 'manual_' + Date.now();
+  document.getElementById(`${p}-card-name`).value = name;
+  document.getElementById(`${p}-card-image`).value = image;
+  document.getElementById(`${p}-set-id`).value = '';
+  document.getElementById(`${p}-set-name`).value = ext.nom || ext.code || '';
+  document.getElementById(`${p}-set-logo`).value = ext.logo || '';
+  document.getElementById(`${p}-number`).value = number;
+  document.getElementById(`${p}-rarity`).value = '';
+  document.getElementById(`${p}-pokemon-name`).value = name;
+  const sigleField = document.getElementById(`${p}-ext-sigle`);
+  if (sigleField) sigleField.value = ext.sigle || '';
+  const cmField = document.getElementById(`${p}-cardmarket-url`);
+  if (cmField) cmField.value = '';
+  _renderCardPreview(p);
+  closeModal('modal-card-picker');
+  toast('Carte ajoutée manuellement.', 'success');
 }
 
 function _renderCardPreview(prefix) {

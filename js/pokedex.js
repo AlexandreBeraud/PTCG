@@ -896,7 +896,15 @@ function _pkdxTcgSectionHtml() {
 async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
   const linkedTypes = _allLinkedFormTypes();
 
-  const url = `${SB_URL}/rest/v1/cards?name=ilike.*${encodeURIComponent(frName)}*&order=set_id.asc,number.asc&limit=500`;
+  // Ancré sur le nom ENTIER du Pokémon (exact, ou suivi d'un espace/tiret
+  // pour les suffixes EX/GX/V/VMAX…) plutôt qu'un simple "contient" — un
+  // "contient" faisait remonter des Pokémon sans aucun rapport dont le nom
+  // contient la chaîne recherchée en plein milieu ou en préfixe collé (ex.
+  // "Abra" dans "Simiabraz", "Draco" en préfixe de "Dracolosse", "Marill"
+  // dans "Azumarill").
+  const nameEsc = encodeURIComponent(frName);
+  const orFilter = `or=(name.ilike.${nameEsc},name.ilike.${nameEsc}%20*,name.ilike.${nameEsc}-*)`;
+  const url = `${SB_URL}/rest/v1/cards?${orFilter}&order=set_id.asc,number.asc&limit=500`;
   const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   let cards = await res.json();

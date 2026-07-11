@@ -1229,15 +1229,41 @@
 <div class="modal-backdrop" id="modal-card-picker">
   <div class="modal" style="width:680px">
     <h2>Choisir une carte</h2>
-    <div class="settings-field">
+    <div class="settings-field" id="cardpicker-search-field">
       <label>Rechercher un Pokémon</label>
       <input type="text" id="cardpicker-search" placeholder="Rechercher un Pokémon…">
     </div>
     <div id="cardpicker-step1" class="cardpicker-results"></div>
+    <div id="cardpicker-manual-toggle" class="cardpicker-manual-toggle">
+      <a href="#" onclick="event.preventDefault();_cardPickerOpenManual()">Carte introuvable (extension absente de TCGDex) ? Saisie manuelle →</a>
+    </div>
     <div id="cardpicker-step2" style="display:none">
       <button type="button" class="btn btn-ghost btn-sm" onclick="_cardPickerBackToStep1()">← Retour à la recherche</button>
       <div class="cardpicker-pokemon-label" id="cardpicker-pokemon-label"></div>
       <div id="cardpicker-cards" class="pkdx-tcg-groups"></div>
+    </div>
+    <div id="cardpicker-step3" style="display:none">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_cardPickerBackToStep1()">← Retour à la recherche</button>
+      <p style="font-size:.78rem;color:var(--text2);margin:8px 0 14px">
+        Pour une carte dont l'extension n'est pas (encore) indexée dans TCGDex : renseigne ses infos à la main. Une fois liée à une extension existante de l'app, elle affichera automatiquement la bonne couleur et le bon sigle.
+      </p>
+      <div class="settings-field">
+        <label>Nom de la carte</label>
+        <input type="text" id="cardpicker-manual-name" placeholder="Ex. Bulbizarre">
+      </div>
+      <div class="settings-field">
+        <label>Extension</label>
+        <select id="cardpicker-manual-ext"><option value="">— Choisir une extension —</option></select>
+      </div>
+      <div class="settings-field">
+        <label>Numéro (optionnel)</label>
+        <input type="text" id="cardpicker-manual-number" placeholder="Ex. 45">
+      </div>
+      <div class="settings-field">
+        <label>URL de l'image (optionnel)</label>
+        <input type="url" id="cardpicker-manual-image" placeholder="https://…">
+      </div>
+      <button type="button" class="btn btn-primary" onclick="_cardPickerSaveManual()">Utiliser cette carte</button>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-card-picker')">Fermer</button>

@@ -411,8 +411,11 @@ function deleteAnyBloc(id, isCustom){
 
 function resetEditionForm(){
   _editingBlocId=null;_editingExtId=null;_editingIsCustom=false;
-  ['edit-code','edit-nom','edit-nb','edit-logo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  const c=document.getElementById('edit-couleur');if(c)c.value='#e63946';
+  ['edit-code','edit-nom','edit-nb','edit-logo','edit-sigle'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  // La couleur n'est PAS réinitialisée ici : comme le bloc choisi, on garde
+  // la dernière couleur utilisée pour ne pas avoir à la re-sélectionner à
+  // chaque nouvelle extension (elle repart quand même à jour via l'auto-fill
+  // de populateBlocSelect si l'utilisateur change de bloc).
   const p=document.getElementById('edition-preview');if(p)p.innerHTML='<span>Aperçu</span>';
   document.getElementById('edit-save-lbl').textContent     = _editionTab==='blocs'?'Créer':'Ajouter';
   document.getElementById('edit-cancel-btn').style.display = 'none';
