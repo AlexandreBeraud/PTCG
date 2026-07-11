@@ -332,6 +332,7 @@ function _labelUserId() {
 async function _pullLabelOverridesFromCloud() {
   if (_labelCloudPulled) return;
   _labelCloudPulled = true;
+  if (typeof _loadingLog === 'function') _loadingLog('form_label_overrides', '⏳', 'form_label_overrides', '…', undefined);
   try {
     // Tri explicite par date de mise à jour décroissante : sans lui, l'ordre
     // renvoyé par PostgREST n'est pas garanti, et une éventuelle ligne en
@@ -339,8 +340,14 @@ async function _pullLabelOverridesFromCloud() {
     // existe une contrainte d'unicité côté base) pouvait gagner au hasard.
     const res = await fetch(`${SB_URL}/rest/v1/form_label_overrides?for_user_id=eq.${encodeURIComponent(_labelUserId())}&order=for_updated_at.desc`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    if (!res.ok) return; // table absente ou policy manquante : on reste en local
+    if (!res.ok) {
+      if (typeof _loadingLog === 'function') _loadingLog('form_label_overrides', '✗', 'form_label_overrides', 'HTTP ' + res.status, 'err');
+      return; // table absente ou policy manquante : on reste en local
+    }
     const rows = await res.json();
+    if (typeof _loadingLog === 'function') {
+      _loadingLog('form_label_overrides', '✓', 'form_label_overrides', String(Array.isArray(rows) ? rows.length : 0), 'ok');
+    }
     if (!Array.isArray(rows) || !rows.length) return;
     if (!_D.form_label_overrides)  _D.form_label_overrides  = {};
     if (!_D.custom_labels)         _D.custom_labels         = {};

@@ -64,6 +64,60 @@ function _sbHeaders(extra) {
   return h;
 }
 
+// ── Log de statut dans l'écran de chargement (debug temps réel) ───────────
+// Chaque étape de la récupération cloud initiale (connexion, puis une ligne
+// par table) vient y ajouter/mettre à jour une ligne, pour voir en direct —
+// sans avoir à ouvrir la console — ce qui est récupéré et surtout ce qui
+// bloque ou échoue. `key` identifie la ligne : un appel avec la même clé
+// met à jour la ligne existante (ex. "⏳ blocs…" -> "✓ blocs (12)") au lieu
+// d'en empiler une nouvelle. `cls` est 'ok' | 'err' | 'warn' | undefined.
+// `detail` (optionnel) s'affiche en plus petit à côté du libellé (nombre de
+// lignes récupérées, code HTTP…).
+function _loadingEscHtml(s) {
+  return String(s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; });
+}
+function _loadingLog(key, icon, label, detail, cls) {
+  var el = document.getElementById('loading-status');
+  if (!el) return;
+  var line = el.querySelector('[data-key="' + key + '"]');
+  if (!line) {
+    line = document.createElement('div');
+    line.dataset.key = key;
+    el.appendChild(line);
+  }
+  line.className = 'loading-status-line' + (cls ? ' ' + cls : '');
+  line.innerHTML = '<span class="lsl-icon">' + icon + '</span>' +
+    '<span class="lsl-table">' + _loadingEscHtml(label) + '</span>' +
+    (detail ? '<span class="lsl-detail">' + _loadingEscHtml(detail) + '</span>' : '');
+  el.scrollTop = el.scrollHeight;
+}
+
+// Message principal, gros, au-dessus de la barre de progression et du log.
+function _loadingTitle(text) {
+  var t = document.getElementById('loading-title');
+  if (t) t.textContent = text;
+}
+
+// Barre de progression : _loadingProgressStart(total) une fois qu'on connaît
+// le nombre d'étapes (ex. nombre de tables à récupérer), puis un appel à
+// _loadingProgressTick() par étape terminée (succès ou échec, peu importe —
+// c'est une progression, pas un indicateur de réussite).
+var _loadingTotalSteps = 0;
+var _loadingDoneSteps  = 0;
+function _loadingProgressStart(total) {
+  _loadingTotalSteps = total || 0;
+  _loadingDoneSteps  = 0;
+  var bar = document.getElementById('loading-bar-fill');
+  if (bar) bar.style.width = '0%';
+}
+function _loadingProgressTick() {
+  if (!_loadingTotalSteps) return;
+  _loadingDoneSteps++;
+  var pct = Math.min(100, Math.round((_loadingDoneSteps / _loadingTotalSteps) * 100));
+  var bar = document.getElementById('loading-bar-fill');
+  if (bar) bar.style.width = pct + '%';
+}
+
 // Certaines actions plus anciennes (ex. "Supprimer cette extension" version
 // courte) ne nettoyaient pas toujours _D.collection / _D.boosters_data pour
 // cette extension. Avec l'ancien blob JSON ça restait juste des données
@@ -704,33 +758,66 @@ async function _cloudPushAll() {
 //    que ce soit plutôt que de vider la collection locale par erreur.
 var _pullInProgress = false;
 async function _cloudPullAll(force) {
-  if (!_cloudReady()) return false;
+  if (!_cloudReady()) {
+    _loadingTitle('Mode local');
+    _loadingLog('_conn', '⚠️', 'Cloud non configuré', 'utilisation des données locales', 'warn');
+    return false;
+  }
   _pullInProgress = true;
+  _loadingTitle('Connexion à Supabase…');
+  _loadingLog('_conn', '⏳', 'Connexion à Supabase', '', undefined);
   try {
     var res = await fetch(SB_URL + '/rest/v1/settings?set_user_id=eq.' + encodeURIComponent(_cloudUserId()), { headers: _sbHeaders() });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      _loadingTitle('Erreur de connexion');
+      _loadingLog('_conn', '✗', 'Connexion à Supabase', 'HTTP ' + res.status, 'err');
+      return false;
+    }
     var rows = await res.json();
-    if (!rows.length) return false;
+    if (!rows.length) {
+      _loadingTitle('Premier lancement');
+      _loadingLog('_conn', '⚠️', 'Aucune donnée cloud', 'rien à récupérer pour l’instant', 'warn');
+      return false;
+    }
     var cloudTs = rows[0].set_data_ts || 0;
-    if (!force && cloudTs <= (_D._ts || 0)) return false;
+    if (!force && cloudTs <= (_D._ts || 0)) {
+      _loadingLog('_conn', '✓', 'Connexion à Supabase', 'local déjà à jour', 'ok');
+      return false;
+    }
+    _loadingLog('_conn', '✓', 'Connexion à Supabase', 'ok', 'ok');
+    _loadingTitle('Récupération des données…');
+    _loadingProgressStart(_SYNC_DOMAINS.length);
 
     var fetched = await Promise.all(_SYNC_DOMAINS.map(async function (d) {
+      _loadingLog(d.table, '⏳', d.table, '…', undefined);
       var url = SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()) + (d.orderBy ? '&order=' + d.orderBy : '');
       try {
         var r = await fetch(url, { headers: _sbHeaders() });
-        if (!r.ok) return { domain: d, rows: null };
-        return { domain: d, rows: await r.json() };
+        if (!r.ok) {
+          _loadingLog(d.table, '✗', d.table, 'HTTP ' + r.status, 'err');
+          _loadingProgressTick();
+          return { domain: d, rows: null };
+        }
+        var data = await r.json();
+        _loadingLog(d.table, '✓', d.table, String(data.length), 'ok');
+        _loadingProgressTick();
+        return { domain: d, rows: data };
       } catch (e) {
+        _loadingLog(d.table, '✗', d.table, e.message, 'err');
+        _loadingProgressTick();
         return { domain: d, rows: null }; // échec réseau : ce domaine ne sera pas touché
       }
     }));
 
     var anyRowsFound = fetched.some(function (f) { return f.rows && f.rows.length; });
     if (!anyRowsFound) {
+      _loadingTitle('Erreur de synchronisation');
+      _loadingLog('_conn', '✗', 'Toutes les tables sont vides', 'policies RLS ?', 'err');
       throw new Error("le cloud a répondu mais TOUTES les tables sont vides — vérifie les policies RLS dans Supabase (lecture SELECT autorisée pour la clé anon, sur chaque table). Rien n'a été modifié en local.");
     }
 
     fetched.forEach(function (f) { if (f.rows) f.domain.apply(f.rows); });
+    _loadingTitle('Données synchronisées !');
 
     var s = rows[0];
     // On préserve les éventuels réglages purement locaux (ex. sales_cards_per_row,
@@ -808,6 +895,8 @@ async function _cloudInitialSync() {
     // ci-dessus) ne doit pas rester invisible dans la seule console : c'est
     // potentiellement une collection entière qui a failli disparaître.
     console.warn('[PTCG] sync initiale cloud :', e.message);
+    _loadingTitle('Erreur de synchronisation');
+    _loadingLog('_conn', '✗', 'Erreur', e.message, 'err');
     toast('Restauration cloud interrompue : ' + e.message, 'error');
   }
   // form_label_overrides garde son mécanisme dédié (une ligne par form_type).
@@ -819,6 +908,7 @@ async function _cloudInitialSync() {
   // Fin de la synchro initiale, quel qu'en ait été le résultat (données
   // trouvées, rien de plus récent, ou même échec réseau/RLS) : à partir
   // d'ici, un saveData() peut légitimement programmer un push.
+  _loadingTitle('C’est prêt !');
   _initialSyncDone = true;
 }
 
