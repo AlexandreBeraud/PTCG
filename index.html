@@ -294,11 +294,25 @@
         </div>
       </div>
       <div class="stats-row" id="acheteurs-stats"></div>
-      <div class="booster-filter-bar" id="acheteurs-filter-bar">
-        <button class="booster-filter-btn active" onclick="setAcheteurFilter('all',this)">Tous</button>
-        <button class="booster-filter-btn" onclick="setAcheteurFilter('a_envoyer',this)">À envoyer</button>
-        <button class="booster-filter-btn" onclick="setAcheteurFilter('envoye',this)">Envoyé</button>
-        <button class="booster-filter-btn" onclick="setAcheteurFilter('arrive',this)">Arrivé</button>
+      <div class="sales-toolbar-row">
+        <div class="booster-filter-bar" id="acheteurs-filter-bar">
+          <button class="booster-filter-btn active" onclick="setAcheteurFilter('all',this)">Tous</button>
+          <button class="booster-filter-btn" onclick="setAcheteurFilter('a_envoyer',this)">À envoyer</button>
+          <button class="booster-filter-btn" onclick="setAcheteurFilter('envoye',this)">Envoyé</button>
+          <button class="booster-filter-btn" onclick="setAcheteurFilter('arrive',this)">Arrivé</button>
+        </div>
+        <div class="sales-sort-bar">
+          <select id="acheteurs-sort-select" class="sales-sort-select" onchange="setAcheteurSort(this.value)">
+            <option value="alpha_asc">Pseudo (A→Z)</option>
+            <option value="alpha_desc">Pseudo (Z→A)</option>
+            <option value="date_desc">Dernier achat (récent d'abord)</option>
+            <option value="date_asc">Dernier achat (ancien d'abord)</option>
+            <option value="cards_desc">Nombre de cartes (élevé d'abord)</option>
+            <option value="cards_asc">Nombre de cartes (bas d'abord)</option>
+            <option value="price_desc">Prix total (élevé d'abord)</option>
+            <option value="price_asc">Prix total (bas d'abord)</option>
+          </select>
+        </div>
       </div>
       <div class="sales-grid" id="acheteurs-grid">
         <button class="add-new-card" onclick="openAddAcheteurModal()">
@@ -384,11 +398,25 @@
         </div>
       </div>
       <div class="stats-row" id="vendeurs-stats"></div>
-      <div class="booster-filter-bar" id="vendeurs-filter-bar">
-        <button class="booster-filter-btn active" onclick="setVendeurFilter('all',this)">Tous</button>
-        <button class="booster-filter-btn" onclick="setVendeurFilter('a_payer',this)">À payer</button>
-        <button class="booster-filter-btn" onclick="setVendeurFilter('paye',this)">Payé</button>
-        <button class="booster-filter-btn" onclick="setVendeurFilter('arrive',this)">Arrivé</button>
+      <div class="sales-toolbar-row">
+        <div class="booster-filter-bar" id="vendeurs-filter-bar">
+          <button class="booster-filter-btn active" onclick="setVendeurFilter('all',this)">Tous</button>
+          <button class="booster-filter-btn" onclick="setVendeurFilter('a_payer',this)">À payer</button>
+          <button class="booster-filter-btn" onclick="setVendeurFilter('paye',this)">Payé</button>
+          <button class="booster-filter-btn" onclick="setVendeurFilter('arrive',this)">Arrivé</button>
+        </div>
+        <div class="sales-sort-bar">
+          <select id="vendeurs-sort-select" class="sales-sort-select" onchange="setVendeurSort(this.value)">
+            <option value="alpha_asc">Pseudo (A→Z)</option>
+            <option value="alpha_desc">Pseudo (Z→A)</option>
+            <option value="date_desc">Dernier achat (récent d'abord)</option>
+            <option value="date_asc">Dernier achat (ancien d'abord)</option>
+            <option value="cards_desc">Nombre de cartes (élevé d'abord)</option>
+            <option value="cards_asc">Nombre de cartes (bas d'abord)</option>
+            <option value="price_desc">Prix total (élevé d'abord)</option>
+            <option value="price_asc">Prix total (bas d'abord)</option>
+          </select>
+        </div>
       </div>
       <div class="sales-grid" id="vendeurs-grid">
         <button class="add-new-card" onclick="openAddVendeurModal()">

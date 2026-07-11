@@ -25,10 +25,10 @@ function _etatHtml(etat) {
   return color ? `<span style="color:${color};font-weight:700">${_escHtml(etat)}</span>` : _escHtml(etat);
 }
 var VENTE_TYPES = [
-  { id:'normale',      label:'Normale' },
-  { id:'reverse',      label:'Reverse' },
-  { id:'holo_cosmos',  label:'Holo Cosmos' },
-  { id:'1ere_edition', label:'1ère édition' },
+  { id:'normale',      label:'Normale',      color:'#4a9eff' },
+  { id:'reverse',      label:'Reverse',      color:'#a78bfa' },
+  { id:'holo_cosmos',  label:'Holo Cosmos',  color:'#22d3ee' },
+  { id:'1ere_edition', label:'1ère édition', color:'#eab308' },
 ];
 var TCG_LANGUES = ['Français','Anglais','Japonais','Allemand','Italien','Espagnol','Portugais','Néerlandais','Coréen','Chinois'];
 
@@ -54,13 +54,51 @@ function venteStatusInfo(v) {
   return VENTE_STATUTS.find(s => s.id === (v.statut||'a_mettre')) || VENTE_STATUTS[0];
 }
 
-// Petites icônes sélectionnables pour distinguer les acheteurs/vendeurs d'un
-// coup d'œil dans les listes.
-var PERSON_ICONS = ['👤','🏷️','🛒','📦','💳','🏪','🧑\u200d💼','👔','💼','🤝','📮','✉️','🏦','🎯','⭐','🔥','🌟','💎'];
+// Badges "Type" colorés (une couleur par type — Normale/Reverse/Holo Cosmos/
+// 1ère édition) réutilisés partout où une vente/dépense affiche ses types.
+function _typeChipsHtml(types, sm) {
+  return (types||[]).map(t => {
+    const info = VENTE_TYPES.find(x=>x.id===t);
+    if (!info) return '';
+    return `<span class="type-chip${sm?' sm':''}" style="color:${info.color};background:${info.color}22;border-color:${info.color}55">${info.label}</span>`;
+  }).join('');
+}
+
+// Petits drapeaux sélectionnables pour distinguer les acheteurs/vendeurs d'un
+// coup d'œil dans les listes (affichés en cercle dans le sélecteur). On stocke
+// un code pays ISO 3166-1 alpha-2 (ex. 'fr') plutôt qu'un emoji drapeau : les
+// emoji "regional indicator" ne s'affichent PAS comme des drapeaux sur tous
+// les systèmes (Windows en particulier ne montre que les 2 lettres du code),
+// donc on utilise de vraies images de drapeaux (flagcdn.com), fiables partout.
+var PERSON_ICONS = ['fr','be','ch','de','gb','us','es','it','pt','nl','pl','se','gr','jp','kr','cn','ca','au'];
+
+// D'anciens acheteurs/vendeurs peuvent avoir été enregistrés avec un emoji
+// drapeau (ancien système) : on le convertit à la volée en code pays pour ne
+// pas perdre l'info et continuer à afficher une vraie image de drapeau.
+function _flagEmojiToCode(str) {
+  if (!str || typeof str !== 'string') return null;
+  const points = [...str].map(c => c.codePointAt(0));
+  if (points.length === 2 && points.every(cp => cp >= 0x1F1E6 && cp <= 0x1F1FF)) {
+    return points.map(cp => String.fromCharCode(cp - 0x1F1E6 + 65)).join('').toLowerCase();
+  }
+  return null;
+}
+function _personFlagCode(icon) {
+  if (!icon) return 'fr';
+  if (/^[a-z]{2}$/i.test(icon)) return icon.toLowerCase();
+  return _flagEmojiToCode(icon) || 'fr';
+}
+// Image de drapeau en cercle — taille en px, 22 par défaut (icônes inline).
+function _flagImgHtml(icon, size) {
+  const code = _personFlagCode(icon);
+  size = size || 22;
+  return `<img src="https://flagcdn.com/w40/${code}.png" alt="${code.toUpperCase()}" width="${size}" height="${size}" class="flag-icon-img" onerror="this.style.visibility='hidden'">`;
+}
 function _buildIconPicker(containerId, selected) {
   const el = document.getElementById(containerId); if (!el) return;
-  el.innerHTML = PERSON_ICONS.map(ic =>
-    `<button type="button" class="icon-pick-btn ${ic===selected?'active':''}" data-icon="${ic}" onclick="_selectIcon('${containerId}', this)">${ic}</button>`
+  const selCode = _personFlagCode(selected);
+  el.innerHTML = PERSON_ICONS.map(code =>
+    `<button type="button" class="icon-pick-btn ${code===selCode?'active':''}" data-icon="${code}" title="${code.toUpperCase()}" onclick="_selectIcon('${containerId}', this)">${_flagImgHtml(code, 22)}</button>`
   ).join('');
 }
 function _selectIcon(containerId, btn) {
@@ -184,6 +222,7 @@ function vendeurTotal(vendeurId) { return vendeurDepenses(vendeurId).reduce((s,d
 var _venteFilter = 'all', _depenseFilter = 'all', _acheteurFilter = 'all', _vendeurFilter = 'all';
 var _venteQuery = '', _depenseQuery = '', _acheteurQuery = '', _vendeurQuery = '';
 var _venteSort = 'date_desc', _depenseSort = 'date_desc';
+var _acheteurSort = 'alpha_asc', _vendeurSort = 'alpha_asc';
 var _venteExtFilter = 'all', _depenseExtFilter = 'all';
 var _ventePersonFilter = 'all', _depensePersonFilter = 'all';
 
@@ -409,6 +448,31 @@ function setDepenseSort(sortId) {
   if (sortId === 'pokedex_asc') { _ensurePokedexNamesLoaded().then(renderDepenses); }
   renderDepenses();
 }
+
+// Tri partagé Acheteurs/Vendeurs : date de la dernière commande, nombre de
+// cartes, prix total encaissé/dépensé, ou ordre alphabétique du pseudo.
+function _applyPersonSort(items, sortId, kind) {
+  const arr = [...items];
+  const lastDateFor = kind === 'acheteur'
+    ? (p => { const c = acheteurCommandes(p.id); return c.length ? (c[c.length-1].date_achat||'') : ''; })
+    : (p => { const c = vendeurCommandes(p.id);  return c.length ? (c[c.length-1].date_achat||'') : ''; });
+  const cardCountFor = kind === 'acheteur' ? (p => acheteurVentes(p.id).length) : (p => vendeurDepenses(p.id).length);
+  const totalFor      = kind === 'acheteur' ? (p => acheteurTotal(p.id))       : (p => vendeurTotal(p.id));
+  switch (sortId) {
+    case 'date_desc':  arr.sort((a,b) => lastDateFor(b).localeCompare(lastDateFor(a))); break;
+    case 'date_asc':   arr.sort((a,b) => lastDateFor(a).localeCompare(lastDateFor(b))); break;
+    case 'cards_desc': arr.sort((a,b) => cardCountFor(b) - cardCountFor(a)); break;
+    case 'cards_asc':  arr.sort((a,b) => cardCountFor(a) - cardCountFor(b)); break;
+    case 'price_desc': arr.sort((a,b) => totalFor(b) - totalFor(a)); break;
+    case 'price_asc':  arr.sort((a,b) => totalFor(a) - totalFor(b)); break;
+    case 'alpha_desc': arr.sort((a,b) => (b.pseudo||'').localeCompare(a.pseudo||'','fr')); break;
+    case 'alpha_asc':
+    default:            arr.sort((a,b) => (a.pseudo||'').localeCompare(b.pseudo||'','fr'));
+  }
+  return arr;
+}
+function setAcheteurSort(sortId) { _acheteurSort = sortId; renderAcheteurs(); }
+function setVendeurSort(sortId)  { _vendeurSort = sortId; renderVendeurs(); }
 var _acheteurReturnTo = null, _vendeurReturnTo = null;
 var _lastCreatedAcheteurId = null, _lastCreatedVendeurId = null;
 var _acheteurCommandeReturnTo = null, _vendeurCommandeReturnTo = null;
@@ -433,11 +497,13 @@ function _orderItemRowHtml(item, kind) {
   const editFn = kind === 'vente' ? 'editVente' : 'editDepense';
   const delFn  = kind === 'vente' ? 'deleteVente' : 'deleteDepense';
   const qty = parseInt(item.qty,10) || 1;
+  const typesHtml = _typeChipsHtml(item.types, true);
   return `<div class="order-item-row">
     <div class="order-item-thumb">${item.card_image ? `<img src="${item.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
     <div class="order-item-info">
       <div class="order-item-name">${item.card_name || item.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
       <div class="order-item-meta">${item.set_name||''}${item.number?' · N°'+item.number:''} · ${item.etat||''}</div>
+      ${typesHtml ? `<div class="order-item-types">${typesHtml}</div>` : ''}
     </div>
     <div class="order-item-price">${_lineTotal(item).toFixed(2)} €</div>
     <div class="order-item-actions">
@@ -512,7 +578,7 @@ function _venteAcheteurInfoHtml(v) {
   if (!c) return '';
   const a = (_D.acheteurs||[]).find(x=>x.id===c.acheteur_id);
   if (!a) return '';
-  return `<span class="sale-person-link" onclick="_goToAcheteur('${a.id}')">${a.icon||'👤'} ${_escHtml(a.pseudo)}</span>${c.date_achat ? ' · '+_fmtDate(c.date_achat) : ''}`;
+  return `<span class="sale-person-link" onclick="_goToAcheteur('${a.id}')">${_flagImgHtml(a.icon)} ${_escHtml(a.pseudo)}</span>${c.date_arrivee ? `<span class="sale-person-date">${_fmtDate(c.date_arrivee)}</span>` : ''}`;
 }
 
 // Bascule sur l'onglet Acheteurs, déplie la fiche demandée et la met en
@@ -637,7 +703,7 @@ function buildVenteCard(v) {
   const st = venteStatusInfo(v);
   const acheteurInfo = _venteAcheteurInfoHtml(v);
   const qty = parseInt(v.qty,10) || 1;
-  const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
+  const typesHtml = _typeChipsHtml(v.types);
   const card = document.createElement('div');
   card.className = 'sale-card';
   const extColorVal = _extColorForSaleItem(v);
@@ -670,7 +736,7 @@ function buildVenteRow(v) {
   const st = venteStatusInfo(v);
   const acheteurInfo = _venteAcheteurInfoHtml(v);
   const qty = parseInt(v.qty,10) || 1;
-  const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
+  const typesHtml = _typeChipsHtml(v.types, true);
   const row = document.createElement('div');
   row.className = 'sale-list-row';
   const extColorVal = _extColorForSaleItem(v);
@@ -693,7 +759,7 @@ function buildVenteCompact(v) {
   const st = venteStatusInfo(v);
   const acheteurInfo = _venteAcheteurInfoHtml(v);
   const qty = parseInt(v.qty,10) || 1;
-  const typesHtml = (v.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
+  const typesHtml = _typeChipsHtml(v.types);
   const card = document.createElement('div');
   card.className = 'sale-compact-row';
   const extColorVal = _extColorForSaleItem(v);
@@ -864,13 +930,17 @@ function openAddVenteModal(prefillAcheteurId, prefillCommandeId) {
   });
   _renderCardPreview('vente');
   document.getElementById('vente-etat-select').value = 'Near Mint';
-  document.getElementById('vente-prix-input').value = '';
+  document.getElementById('vente-prix-input').value = '0.02';
   document.getElementById('vente-qty-input').value = 1;
   document.getElementById('vente-langue-select').value = 'Français';
   _setChipGroup('vente-type-chips', ['normale']);
-  setCropInput('vente', 'center');
-  populateAcheteurSelect(prefillAcheteurId || '');
-  populateVenteCommandeSelect(prefillAcheteurId || '', prefillCommandeId || null);
+  setCropInput('vente', 16);
+  // À défaut de pré-remplissage explicite (venant d'une commande existante),
+  // on repart sur le dernier acheteur/commande effectivement utilisé.
+  const defaultAcheteurId = prefillAcheteurId || (_D.settings && _D.settings.last_acheteur_id) || '';
+  const defaultCommandeId = prefillCommandeId || (!prefillAcheteurId && _D.settings && _D.settings.last_acheteur_commande_id) || null;
+  populateAcheteurSelect(defaultAcheteurId);
+  populateVenteCommandeSelect(defaultAcheteurId, defaultCommandeId);
   setVenteStatusInput(prefillCommandeId ? 'vendue' : 'a_mettre');
   modal.classList.add('open');
 }
@@ -923,6 +993,13 @@ function saveVente() {
     const sel = document.getElementById('vente-commande-select').value;
     if (!sel || sel === '__new__') { toast('Choisis une commande (ou crée-en une) pour marquer la vente comme vendue.','error'); return; }
     commandeId = sel;
+    // Mémorise l'acheteur/commande pour pré-remplir la prochaine nouvelle vente.
+    const acheteurId = document.getElementById('vente-acheteur-select').value;
+    if (acheteurId) {
+      if (!_D.settings) _D.settings = {};
+      _D.settings.last_acheteur_id = acheteurId;
+      _D.settings.last_acheteur_commande_id = commandeId;
+    }
   }
   const data = {
     card_id:      document.getElementById('vente-card-id').value,
@@ -1028,7 +1105,7 @@ function _depenseVendeurInfoHtml(d) {
   if (!c) return '';
   const v = (_D.vendeurs||[]).find(x=>x.id===c.vendeur_id);
   if (!v) return '';
-  return `<span class="sale-person-link" onclick="_goToVendeur('${v.id}')">${v.icon||'🏷️'} ${_escHtml(v.pseudo)}</span>${c.date_achat ? ' · '+_fmtDate(c.date_achat) : ''}`;
+  return `<span class="sale-person-link" onclick="_goToVendeur('${v.id}')">${_flagImgHtml(v.icon)} ${_escHtml(v.pseudo)}</span>${c.date_achat ? `<span class="sale-person-date">${_fmtDate(c.date_achat)}</span>` : ''}`;
 }
 
 function _goToVendeur(vendeurId) {
@@ -1048,7 +1125,7 @@ function _goToVendeur(vendeurId) {
 function buildDepenseCard(d) {
   const vendeurInfo = _depenseVendeurInfoHtml(d);
   const qty = parseInt(d.qty,10) || 1;
-  const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
+  const typesHtml = _typeChipsHtml(d.types);
   const card = document.createElement('div');
   card.className = 'sale-card';
   const extColorVal = _extColorForSaleItem(d);
@@ -1079,7 +1156,7 @@ function buildDepenseCard(d) {
 function buildDepenseRow(d) {
   const vendeurInfo = _depenseVendeurInfoHtml(d);
   const qty = parseInt(d.qty,10) || 1;
-  const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip sm">${info.label}</span>` : ''; }).join('');
+  const typesHtml = _typeChipsHtml(d.types, true);
   const row = document.createElement('div');
   row.className = 'sale-list-row';
   const extColorVal = _extColorForSaleItem(d);
@@ -1101,7 +1178,7 @@ function buildDepenseRow(d) {
 function buildDepenseCompact(d) {
   const vendeurInfo = _depenseVendeurInfoHtml(d);
   const qty = parseInt(d.qty,10) || 1;
-  const typesHtml = (d.types||[]).map(t => { const info = VENTE_TYPES.find(x=>x.id===t); return info ? `<span class="type-chip">${info.label}</span>` : ''; }).join('');
+  const typesHtml = _typeChipsHtml(d.types);
   const card = document.createElement('div');
   card.className = 'sale-compact-row';
   const extColorVal = _extColorForSaleItem(d);
@@ -1189,13 +1266,17 @@ function openAddDepenseModal(prefillVendeurId, prefillCommandeId) {
   });
   _renderCardPreview('depense');
   document.getElementById('depense-etat-select').value = 'Near Mint';
-  document.getElementById('depense-prix-input').value = '';
+  document.getElementById('depense-prix-input').value = '0.02';
   document.getElementById('depense-qty-input').value = 1;
   document.getElementById('depense-langue-select').value = 'Français';
   _setChipGroup('depense-type-chips', []);
-  setCropInput('depense', 'center');
-  populateVendeurSelect(prefillVendeurId || '');
-  populateDepenseCommandeSelect(prefillVendeurId || '', prefillCommandeId || null);
+  setCropInput('depense', 16);
+  // À défaut de pré-remplissage explicite (venant d'une commande existante),
+  // on repart sur le dernier vendeur/commande effectivement utilisé.
+  const defaultVendeurId = prefillVendeurId || (_D.settings && _D.settings.last_vendeur_id) || '';
+  const defaultCommandeId = prefillCommandeId || (!prefillVendeurId && _D.settings && _D.settings.last_vendeur_commande_id) || null;
+  populateVendeurSelect(defaultVendeurId);
+  populateDepenseCommandeSelect(defaultVendeurId, defaultCommandeId);
   modal.classList.add('open');
 }
 
@@ -1241,6 +1322,13 @@ function saveDepense() {
   const cardName = document.getElementById('depense-card-name').value;
   if (!cardName) { toast('Veuillez choisir une carte.','error'); return; }
   const commandeSel = document.getElementById('depense-commande-select').value;
+  // Mémorise le vendeur/commande pour pré-remplir le prochain nouvel achat.
+  const vendeurSel = document.getElementById('depense-vendeur-select').value;
+  if (vendeurSel) {
+    if (!_D.settings) _D.settings = {};
+    _D.settings.last_vendeur_id = vendeurSel;
+    if (commandeSel && commandeSel !== '__new__') _D.settings.last_vendeur_commande_id = commandeSel;
+  }
   const data = {
     card_id:      document.getElementById('depense-card-id').value,
     card_name:    cardName,
@@ -1304,7 +1392,7 @@ function renderAcheteurs() {
     items = items.filter(a => acheteurCommandes(a.id).some(c => (c.etat||'a_envoyer') === _acheteurFilter));
   }
   if (_acheteurQuery) { const q = _normalizeStr(_acheteurQuery); items = items.filter(a => _normalizeStr(a.pseudo||'').includes(q)); }
-  items.sort((a,b) => (a.pseudo||'').localeCompare(b.pseudo||'','fr'));
+  items = _applyPersonSort(items, _acheteurSort, 'acheteur');
 
   if (!items.length) {
     grid.innerHTML = `<div class="sales-empty">Aucun acheteur${(_acheteurQuery||_acheteurFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
@@ -1387,7 +1475,7 @@ function buildAcheteurCard(a) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML = `
     <div class="order-card-top">
-      <div class="order-card-avatar">${a.icon||'👤'}</div>
+      <div class="order-card-avatar">${_flagImgHtml(a.icon, 22)}</div>
       <div class="order-card-info">
         <div class="order-card-name">${a.pseudo}</div>
         <div class="order-card-meta">${commandes.length} commande${commandes.length>1?'s':''}</div>
@@ -1421,7 +1509,7 @@ function buildAcheteurRow(a) {
   row.dataset.acheteurId = a.id;
   row.innerHTML = `
     <div class="clr-header" onclick="_toggleOrderExpand('acheteur','${a.id}')">
-      <div class="clr-thumb" style="background:linear-gradient(135deg,#4a9eff33,#4a9eff55)"><span style="font-size:1.1rem">${a.icon||'👤'}</span></div>
+      <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#4a9eff33,#4a9eff55)">${_flagImgHtml(a.icon, 20)}</div>
       <div class="clr-accent-bar" style="background:#4a9eff"></div>
       <div class="clr-info">
         <div class="clr-name">${a.pseudo}</div>
@@ -1455,7 +1543,7 @@ function openAddAcheteurModal() {
   delete modal.dataset.editId;
   document.getElementById('modal-acheteur-title').textContent = 'Nouvel acheteur';
   document.getElementById('acheteur-pseudo-input').value = '';
-  _buildIconPicker('acheteur-icon-picker', '👤');
+  _buildIconPicker('acheteur-icon-picker', 'fr');
   modal.classList.add('open');
 }
 
@@ -1465,7 +1553,7 @@ function editAcheteur(id) {
   modal.dataset.editId = id;
   document.getElementById('modal-acheteur-title').textContent = "Modifier l'acheteur";
   document.getElementById('acheteur-pseudo-input').value = a.pseudo||'';
-  _buildIconPicker('acheteur-icon-picker', a.icon||'👤');
+  _buildIconPicker('acheteur-icon-picker', a.icon||'fr');
   modal.classList.add('open');
 }
 
@@ -1473,7 +1561,7 @@ function saveAcheteur() {
   const modal = document.getElementById('modal-acheteur');
   const pseudo = document.getElementById('acheteur-pseudo-input').value.trim();
   if (!pseudo) { toast('Veuillez saisir un pseudo.','error'); return; }
-  const icon = _getSelectedIcon('acheteur-icon-picker', '👤');
+  const icon = _getSelectedIcon('acheteur-icon-picker', 'fr');
   const editId = modal.dataset.editId;
   if (editId) {
     const a = _D.acheteurs.find(x=>x.id===editId);
@@ -1587,7 +1675,7 @@ function renderVendeurs() {
     items = items.filter(v => vendeurCommandes(v.id).some(c => (c.etat||'a_payer') === _vendeurFilter));
   }
   if (_vendeurQuery) { const q = _normalizeStr(_vendeurQuery); items = items.filter(v => _normalizeStr(v.pseudo||'').includes(q)); }
-  items.sort((a,b) => (a.pseudo||'').localeCompare(b.pseudo||'','fr'));
+  items = _applyPersonSort(items, _vendeurSort, 'vendeur');
 
   if (!items.length) {
     grid.innerHTML = `<div class="sales-empty">Aucun vendeur${(_vendeurQuery||_vendeurFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
@@ -1656,7 +1744,7 @@ function buildVendeurCard(v) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML = `
     <div class="order-card-top">
-      <div class="order-card-avatar">${v.icon||'🏷️'}</div>
+      <div class="order-card-avatar">${_flagImgHtml(v.icon, 22)}</div>
       <div class="order-card-info">
         <div class="order-card-name">${v.pseudo}</div>
         <div class="order-card-meta">${commandes.length} commande${commandes.length>1?'s':''}</div>
@@ -1690,7 +1778,7 @@ function buildVendeurRow(v) {
   row.dataset.vendeurId = v.id;
   row.innerHTML = `
     <div class="clr-header" onclick="_toggleOrderExpand('vendeur','${v.id}')">
-      <div class="clr-thumb" style="background:linear-gradient(135deg,#f9731633,#f9731655)"><span style="font-size:1.1rem">${v.icon||'🏷️'}</span></div>
+      <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#f9731633,#f9731655)">${_flagImgHtml(v.icon, 20)}</div>
       <div class="clr-accent-bar" style="background:#f97316"></div>
       <div class="clr-info">
         <div class="clr-name">${v.pseudo}</div>
@@ -1724,7 +1812,7 @@ function openAddVendeurModal() {
   delete modal.dataset.editId;
   document.getElementById('modal-vendeur-title').textContent = 'Nouveau vendeur';
   document.getElementById('vendeur-pseudo-input').value = '';
-  _buildIconPicker('vendeur-icon-picker', '🏷️');
+  _buildIconPicker('vendeur-icon-picker', 'fr');
   modal.classList.add('open');
 }
 
@@ -1734,7 +1822,7 @@ function editVendeur(id) {
   modal.dataset.editId = id;
   document.getElementById('modal-vendeur-title').textContent = 'Modifier le vendeur';
   document.getElementById('vendeur-pseudo-input').value = v.pseudo||'';
-  _buildIconPicker('vendeur-icon-picker', v.icon||'🏷️');
+  _buildIconPicker('vendeur-icon-picker', v.icon||'fr');
   modal.classList.add('open');
 }
 
@@ -1742,7 +1830,7 @@ function saveVendeur() {
   const modal = document.getElementById('modal-vendeur');
   const pseudo = document.getElementById('vendeur-pseudo-input').value.trim();
   if (!pseudo) { toast('Veuillez saisir un pseudo.','error'); return; }
-  const icon = _getSelectedIcon('vendeur-icon-picker', '🏷️');
+  const icon = _getSelectedIcon('vendeur-icon-picker', 'fr');
   const editId = modal.dataset.editId;
   if (editId) {
     const v = _D.vendeurs.find(x=>x.id===editId);
@@ -1857,12 +1945,13 @@ function _monthLabel(key) {
   return (_BILAN_MOIS[m-1]||'?') + ' ' + y;
 }
 
-// Mois d'une vente : date d'achat de la commande si elle est vendue et liée,
-// sinon date de création de la ligne (repli).
+// Mois d'une vente : date d'arrivée de la commande si elle est vendue et
+// liée (c'est à l'arrivée que l'argent est effectivement reçu — voir
+// _venteIsArrivee ci-dessous), sinon date de création de la ligne (repli).
 function _venteMonthKey(v) {
   if (v.commande_id) {
     const c = (_D.acheteur_commandes||[]).find(x=>x.id===v.commande_id);
-    if (c && c.date_achat) return _monthKey(c.date_achat);
+    if (c && c.date_arrivee) return _monthKey(c.date_arrivee);
   }
   return _monthKey(v.created_at);
 }
