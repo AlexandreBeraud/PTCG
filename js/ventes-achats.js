@@ -130,7 +130,7 @@ function applyCardsPerRow(mode, val) {
   if (!_D.settings) _D.settings = {};
   if (typeof _D.settings.sales_cards_per_row !== 'object' || !_D.settings.sales_cards_per_row) {
     const oldVal = typeof _D.settings.sales_cards_per_row === 'number' ? _D.settings.sales_cards_per_row : 5;
-    _D.settings.sales_cards_per_row = { grid: oldVal, compact: 3 };
+    _D.settings.sales_cards_per_row = { grid: oldVal, compact: 3, people: 5 };
   }
   _D.settings.sales_cards_per_row[mode] = n;
 }
@@ -596,9 +596,11 @@ function _saleCompactCardHtml(opts) {
         ${opts.typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${opts.typesHtml}</span></div>` : ''}
         <div class="sale-row"><span class="lbl">Langue</span><span class="val">${opts.langue||'—'}</span></div>
       </div>
-      ${opts.personInfoHtml ? `<div class="sale-acheteur">${opts.personInfoHtml}</div>` : ''}
-      ${opts.cardmarketUrl ? `<a href="${opts.cardmarketUrl}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
-      ${opts.splitBtnHtml || ''}
+      <div class="sale-card-footer">
+        ${opts.personInfoHtml ? `<div class="sale-acheteur">${opts.personInfoHtml}</div>` : ''}
+        ${opts.cardmarketUrl ? `<a href="${opts.cardmarketUrl}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
+        ${opts.splitBtnHtml || ''}
+      </div>
     </div>`;
 }
 
@@ -653,10 +655,12 @@ function buildVenteCard(v) {
       <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(v.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
       ${typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${typesHtml}</span></div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${v.langue||'—'}</span></div>
-      ${acheteurInfo ? `<div class="sale-acheteur">${acheteurInfo}</div>` : ''}
-      ${v.cardmarket_url ? `<a href="${v.cardmarket_url}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
-      ${qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : ''}
-      ${_saleCardFooterActionsHtml({ editFn: 'editVente', delFn: 'deleteVente', id: v.id })}
+      <div class="sale-card-footer">
+        ${acheteurInfo ? `<div class="sale-acheteur">${acheteurInfo}</div>` : ''}
+        ${v.cardmarket_url ? `<a href="${v.cardmarket_url}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
+        ${qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : ''}
+        ${_saleCardFooterActionsHtml({ editFn: 'editVente', delFn: 'deleteVente', id: v.id })}
+      </div>
     </div>`;
   card.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editVente(v.id); });
   return card;
@@ -1062,9 +1066,11 @@ function buildDepenseCard(d) {
       <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(d.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
       ${typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${typesHtml}</span></div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${d.langue||'—'}</span></div>
-      <div class="sale-acheteur ${vendeurInfo ? '' : 'unlinked'}">${vendeurInfo || '— Aucun vendeur —'}</div>
-      ${d.cardmarket_url ? `<a href="${d.cardmarket_url}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
-      ${_saleCardFooterActionsHtml({ editFn: 'editDepense', delFn: 'deleteDepense', id: d.id })}
+      <div class="sale-card-footer">
+        <div class="sale-acheteur ${vendeurInfo ? '' : 'unlinked'}">${vendeurInfo || '— Aucun vendeur —'}</div>
+        ${d.cardmarket_url ? `<a href="${d.cardmarket_url}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
+        ${_saleCardFooterActionsHtml({ editFn: 'editDepense', delFn: 'deleteDepense', id: d.id })}
+      </div>
     </div>`;
   card.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editDepense(d.id); });
   return card;
@@ -1291,7 +1297,7 @@ function renderAcheteurs() {
   if (addBtn) addBtn.remove();
   grid.innerHTML = '';
   const mode = _tabViewModes['acheteurs'] || 'grid';
-  grid.className = mode === 'list' ? 'sales-list-wrap' : 'sales-grid-wide';
+  grid.className = mode === 'list' ? 'sales-list-wrap' : 'people-grid-wide';
 
   let items = [...(_D.acheteurs||[])];
   if (_acheteurFilter !== 'all') {
@@ -1574,7 +1580,7 @@ function renderVendeurs() {
   if (addBtn) addBtn.remove();
   grid.innerHTML = '';
   const mode = _tabViewModes['vendeurs'] || 'grid';
-  grid.className = mode === 'list' ? 'sales-list-wrap' : 'sales-grid-wide';
+  grid.className = mode === 'list' ? 'sales-list-wrap' : 'people-grid-wide';
 
   let items = [...(_D.vendeurs||[])];
   if (_vendeurFilter !== 'all') {

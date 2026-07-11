@@ -18,14 +18,22 @@
 // → goodies. Même structure des deux côtés. Ça prépare la séparation de la
 // page en deux onglets sans rien changer côté JS pour l'instant.
 //
-// Principe général (inchangé) :
+// Principe général :
 //  - PUSH (débouncé 1.2s après chaque saveData()) : pour chaque table, dans
 //    un ordre qui respecte les clés étrangères, on supprime toutes les
 //    lignes de cet utilisateur puis on réinsère l'état actuel (upsert en
 //    masse, 1 requête par table).
-//  - PULL (une fois, au chargement) : comparaison d'un horodatage global
-//    (settings.set_data_ts) ; si le cloud est plus récent, on reconstruit
-//    tout _D à partir des tables cloud.
+//  - PULL AU CHARGEMENT (une fois, forcé) : le cloud est la source de vérité
+//    à l'ouverture de l'appli — on récupère TOUJOURS l'intégralité des
+//    tables depuis Supabase, sans se fier à une comparaison d'horodatage, et
+//    l'écran de chargement (core.js) attend la fin complète de ce pull avant
+//    de rendre l'appli accessible. Comparer les horodatages et parfois ne
+//    récupérer QUE la table settings (sans les ~20 tables de données) est
+//    ce qui, auparavant, donnait l'impression qu'aucune requête de
+//    récupération n'était vraiment lancée au démarrage.
+//  - PULL MANUEL (bouton "Synchroniser") : lui continue de comparer les
+//    horodatages (voir syncCloud()) pour décider s'il doit récupérer ou au
+//    contraire pousser le local.
 
 var CLOUD_DEFAULT_URL = (window.__PC_CLOUD_CONFIG__ && window.__PC_CLOUD_CONFIG__.url) || '';
 var CLOUD_DEFAULT_KEY = (window.__PC_CLOUD_CONFIG__ && window.__PC_CLOUD_CONFIG__.key) || '';
@@ -742,8 +750,16 @@ async function _cloudPullAll(force) {
 }
 
 // ── Débounce du push automatique après chaque saveData() ──────────────────
+// _initialSyncDone : sécurité SUPPLÉMENTAIRE (en plus du blocage visuel de
+// l'écran de chargement côté core.js, et du verrou _pullInProgress ci-dessus)
+// — tant que la synchro initiale n'est pas terminée, AUCUN push n'est même
+// programmé, quel que soit ce qui a appelé saveData(). Ça ferme le chemin qui
+// pouvait encore écraser le cloud avec un état local pas encore stabilisé,
+// sans dépendre uniquement du fait que l'UI est masquée pendant le chargement.
+var _initialSyncDone = false;
 var _cloudPushTimer = null;
 function _scheduleCloudPush() {
+  if (!_initialSyncDone) return; // pas de push tant que le pull initial n'a pas fini d'appliquer les données
   clearTimeout(_cloudPushTimer);
   _cloudPushTimer = setTimeout(function () {
     _cloudPushAll().catch(function (e) {
@@ -762,16 +778,31 @@ function _scheduleCloudPush() {
 // encore stabilisé (voir _persistLocalOnly dans core.js). Si l'utilisateur
 // modifie ensuite quoi que ce soit, le push automatique habituel
 // (_scheduleCloudPush via saveData()) prend le relais normalement.
+//
+// core.js attend (await) cette fonction avant de retirer l'écran de
+// chargement : tant qu'elle n'est pas résolue, aucune interaction utilisateur
+// n'est possible, donc aucun saveData()/push ne peut partir. _initialSyncDone
+// n'est mis à true qu'à la toute fin, une fois le pull ET son application à
+// _D (et aux labels) terminés — c'est ce même flag que _scheduleCloudPush
+// vérifie juste au-dessus, en sécurité indépendante de l'écran de chargement.
 async function _cloudInitialSync() {
   try {
-    var pulled = await _cloudPullAll();
+    // force=true : on veut TOUJOURS récupérer l'intégralité des données
+    // cloud au démarrage, jamais seulement la table settings pour comparer
+    // un horodatage. C'est cette requête complète que l'écran de chargement
+    // attend avant de laisser l'utilisateur accéder à l'appli.
+    var pulled = await _cloudPullAll(true);
     if (pulled) {
       _persistLocalOnly();
       renderAll();
-      toast('Données restaurées depuis le cloud.', 'success');
+      // Pas de toast ici : récupérer depuis le cloud est maintenant le
+      // comportement NORMAL de chaque lancement, pas un événement
+      // exceptionnel à signaler. Le toast reste utilisé pour syncCloud()
+      // et forceRestoreFromCloud() (actions manuelles explicites).
     }
-    // Sinon (rien de plus récent côté cloud, ou pull impossible) : on ne fait
-    // STRICTEMENT RIEN d'autre ici. Pas de push automatique au chargement.
+    // Si pulled est false : soit le cloud n'est pas configuré/joignable,
+    // soit aucune ligne "settings" n'existe encore (tout premier lancement,
+    // rien à récupérer) — dans les deux cas on reste sur l'état local.
   } catch (e) {
     // Une erreur ici (ex. le garde-fou "toutes les tables sont vides"
     // ci-dessus) ne doit pas rester invisible dans la seule console : c'est
@@ -785,6 +816,10 @@ async function _cloudInitialSync() {
     renderLabelsList();
     _refreshPokedexAfterLabelChange();
   } catch (e) { /* pas grave, on reste en local */ }
+  // Fin de la synchro initiale, quel qu'en ait été le résultat (données
+  // trouvées, rien de plus récent, ou même échec réseau/RLS) : à partir
+  // d'ici, un saveData() peut légitimement programmer un push.
+  _initialSyncDone = true;
 }
 
 // ── Bouton "Synchroniser" (manuel, immédiat, avec retour clair) ───────────

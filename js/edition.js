@@ -655,9 +655,12 @@ function initSettingsView(){
   const saved = _D.settings?.sales_cards_per_row;
   const gridVal    = typeof saved === 'number' ? saved : (saved?.grid || 5);
   const compactVal = (saved && typeof saved === 'object') ? (saved.compact || 3) : 3;
+  const peopleVal  = (saved && typeof saved === 'object') ? (saved.people || 5) : 5;
   const gridInp=document.getElementById('settings-cards-per-row-grid');
   if(gridInp)gridInp.value=gridVal;
   const compactInp=document.getElementById('settings-cards-per-row-compact');
   if(compactInp)compactInp.value=compactVal;
+  const peopleInp=document.getElementById('settings-cards-per-row-people');
+  if(peopleInp)peopleInp.value=peopleVal;
 }
 

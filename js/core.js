@@ -102,17 +102,23 @@ window.addEventListener('hashchange', () => {
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
+// L'écran de chargement ne disparaît QUE lorsque la synchro cloud initiale
+// (_cloudInitialSync, js/sync.js) est terminée — pull récupéré ET appliqué à
+// _D, plus le pull des labels. Avant, un simple setTimeout(100ms) le cachait
+// sans attendre le pull réseau : l'app redevenait utilisable (donc capable
+// de déclencher un saveData() -> push) alors que _D pouvait encore être
+// l'état local "brut" (voire vide, sur un appareil neuf) pas encore
+// remplacé par les données cloud. Tant que cet écran reste affiché, aucune
+// interaction utilisateur n'est possible, donc aucun push ne peut partir
+// avant que les données n'aient été chargées depuis le cloud — le push
+// automatique (_scheduleCloudPush) ne se déclenche de toute façon que
+// depuis saveData(), lui-même appelé uniquement par une action utilisateur
+// (ajout d'une carte, changement d'édition, etc.), jamais pendant ce chargement.
+window.addEventListener('DOMContentLoaded', async () => {
   loadData();
   initCloud();
   setDefaultDate();
   if (!_applyHashRoute()) _setHash('extensions', null); // URL toujours renseignée, même à l'ouverture
-  // Always hide loading screen even if renderAll threw
-  const hideLoading = () => {
-    const l = document.getElementById('loading');
-    if (l) { l.style.opacity = '0'; setTimeout(() => l.style.display = 'none', 300); }
-  };
-  setTimeout(hideLoading, 100);
   document.querySelectorAll('.modal-backdrop').forEach(el =>
     el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); })
   );
@@ -150,6 +156,21 @@ window.addEventListener('DOMContentLoaded', () => {
       return;
     }
   });
+
+  // On attend ici la fin complète de la synchro cloud (pull + application à
+  // _D, voir _cloudInitialSync dans js/sync.js) avant de retirer l'écran de
+  // chargement. Le try/finally garantit que l'écran disparaît quoi qu'il
+  // arrive : _cloudInitialSync gère déjà ses propres erreurs réseau/RLS en
+  // interne (toast + console.warn) et ne les relance pas, mais on ne bloque
+  // jamais l'appli indéfiniment pour autant en cas d'imprévu.
+  try {
+    await _cloudInitialSync();
+  } catch (e) {
+    console.error('[PTCG] init cloud a échoué de façon inattendue :', e);
+  } finally {
+    const l = document.getElementById('loading');
+    if (l) { l.style.opacity = '0'; setTimeout(() => l.style.display = 'none', 300); }
+  }
 });
 
 // ── Persistence ────────────────────────────────────────────────────────────
@@ -223,8 +244,12 @@ function loadData() {
     console.error('[PTCG] renderAll crashed:', err);
   }
   // Toute la logique de restauration/synchronisation cloud (tables
-  // normalisées + labels) est centralisée dans js/sync.js.
-  _cloudInitialSync();
+  // normalisées + labels) est centralisée dans js/sync.js, dans
+  // _cloudInitialSync(). Elle n'est PAS appelée ici : c'est le handler
+  // DOMContentLoaded (plus bas dans ce fichier) qui l'appelle et l'attend
+  // (await) avant de retirer l'écran de chargement — voir son commentaire
+  // pour le pourquoi. loadData() ne fait que l'état local, rapide et
+  // synchrone, pour un premier rendu (sous l'écran de chargement).
 }
 
 // Migre l'ancien modèle (un "acheteur"/"vendeur" = une commande unique avec
@@ -325,8 +350,10 @@ function renderAll() {
     const saved = _D.settings?.sales_cards_per_row;
     const gridVal    = typeof saved === 'number' ? saved : (saved?.grid || 5);
     const compactVal = (saved && typeof saved === 'object') ? (saved.compact || 3) : 3;
+    const peopleVal  = (saved && typeof saved === 'object') ? (saved.people || 5) : 5;
     applyCardsPerRow('grid', gridVal);
     applyCardsPerRow('compact', compactVal);
+    applyCardsPerRow('people', peopleVal);
   }, 'applyCardsPerRow');
   safe(() => {
     _extSortDir = _D.settings?.sort_dir === 'desc' ? 'desc' : 'asc';

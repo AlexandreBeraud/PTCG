@@ -19,6 +19,10 @@
    <html> par applyCardsPerRow() (js/ventes-achats.js), une valeur par mode. */
 .sales-grid { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row-grid, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
 .sales-grid-wide { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row-grid, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+/* Acheteurs/Vendeurs : mêmes cartes, réglage "cartes par ligne" indépendant
+   de celui de Ventes/Dépenses (pas de carte-produit à afficher, souvent plus
+   pertinent d'en avoir plus par ligne). */
+.people-grid-wide { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row-people, 5), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
 .sales-list-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; overflow-x: auto; }
 .sales-compact-wrap { display: grid; grid-template-columns: repeat(var(--sales-cards-per-row-compact, 3), minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
 .sales-empty { color: var(--text2); font-size: .82rem; padding: 28px 8px; text-align: center; grid-column: 1/-1; }
@@ -47,7 +51,7 @@
 /* Cartes Vente / Dépense (item unique) — toute la carte est cliquable pour
    ouvrir la modification (voir le addEventListener('click', ...) dans le JS) ;
    les boutons internes stoppent la propagation pour ne pas déclencher les deux. */
-.sale-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; }
+.sale-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; display: flex; flex-direction: column; height: 100%; }
 .sale-card:hover { border-color: var(--accent); }
 .sale-card-top { min-height: 92px; display: flex; align-items: center; padding: 12px 16px; gap: 12px; position: relative; }
 .sale-top-info { flex: 1; min-width: 0; padding-right: 26px; }
@@ -58,7 +62,8 @@
 .sale-card-meta { font-size: .68rem; color: var(--text2); white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; max-width: 100%; }
 .sale-card-number { font-size: .64rem; color: var(--text3); white-space: nowrap; margin-top: 1px; }
 .sale-card-footer-actions { display: flex; gap: 4px; justify-content: flex-end; }
-.sale-card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 9px; }
+.sale-card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+.sale-card-footer { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 .sale-row { display: flex; align-items: center; justify-content: space-between; font-size: .76rem; gap: 8px; }
 .sale-row .lbl { color: var(--text2); flex-shrink: 0; }
 .sale-row .val.price { color: var(--green); font-weight: 700; }
@@ -106,7 +111,7 @@
   background-position: center; background-color: var(--bg3);
   display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
 }
-.sale-compact-body { flex: 1; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
+.sale-compact-body { flex: 1; min-width: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
 .sale-compact-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .sale-compact-head-text { min-width: 0; }
 .sale-compact-name { font-size: .92rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

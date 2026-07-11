@@ -606,6 +606,12 @@
               style="width:70px" oninput="applyCardsPerRow('compact', this.value)">
             <button class="btn btn-primary btn-sm" onclick="saveCardsPerRow('compact')">Sauvegarder</button>
           </div>
+          <div class="settings-display-row" style="margin-top:10px">
+            <label>Cartes par ligne — Acheteurs / Vendeurs :</label>
+            <input type="number" id="settings-cards-per-row-people" min="2" max="10" step="1" value="5"
+              style="width:70px" oninput="applyCardsPerRow('people', this.value)">
+            <button class="btn btn-primary btn-sm" onclick="saveCardsPerRow('people')">Sauvegarder</button>
+          </div>
         </div>
         <div class="settings-card">
           <h3>Export / Import</h3>
