@@ -170,6 +170,16 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .page-header-left p { color: var(--text2); margin-top: 4px; font-size: .82rem; }
 .page-header-right { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
+/* Barre de recherche locale à une page (ex. rechercher une extension dans
+   Boosters/Goodies) — même look que .topbar-search mais largeur fixe, pensée
+   pour cohabiter avec d'autres boutons dans .page-header-right. */
+.page-search { flex: 0 0 220px; display: flex; align-items: center; gap: 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 12px; height: 32px; transition: border-color .15s; }
+.page-search:focus-within { border-color: var(--accent); }
+.page-search svg { flex-shrink: 0; color: var(--text3); }
+.page-search input { flex: 1; min-width: 0; font-size: .8rem; color: var(--text); background: transparent; border: none; outline: none; }
+.page-search input::placeholder { color: var(--text3); }
+@media (max-width: 640px) { .page-search { flex-basis: 100%; } }
+
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius-sm); font-size: .78rem; font-weight: 600; transition: all .15s; white-space: nowrap; }
 .btn-sm { padding: 4px 10px; font-size: .72rem; }

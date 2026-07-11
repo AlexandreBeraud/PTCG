@@ -44,11 +44,13 @@ var _illusExtId      = null;
 var _illusEditId     = null;
 var _boosterDetail   = null;
 var _boosterFilter   = 'all';
+var _boosterSearchQuery = ''; // recherche d'extension, propre à l'onglet Boosters
 
 // Goodies (même mécanisme que Boosters, mais product_type !== 'booster' —
 // voir js/sync.js pour la répartition boosters/goodies côté cloud)
 var _goodieDetail    = null;
 var _goodieFilter    = 'all';
+var _goodieSearchQuery = ''; // recherche d'extension, propre à l'onglet Goodies
 
 // ── Routage par URL (#/section) ─────────────────────────────────────────────
 // Chaque section a sa propre URL (ex. index.html#/ventes), pour pouvoir la

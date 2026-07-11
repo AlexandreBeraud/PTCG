@@ -1107,6 +1107,11 @@ function setBoosterFilter(val, btn) {
   renderBoosters();
 }
 
+// Recherche d'extension dans l'onglet Boosters (même logique de correspondance
+// que filterExtensions : nom OU code, insensible à la casse) — un bloc entier
+// disparaît de l'affichage s'il n'a plus aucune extension correspondante.
+function filterBoosters(q) { _boosterSearchQuery = q; renderBoosters(); }
+
 // `typeOrder` : ordre + liste des product_type à afficher dans ce groupe de
 // sections (par défaut celui des Boosters) — même fonction pour Boosters et
 // Goodies plutôt que deux copies qui pourraient diverger.
@@ -1148,6 +1153,9 @@ function setGoodieFilter(val, btn) {
   renderGoodies();
 }
 
+// Recherche d'extension dans l'onglet Goodies — voir filterBoosters ci-dessus.
+function filterGoodies(q) { _goodieSearchQuery = q; renderGoodies(); }
+
 // Rendu générique partagé par Boosters et Goodies : même structure de grille
 // accordéon/hcard/liste, seuls le sous-ensemble de product_type affiché, le
 // conteneur ciblé et les id de stats changent selon `opts`.
@@ -1167,10 +1175,14 @@ function _renderIllusTab(opts) {
   document.getElementById(opts.stat.globalBar).style.background = pctBg(gPct);
 
   getBlocs().forEach(bloc => {
-    const extsToShow = [
+    let extsToShow = [
       ...(bloc.extensions||[]).map(e=>{const ov=(_D.ext_overrides||{})[e.id]||{};return{...e,...ov,_builtin:true};}).filter(e=>e.sorti&&!e._hidden&&(e.stat_mode||'all')!=='cards_only'),
       ...(_D.custom_exts||[]).filter(e=>e.bloc_id===bloc.id&&(e.stat_mode||'all')!=='cards_only').map(e=>({...e,_custom:true}))
     ];
+    if (opts.searchQuery) {
+      const q = opts.searchQuery.toLowerCase();
+      extsToShow = extsToShow.filter(e => e.nom.toLowerCase().includes(q) || e.code.toLowerCase().includes(q));
+    }
     if (extsToShow.length===0) return;
 
     let bT=0,bO=0;
@@ -1303,7 +1315,7 @@ function renderBoosters() {
   _renderIllusTab({
     containerId: 'boosters-main', typeFilter: pt => pt === 'booster', viewModeKey: 'boosters',
     uidPrefix: 'bea', kind: 'booster', activeFilter: _boosterFilter, typeOrder: ['booster'],
-    detailFn: 'openBoosterDetail',
+    detailFn: 'openBoosterDetail', searchQuery: _boosterSearchQuery,
     stat: { globalPct:'bs-global-pct', globalBar:'bs-global-bar-fill', total:'bs-total', exts:'bs-exts', fav:'bs-fav', last:'bs-last' },
   });
 }
@@ -1315,7 +1327,7 @@ function renderGoodies() {
   _renderIllusTab({
     containerId: 'goodies-main', typeFilter: pt => pt !== 'booster', viewModeKey: 'goodies',
     uidPrefix: 'goo', kind: 'goodie', activeFilter: _goodieFilter, typeOrder: GOODIE_TYPE_ORDER,
-    detailFn: 'openGoodieDetail',
+    detailFn: 'openGoodieDetail', searchQuery: _goodieSearchQuery,
     stat: { globalPct:'gs-global-pct', globalBar:'gs-global-bar-fill', total:'gs-total', exts:'gs-exts', fav:'gs-fav', last:'gs-last' },
   });
 }
