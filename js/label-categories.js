@@ -48,6 +48,44 @@ var TYPE_FR = {
 // un type de label est intrinsèquement une question de logique de parsing,
 // pas une donnée éditable par l'utilisateur.
 
+// Nettoie une liste de préfixes/suffixes : gère un éventuel résidu
+// d'encodage JSON — chaîne à parser, tableau à un seul élément qui est
+// lui-même cette chaîne encodée une deuxième fois, guillemets restés collés
+// à un élément isolé... — en se dépliant récursivement jusqu'à un tableau
+// plat de chaînes propres. Utilisée UNIQUEMENT ici, au point de lecture
+// central de tous les labels (getFormLabelConfig) : peu importe la forme
+// exacte du problème en base, toute la suite de l'appli (recherche de
+// cartes, détection des orphelines, affichage/édition) reçoit une donnée
+// garantie propre.
+function _cleanPatternList(v) {
+  if (v == null) return [];
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (s.charAt(0) === '[') {
+      try { const parsed = JSON.parse(s); if (Array.isArray(parsed)) return _cleanPatternList(parsed); } catch(_) {}
+    }
+    return s ? [s.replace(/^"(.*)"$/, '$1')] : [];
+  }
+  if (!Array.isArray(v)) return [];
+  const out = [];
+  v.forEach(item => {
+    if (typeof item === 'string') {
+      const s = item.trim();
+      if (s.charAt(0) === '[') {
+        try {
+          const parsed = JSON.parse(s);
+          if (Array.isArray(parsed)) { out.push(..._cleanPatternList(parsed)); return; }
+        } catch(_) {}
+      }
+      const unquoted = s.replace(/^"(.*)"$/, '$1');
+      if (unquoted) out.push(unquoted);
+    } else if (item != null) {
+      out.push(String(item));
+    }
+  });
+  return out;
+}
+
 // Renvoie la config effective d'un label — directement depuis _D.labels
 // (chargé depuis Supabase), plus aucune fusion avec une définition en dur.
 // Si le type n'existe pas encore (nouveau type détecté jamais configuré),
@@ -62,8 +100,8 @@ function getFormLabelConfig(type) {
       badge:    row.badge || (type||'').toUpperCase(),
       color:    row.color || '#888888',
       enabled:  row.enabled !== false,
-      prefixes: Array.isArray(row.prefixes) ? row.prefixes.slice() : [],
-      suffixes: Array.isArray(row.suffixes) ? row.suffixes.slice() : [],
+      prefixes: _cleanPatternList(row.prefixes),
+      suffixes: _cleanPatternList(row.suffixes),
     };
   }
   return { fr: type, badge: (type||'').toUpperCase(), color: '#888888', enabled: true, prefixes: [], suffixes: [] };

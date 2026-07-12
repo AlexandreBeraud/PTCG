@@ -114,15 +114,29 @@ function _labelCategoryHeaderHtml(cat, depth) {
   </summary>`;
 }
 
+// Options du sélecteur de catégorie, groupées par catégorie PARENTE (une
+// racine, suivie immédiatement de ses sous-catégories indentées) — même
+// principe que les extensions groupées par bloc, plutôt qu'une liste plate
+// où une sous-catégorie pouvait se retrouver n'importe où selon son
+// sort_order, loin de sa catégorie parente.
+function _labelCategoryOptionsHtml(selectedId) {
+  let html = `<option value="" ${!selectedId?'selected':''}>Non classé</option>`;
+  getLabelCategoryTree().forEach(root => {
+    html += `<option value="${_escHtml(root.id)}" ${selectedId===root.id?'selected':''}>${_escHtml(root.name)}</option>`;
+    (root.children||[]).forEach(child => {
+      html += `<option value="${_escHtml(child.id)}" ${selectedId===child.id?'selected':''}>&nbsp;&nbsp;↳ ${_escHtml(child.name)}</option>`;
+    });
+  });
+  return html;
+}
+
 // Carte compacte pour un label (badge, nom, réglages) — plusieurs cartes
 // tiennent par ligne dans la grille (.lbl-cards-grid), ce qui réduit
 // drastiquement le défilement vertical pour les catégories à beaucoup de labels.
 function _renderLabelCard(type, cfg) {
   const safe = type.replace(/'/g,"\\'");
   const esc  = s => (s||'').replace(/"/g,'&quot;');
-  const currentCat = _labelCategoryOf(type);
-  const catOptions = `<option value="" ${!currentCat?'selected':''}>Non classé</option>`
-    + getLabelCategories().map(cat => `<option value="${_escHtml(cat.id)}" ${currentCat===cat.id?'selected':''}>${_escHtml(cat.name)}</option>`).join('');
+  const catOptions = _labelCategoryOptionsHtml(_labelCategoryOf(type));
   return `<div class="lbl-card" id="lblrow-${type}">
     <div class="lbl-card-top">
       <span class="pkdx-forms-type-badge" style="background:${cfg.color}">${cfg.badge}</span>
@@ -155,9 +169,7 @@ function _renderLabelCard(type, cfg) {
 function _renderLabelRow(type, cfg) {
   const safe = type.replace(/'/g,"\\'");
   const esc  = s => (s||'').replace(/"/g,'&quot;');
-  const currentCat = _labelCategoryOf(type);
-  const catOptions = `<option value="" ${!currentCat?'selected':''}>Non classé</option>`
-    + getLabelCategories().map(cat => `<option value="${_escHtml(cat.id)}" ${currentCat===cat.id?'selected':''}>${_escHtml(cat.name)}</option>`).join('');
+  const catOptions = _labelCategoryOptionsHtml(_labelCategoryOf(type));
   return `<div class="lbl-row" id="lblrow-${type}">
     <div class="lbl-badge-cell"><span class="pkdx-forms-type-badge" style="background:${cfg.color}">${cfg.badge}</span></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.fr)}" placeholder="Nom affiché"

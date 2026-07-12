@@ -567,15 +567,23 @@ var _SYNC_DOMAINS = [
     },
     apply: function (rows) {
       rows.sort(function (a, b) { return (a.lbl_sort_order || 0) - (b.lbl_sort_order || 0); });
+      var neededRepair = false;
       _D.labels = rows.map(function (r, idx) {
+        var prefixes = typeof _cleanPatternList === 'function' ? _cleanPatternList(r.lbl_prefixes) : (Array.isArray(r.lbl_prefixes) ? r.lbl_prefixes : []);
+        var suffixes = typeof _cleanPatternList === 'function' ? _cleanPatternList(r.lbl_suffixes) : (Array.isArray(r.lbl_suffixes) ? r.lbl_suffixes : []);
+        if (JSON.stringify(prefixes) !== JSON.stringify(r.lbl_prefixes) || JSON.stringify(suffixes) !== JSON.stringify(r.lbl_suffixes)) neededRepair = true;
         return {
           type: r.lbl_type, fr: r.lbl_fr || r.lbl_type, badge: r.lbl_badge || '', color: r.lbl_color || '#888888',
           enabled: r.lbl_enabled !== false,
-          prefixes: Array.isArray(r.lbl_prefixes) ? r.lbl_prefixes : [],
-          suffixes: Array.isArray(r.lbl_suffixes) ? r.lbl_suffixes : [],
+          prefixes: prefixes, suffixes: suffixes,
           category_id: r.lbl_category_id || null, sort_order: r.lbl_sort_order != null ? r.lbl_sort_order : idx,
         };
       });
+      // Au moins une ligne avait un résidu d'encodage en base : on reprogramme
+      // un envoi (avec les tableaux maintenant propres) pour corriger
+      // définitivement Supabase, plutôt que de devoir re-nettoyer à chaque
+      // chargement.
+      if (neededRepair && typeof _scheduleCloudPush === 'function') _scheduleCloudPush();
     },
   },
   {

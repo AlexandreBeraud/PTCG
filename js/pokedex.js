@@ -938,23 +938,34 @@ async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
     // ET la jointure tiret (les deux se rencontrent selon les imports TCGdex),
     // quelle que soit la façon dont l'utilisateur les a saisis dans Édition › Labels.
     const cfg = getFormLabelConfig(formType);
+    // BUG corrigé : _nnLbl() retirait l'accent du préfixe ("Méga-" → "mega-")
+    // avant même de construire la requête — et Postgres ILIKE ne confond
+    // JAMAIS "é" et "e". Une carte réellement nommée "Méga-Dracaufeu X-ex"
+    // ne pouvait donc plus jamais être trouvée par le préfixe "Méga-", alors
+    // qu'elle l'était par un préfixe sans accent comme "M-". On garde
+    // l'accent du préfixe tel qu'écrit dans Édition › Labels, et on essaie
+    // EN PLUS sa variante sans accent (même traitement que _accentVariants
+    // applique déjà au nom du Pokémon lui-même juste au-dessus).
     const shortTokens = [...new Set(
       (cfg.prefixes||[])
-        .map(p => _nnLbl(p).replace(/[-\s]+$/, '').replace(/^[-\s]+/, ''))
+        .map(p => p.replace(/[-\s]+$/, '').replace(/^[-\s]+/, ''))
         .filter(Boolean)
     )];
     const seen = new Set(cards.map(c => c.id));
     for (const token of shortTokens) {
+      const tokenVariants = _accentVariants(token);
       for (const joiner of [' ', '-']) {
         for (const nameVariant of nameVariants) {
-          try {
-            const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(token + joiner + nameVariant)}*&order=set_id.asc,number.asc&limit=200`,
-              { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-            const extra = r2.ok ? await r2.json() : [];
-            extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
-              if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
-            });
-          } catch(_) {}
+          for (const tokenVariant of tokenVariants) {
+            try {
+              const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(tokenVariant + joiner + nameVariant)}*&order=set_id.asc,number.asc&limit=200`,
+                { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+              const extra = r2.ok ? await r2.json() : [];
+              extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
+                if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
+              });
+            } catch(_) {}
+          }
         }
       }
     }
