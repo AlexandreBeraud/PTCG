@@ -767,9 +767,8 @@ function _saleListRowHtml(opts) {
     <div class="sale-list-cell sale-list-types">${opts.typesHtml || '—'}</div>
     <div class="sale-list-cell">${opts.langue||'—'}</div>
     <div class="sale-list-price">${opts.priceHtml}</div>
-    <div class="sale-list-flag"${hasPerson ? '' : ' style="display:none"'}>${hasPerson ? opts.personFlagHtml||'' : ''}</div>
-    <div class="sale-list-pseudo ${hasPerson ? '' : 'unlinked'}">${hasPerson ? opts.personPseudoHtml : opts.personEmptyLabel}</div>
-    <div class="sale-list-date"${hasPerson ? '' : ' style="display:none"'}>${hasPerson ? opts.personDateHtml||'' : ''}</div>
+    <div class="sale-list-person${hasPerson ? '' : ' unlinked'}">${hasPerson ? (opts.personFlagHtml||'') + opts.personPseudoHtml : opts.personEmptyLabel}</div>
+    <div class="sale-list-date">${hasPerson ? opts.personDateHtml||'' : ''}</div>
     <div class="sale-list-cell">${opts.cardmarketUrl ? `<a href="${opts.cardmarketUrl}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">CardMarket ↗</a>` : '—'}</div>
     <div class="sale-list-actions">
       ${opts.splitBtnHtml || ''}
@@ -1589,18 +1588,24 @@ function buildAcheteurCard(a) {
 function buildAcheteurRow(a) {
   const commandes = acheteurCommandes(a.id);
   const total  = acheteurTotal(a.id);
-  const nbCartes = acheteurVentes(a.id).length;
+  const ventes = acheteurVentes(a.id);
+  const nbCartes = ventes.length;
   const expanded = _orderExpandedAcheteurs.has(a.id);
   const row = document.createElement('div');
   row.className = 'classeur-list-row';
   row.dataset.acheteurId = a.id;
+  const extColorVal = _dominantExtColor(ventes);
+  if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 45%)`;
   row.innerHTML = `
     <div class="clr-header" onclick="_toggleOrderExpand('acheteur','${a.id}')">
       <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#4a9eff33,#4a9eff55)">${_flagImgHtml(a.icon, 30)}</div>
       <div class="clr-accent-bar" style="background:#4a9eff"></div>
       <div class="clr-info">
         <div class="clr-name">${a.pseudo}</div>
-        <div class="clr-meta">${commandes.length} commande${commandes.length>1?'s':''} · ${nbCartes} carte${nbCartes>1?'s':''}</div>
+      </div>
+      <div class="clr-mid-stats">
+        <div class="clr-mid-stat"><span class="clr-mid-val">${commandes.length}</span><span class="clr-mid-lbl">commande${commandes.length>1?'s':''}</span></div>
+        <div class="clr-mid-stat"><span class="clr-mid-val">${nbCartes}</span><span class="clr-mid-lbl">carte${nbCartes>1?'s':''}</span></div>
       </div>
       <div class="clr-right"><div class="order-total" style="font-size:.92rem">${total.toFixed(2)} €</div></div>
       <div class="clr-actions" onclick="event.stopPropagation()">
@@ -1858,18 +1863,24 @@ function buildVendeurCard(v) {
 function buildVendeurRow(v) {
   const commandes = vendeurCommandes(v.id);
   const total    = vendeurTotal(v.id);
-  const nbCartes = vendeurDepenses(v.id).length;
+  const depensesForVendeur = vendeurDepenses(v.id);
+  const nbCartes = depensesForVendeur.length;
   const expanded = _orderExpandedVendeurs.has(v.id);
   const row = document.createElement('div');
   row.className = 'classeur-list-row';
   row.dataset.vendeurId = v.id;
+  const extColorVal = _dominantExtColor(depensesForVendeur);
+  if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 45%)`;
   row.innerHTML = `
     <div class="clr-header" onclick="_toggleOrderExpand('vendeur','${v.id}')">
       <div class="clr-thumb clr-thumb-circle" style="background:linear-gradient(135deg,#f9731633,#f9731655)">${_flagImgHtml(v.icon, 30)}</div>
       <div class="clr-accent-bar" style="background:#f97316"></div>
       <div class="clr-info">
         <div class="clr-name">${v.pseudo}</div>
-        <div class="clr-meta">${commandes.length} commande${commandes.length>1?'s':''} · ${nbCartes} carte${nbCartes>1?'s':''}</div>
+      </div>
+      <div class="clr-mid-stats">
+        <div class="clr-mid-stat"><span class="clr-mid-val">${commandes.length}</span><span class="clr-mid-lbl">commande${commandes.length>1?'s':''}</span></div>
+        <div class="clr-mid-stat"><span class="clr-mid-val">${nbCartes}</span><span class="clr-mid-lbl">carte${nbCartes>1?'s':''}</span></div>
       </div>
       <div class="clr-right"><div class="order-total" style="font-size:.92rem">${total.toFixed(2)} €</div></div>
       <div class="clr-actions" onclick="event.stopPropagation()">

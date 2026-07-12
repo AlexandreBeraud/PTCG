@@ -8,66 +8,95 @@ var _labelsQuery = '';
 
 function filterLabelsList(q) { _labelsQuery = q; renderLabelsList(); }
 
+// Lit l'état plié/déplié actuel de chaque <details> (identifié par son id)
+// AVANT de réécrire le HTML — c'est ce qui évite qu'une simple frappe, un
+// ajout ou tout autre changement ne redéploie systématiquement toutes les
+// catégories que l'utilisateur avait explicitement repliées.
+function _captureLabelOpenState(el) {
+  const state = {};
+  el.querySelectorAll('details[id]').forEach(d => { state[d.id] = d.open; });
+  return state;
+}
+
 function renderLabelsList() {
   const el = document.getElementById('labels-list');
   if (!el) return;
+  const openState = _captureLabelOpenState(el);
+  const isOpen = (id, dflt) => openState[id] !== undefined ? openState[id] : dflt;
+  // Grille/liste choisi via le bouton du header (#topbar-view-toggle, voir
+  // setViewMode dans collection.js) plutôt qu'un bouton local à ce panneau.
+  const mode = _tabViewModes['labels'] || 'grid';
+
   const q = _nnLbl(_labelsQuery||'');
   const deletedSet = new Set(_D.deleted_labels||[]);
   let html = '', totalShown = 0;
-
-  const colsHtml = `<div class="lbl-group-cols">
-    <span>Label</span><span>Nom affiché</span><span>Badge</span><span>Couleur</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span>Catégorie</span><span></span>
-  </div>`;
 
   const allTypes = [
     ...Object.keys(FORM_LABELS).filter(t => !deletedSet.has(t)),
     ...Object.keys(_D.custom_labels||{}),
   ];
 
-  const rowsForTypes = types => types.map(type => {
-    const cfg = getFormLabelConfig(type);
-    if (q && !_nnLbl(type + ' ' + cfg.fr).includes(q)) return '';
-    totalShown++;
-    return _renderLabelRow(type, cfg);
-  }).filter(Boolean).join('');
+  const colsHtml = `<div class="lbl-group-cols">
+    <span>Label</span><span>Nom affiché</span><span>Badge</span><span>Couleur</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span>Catégorie</span><span></span>
+  </div>`;
 
-  getLabelCategories().forEach(cat => {
+  // Grille de cartes compactes (par défaut, évite le défilement interminable
+  // pour les catégories à beaucoup de labels) OU tableau de lignes classique
+  // — au choix, via le bouton grille/liste ci-dessus.
+  const cardsForTypes = types => {
+    const kept = types.filter(type => {
+      const cfg = getFormLabelConfig(type);
+      return !(q && !_nnLbl(type + ' ' + cfg.fr).includes(q));
+    });
+    totalShown += kept.length;
+    if (!kept.length) return '';
+    if (mode === 'list') {
+      return colsHtml + kept.map(type => _renderLabelRow(type, getFormLabelConfig(type))).join('');
+    }
+    return `<div class="lbl-cards-grid">${kept.map(type => _renderLabelCard(type, getFormLabelConfig(type))).join('')}</div>`;
+  };
+
+  // Une catégorie (récursif sur 1 niveau de sous-catégories, voir
+  // getLabelCategoryTree) : ses propres labels PUIS ses sous-catégories.
+  const renderCategory = (cat, depth) => {
+    const detailsId = `lblcat-${cat.id}`;
     const typesInCat = allTypes.filter(t => _labelCategoryOf(t) === cat.id);
-    const rows = rowsForTypes(typesInCat);
-    if (!rows) {
+    const cardsHtml = cardsForTypes(typesInCat);
+    const childrenHtml = (cat.children||[]).map(ch => renderCategory(ch, depth+1)).filter(Boolean).join('');
+    if (!cardsHtml && !childrenHtml) {
       // Catégorie vide (ou entièrement filtrée par la recherche) : on ne la
       // garde visible que si elle est personnalisée et qu'aucune recherche
       // n'est active, pour pouvoir toujours la réorganiser/renommer/supprimer
-      // ou y glisser des labels par la suite.
-      if (!cat._custom || q) return;
-      html += `<details class="lbl-group" open>
-        ${_labelCategoryHeaderHtml(cat)}
-        <p style="color:var(--text3);font-size:.74rem;padding:2px 10px 10px">Catégorie vide — assigne-lui des labels via le menu « Catégorie » ci-dessous.</p>
+      // ou y glisser des labels/catégories par la suite.
+      if (!cat._custom || q) return '';
+      return `<details class="lbl-group${depth?' lbl-subgroup':''}" id="${detailsId}" ${isOpen(detailsId,true)?'open':''}>
+        ${_labelCategoryHeaderHtml(cat, depth)}
+        <p style="color:var(--text3);font-size:.74rem;padding:2px 10px 10px">Catégorie vide — assigne-lui des labels via le menu « Catégorie » d'une carte, ou ranges-y une autre catégorie via le sélecteur ci-dessus.</p>
       </details>`;
-      return;
     }
-    html += `<details class="lbl-group" open>
-      ${_labelCategoryHeaderHtml(cat)}
-      ${colsHtml}
-      ${rows}
+    return `<details class="lbl-group${depth?' lbl-subgroup':''}" id="${detailsId}" ${isOpen(detailsId,true)?'open':''}>
+      ${_labelCategoryHeaderHtml(cat, depth)}
+      ${childrenHtml}
+      ${cardsHtml}
     </details>`;
-  });
+  };
+
+  getLabelCategoryTree().forEach(cat => { html += renderCategory(cat, 0); });
 
   // Non classés (aucune catégorie par défaut ni assignée)
   const unclassified = allTypes.filter(t => _labelCategoryOf(t) === null);
-  const unclassifiedRows = rowsForTypes(unclassified);
-  if (unclassifiedRows) {
-    html += `<details class="lbl-group" open>
+  const unclassifiedHtml = cardsForTypes(unclassified);
+  if (unclassifiedHtml) {
+    html += `<details class="lbl-group" id="lblcat-unclassified" ${isOpen('lblcat-unclassified',true)?'open':''}>
       <summary class="lbl-group-header lbl-group-header-static"><span class="lbl-cat-chevron">▸</span>Non classés</summary>
-      ${colsHtml}
-      ${unclassifiedRows}
+      ${unclassifiedHtml}
     </details>`;
   }
 
   // Labels supprimés définitivement (repliable, avec restauration possible)
   const deletedTypes = [...deletedSet].filter(t => FORM_LABELS[t]);
   if (deletedTypes.length) {
-    html += `<details class="lbl-deleted-group">
+    html += `<details class="lbl-deleted-group" id="lbl-deleted-block" ${isOpen('lbl-deleted-block',false)?'open':''}>
       <summary>Labels supprimés (${deletedTypes.length})</summary>
       ${deletedTypes.map(type => {
         const base = FORM_LABELS[type];
@@ -83,7 +112,7 @@ function renderLabelsList() {
   // Catégories intégrées masquées (repliable, avec restauration possible)
   const hiddenCats = FORM_LABEL_GROUPS.filter(g => (_D.label_category_overrides||{})[g.id]?._hidden);
   if (hiddenCats.length) {
-    html += `<details class="lbl-deleted-group">
+    html += `<details class="lbl-deleted-group" id="lbl-hidden-cats-block" ${isOpen('lbl-hidden-cats-block',false)?'open':''}>
       <summary>Catégories masquées (${hiddenCats.length})</summary>
       ${hiddenCats.map(g => {
         const name = (_D.label_category_overrides||{})[g.id]?.name ?? g.label;
@@ -100,18 +129,22 @@ function renderLabelsList() {
   el.innerHTML = html || `<p style="color:var(--text2);font-size:.82rem;padding:16px 0">Aucun résultat.</p>`;
 }
 
-// En-tête de catégorie : glisser-déposer pour réorganiser, renommer et
-// supprimer/masquer — disponible pour toutes les catégories, intégrées comme
-// personnalisées (une catégorie intégrée est masquée plutôt que supprimée,
-// et reste restaurable).
-function _labelCategoryHeaderHtml(cat) {
+// En-tête de catégorie : glisser-déposer pour réorganiser, renommer,
+// supprimer/masquer, et ranger comme sous-catégorie d'une autre — disponible
+// pour toutes les catégories, intégrées comme personnalisées (une catégorie
+// intégrée est masquée plutôt que supprimée, et reste restaurable).
+function _labelCategoryHeaderHtml(cat, depth) {
   const safe = _escJs(cat.id);
-  return `<summary class="lbl-group-header" draggable="true" data-cat-id="${_escHtml(cat.id)}"
+  const roots = getLabelCategoryTree().filter(c => c.id !== cat.id);
+  const parentOptions = `<option value="">— Catégorie principale —</option>`
+    + roots.map(r => `<option value="${_escHtml(r.id)}" ${cat.parentId===r.id?'selected':''}>${_escHtml(r.name)}</option>`).join('');
+  return `<summary class="lbl-group-header${depth?' lbl-group-header-sub':''}" draggable="true" data-cat-id="${_escHtml(cat.id)}"
       ondragstart="onLabelCatDragStart(event)" ondragover="onLabelCatDragOver(event)"
       ondragleave="this.classList.remove('drag-target')" ondrop="onLabelCatDrop(event)">
     <span class="lbl-cat-chevron">▸</span>
     <span class="lbl-cat-handle" title="Glisser pour réorganiser">⠿</span>
     <span class="lbl-cat-name">${_escHtml(cat.name)}</span>
+    <select class="lbl-cat-parent-select" title="Ranger comme sous-catégorie de…" onclick="event.stopPropagation()" onchange="event.stopPropagation();setLabelCategoryParent('${safe}',this.value)">${parentOptions}</select>
     <span class="lbl-cat-actions">
       <button class="mbadge-clear" title="Renommer" onclick="event.preventDefault();event.stopPropagation();renameLabelCategory('${safe}')">✎</button>
       <button class="mbadge-clear" title="${cat._custom ? 'Supprimer la catégorie' : 'Masquer la catégorie'}" onclick="event.preventDefault();event.stopPropagation();deleteLabelCategory('${safe}')">🗑</button>
@@ -119,6 +152,49 @@ function _labelCategoryHeaderHtml(cat) {
   </summary>`;
 }
 
+// Carte compacte pour un label (badge, nom, réglages) — remplace l'ancienne
+// ligne pleine largeur à 8 colonnes : plusieurs cartes tiennent par ligne
+// dans la grille (.lbl-cards-grid), ce qui réduit drastiquement le
+// défilement vertical pour les catégories à beaucoup de labels.
+function _renderLabelCard(type, cfg) {
+  const safe    = type.replace(/'/g,"\\'");
+  const isCustom = cfg.isCustom;
+  const base    = FORM_LABELS[type] || { fr: type, badge: cfg.badge, color: cfg.color };
+  const esc     = s => (s||'').replace(/"/g,'&quot;');
+  const isOv    = !isCustom && !!(_D.form_label_overrides||{})[type];
+  const currentCat = _labelCategoryOf(type);
+  const catOptions = `<option value="" ${!currentCat?'selected':''}>Non classé</option>`
+    + getLabelCategories().map(cat => `<option value="${_escHtml(cat.id)}" ${currentCat===cat.id?'selected':''}>${_escHtml(cat.name)}</option>`).join('');
+  return `<div class="lbl-card" id="lblrow-${type}">
+    <div class="lbl-card-top">
+      <span class="pkdx-forms-type-badge" style="background:${cfg.color}">${cfg.badge}</span>
+      <label class="lbl-switch lbl-switch-sm" title="Afficher ce label">
+        <input type="checkbox" ${cfg.enabled!==false?'checked':''} onchange="updateLabelToggle('${safe}',this.checked)">
+        <span class="lbl-switch-track"></span>
+      </label>
+      <span class="lbl-card-actions">
+        ${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">↺</button>` : ''}
+        <button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>
+      </span>
+    </div>
+    <input type="text" class="lbl-input lbl-input-name" value="${esc(cfg.fr)}" placeholder="${esc(base.fr)}" title="Nom affiché"
+      oninput="_setLabelOverrideValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')">
+    <div class="lbl-card-row2">
+      <input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="${esc(base.badge)}" maxlength="10" title="Badge"
+        oninput="_setLabelOverrideValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')">
+      <input type="color" class="lbl-color" value="${(cfg.color||'#888888').slice(0,7)}" title="Couleur"
+        onchange="_setLabelOverrideValue('${safe}','color',this.value);commitLabelEdit('${safe}')">
+    </div>
+    <input type="text" class="lbl-input" value="${esc((cfg.prefixes||[]).join(', '))}" placeholder="Préfixes carte — ex : Méga-, M "
+      oninput="_setLabelOverrideValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')">
+    <input type="text" class="lbl-input" value="${esc((cfg.suffixes||[]).join(', '))}" placeholder="Suffixes carte — ex : VMAX, X"
+      oninput="_setLabelOverrideValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')">
+    <select class="lbl-input" onchange="setLabelCategory('${safe}',this.value)" title="Catégorie">${catOptions}</select>
+  </div>`;
+}
+
+// Ligne pleine largeur (mode liste) — mêmes champs que _renderLabelCard,
+// disposés en colonnes façon tableau (voir colsHtml dans renderLabelsList).
 function _renderLabelRow(type, cfg) {
   const safe    = type.replace(/'/g,"\\'");
   const isCustom = cfg.isCustom;
@@ -128,9 +204,6 @@ function _renderLabelRow(type, cfg) {
   const currentCat = _labelCategoryOf(type);
   const catOptions = `<option value="" ${!currentCat?'selected':''}>Non classé</option>`
     + getLabelCategories().map(cat => `<option value="${_escHtml(cat.id)}" ${currentCat===cat.id?'selected':''}>${_escHtml(cat.name)}</option>`).join('');
-  const deleteBtn = isCustom
-    ? `<button class="mbadge-clear" title="Supprimer" onclick="deleteLabelPermanently('${safe}')">🗑</button>`
-    : `<button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>`;
   return `<div class="lbl-row" id="lblrow-${type}">
     <div class="lbl-badge-cell"><span class="pkdx-forms-type-badge" style="background:${cfg.color}">${cfg.badge}</span></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.fr)}" placeholder="${esc(base.fr)}"
@@ -149,7 +222,7 @@ function _renderLabelRow(type, cfg) {
     <div class="lbl-field"><select class="lbl-input" onchange="setLabelCategory('${safe}',this.value)">${catOptions}</select></div>
     <div class="lbl-reset-cell">
       ${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">↺</button>` : ''}
-      ${deleteBtn}
+      <button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>
     </div>
   </div>`;
 }

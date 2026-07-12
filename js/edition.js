@@ -220,6 +220,7 @@ function switchEditionTab(tab) {
   _setHash('edition', tab);
   document.querySelectorAll('.edition-tab').forEach(t => t.classList.remove('active'));
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  _syncEditionViewToggle(tab);
 
   const mainLayout    = document.getElementById('edition-layout-main');
   const mappingPanel  = document.getElementById('edition-mapping-panel');
@@ -273,6 +274,24 @@ function switchEditionTab(tab) {
     : 'Extensions intégrées : surcharge. Extensions custom : création libre.';
 }
 
+// Le bouton grille/liste du header (#topbar-view-toggle) est réutilisé pour
+// TOUS les sous-onglets d'Édition ayant un mode d'affichage (Blocs/
+// Extensions, Mapping TCG, Labels) plutôt que d'avoir un bouton local par
+// panneau — masqué seulement pour Cartes orphelines, qui n'a pas cette
+// notion. Chaque sous-onglet garde son propre mode mémorisé (voir
+// _viewModeStorageKey dans core.js), donc passer de l'un à l'autre ne perd
+// jamais le choix fait sur les autres.
+function _syncEditionViewToggle(tab) {
+  const toggle = document.getElementById('topbar-view-toggle');
+  if (!toggle) return;
+  const show = ['blocs','exts','mapping','labels'].includes(tab);
+  toggle.style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  const key = tab === 'mapping' ? 'mapping' : tab === 'labels' ? 'labels' : 'edition';
+  const mode = _tabViewModes[key] || 'grid';
+  toggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+}
+
 // ── Cartes orphelines ────────────────────────────────────────────────────
 // Détecte les cartes de la table Supabase "cards" dont le nom ne correspond
 // (avec ou sans accent — voir _accentVariants dans pokedex.js) à AUCUN nom
@@ -314,6 +333,31 @@ async function initOrphanCardsView() {
     _pkdx.all.forEach(p => {
       if (!p.frName) return;
       _accentVariants(p.frName).forEach(v => known.add(_canonPokeName(v)));
+    });
+    // Les noms de formes ci-dessus (_pkdx.all avec isForm) ne couvrent que les
+    // motifs PokéAPI standards (voir _buildFormFrName : Méga/Gigamax/régionales
+    // uniquement) — tous les AUTRES labels (Origine, Couronné, Masque…, et
+    // surtout tout label PERSONNALISÉ créé dans Édition › Labels) retombent
+    // sur le nom de base tel quel. Or beaucoup de ces formes s'impriment avec
+    // un PRÉFIXE avant le nom du Pokémon (ex. "Méga Dracaufeu X" ne commence
+    // pas par "Dracaufeu") : sans ça, ces cartes semblaient introuvables alors
+    // qu'elles le sont bien via la fiche du Pokémon concerné. On reproduit
+    // donc ici, pour CHAQUE Pokémon de base connu, les mêmes motifs préfixe/
+    // suffixe que la recherche réelle utilise (getFormLabelConfig), pour
+    // CHAQUE label actif (intégré ou personnalisé).
+    const baseEntries = _pkdx.all.filter(p => !p.isForm && p.frName);
+    _allLabelTypes().forEach(type => {
+      const cfg = getFormLabelConfig(type);
+      if (!cfg || cfg.enabled === false) return;
+      const prefixes = cfg.prefixes || [], suffixes = cfg.suffixes || [];
+      if (!prefixes.length && !suffixes.length) return;
+      baseEntries.forEach(p => {
+        _accentVariants(p.frName).forEach(baseVariant => {
+          const baseCanon = _canonPokeName(baseVariant);
+          prefixes.forEach(pre => { const pc = _canonPokeName(pre); if (pc) known.add((pc + ' ' + baseCanon).trim()); });
+          suffixes.forEach(suf => { const sc = _canonPokeName(suf); if (sc) known.add((baseCanon + ' ' + sc).trim()); });
+        });
+      });
     });
     _orphanCards.knownSet = known;
 

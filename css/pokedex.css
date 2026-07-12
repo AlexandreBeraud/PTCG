@@ -286,6 +286,16 @@
 .mbadge-clear { background:none; border:none; color:var(--text3); cursor:pointer; font-size:.95rem; padding:0 2px; line-height:1; transition:color .15s; }
 .mbadge-clear:hover { color:var(--accent2); }
 
+/* Mode grille du Mapping TCG (alternative à .mrow, choix via le bouton du
+   header) — même contenu (sigle/nom/code, recherche de set, statut) mais en
+   carte compacte plutôt qu'en ligne pleine largeur. */
+.mmap-cards-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px; padding:6px 2px; }
+.mmap-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:9px; display:flex; flex-direction:column; gap:8px; transition:border-color .15s; }
+.mmap-card:hover { border-color:var(--text3); }
+.mmap-card-top { display:flex; align-items:center; gap:6px; }
+.mmap-card-top .mrow-names { flex:1; min-width:0; }
+.mmap-card-top .mrow-status { flex-shrink:0; }
+
 /* ── Pokédex ext filter dropdown ─────────────────────────────────────────── */
 .pkdx-ext-dropdown { position:absolute; top:calc(100% + 6px); right:0; z-index:100; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow); min-width:220px; max-height:320px; overflow-y:auto; }
 .pkdx-ext-filter-item { display:flex; align-items:center; gap:8px; padding:8px 14px; font-size:.8rem; cursor:pointer; color:var(--text2); transition:background .1s, color .1s; white-space:nowrap; }
@@ -444,7 +454,71 @@
 .lbl-group[open] > .lbl-group-header .lbl-cat-chevron { transform: rotate(90deg); }
 .lbl-cat-handle { color: var(--text3); font-size: .9rem; flex-shrink: 0; }
 .lbl-cat-name { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: .05em; font-size: .74rem; }
+.lbl-cat-parent-select {
+  flex-shrink: 0; max-width: 160px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 3px 6px; font-size: .68rem; color: var(--text2);
+  outline: none; cursor: pointer; text-transform: none; letter-spacing: normal;
+}
+.lbl-cat-parent-select:hover { border-color: var(--text3); color: var(--text); }
 .lbl-cat-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+/* Sous-catégorie : légèrement indentée et imbriquée dans le padding de la
+   catégorie parente, pour que la hiérarchie soit visible d'un coup d'œil. */
+.lbl-group .lbl-subgroup { margin: 10px 14px 14px; }
+.lbl-group-header-sub { font-size: .72rem; padding: 8px 12px; }
+.lbl-group-header-sub .lbl-cat-name { text-transform: none; letter-spacing: normal; font-weight: 600; }
+
+/* Grille de cartes compactes — plusieurs labels par ligne, largeur adaptative
+   selon l'espace dispo : évite le défilement interminable d'un tableau plein
+   écran quand une catégorie contient beaucoup de labels. */
+.lbl-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 10px; padding: 12px 14px;
+}
+.lbl-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 9px; display: flex; flex-direction: column; gap: 6px; transition: border-color .15s;
+}
+.lbl-card:hover { border-color: var(--text3); }
+.lbl-card-top { display: flex; align-items: center; gap: 6px; }
+.lbl-card-actions { display: flex; gap: 3px; margin-left: auto; flex-shrink: 0; }
+.lbl-card-row2 { display: flex; gap: 6px; }
+.lbl-card-row2 .lbl-input { flex: 1; min-width: 0; }
+.lbl-input-name { font-weight: 600; }
+.lbl-input {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 5px 8px; font-size: .74rem;
+  color: var(--text); outline: none; transition: border-color .15s;
+}
+.lbl-input:focus { border-color: var(--accent); }
+.lbl-input::placeholder { color: var(--text3); }
+.lbl-color {
+  width: 32px; height: 28px; padding: 0; border: 1px solid var(--border); flex-shrink: 0;
+  border-radius: var(--radius-sm); background: none; cursor: pointer;
+}
+.lbl-switch { position: relative; display: inline-block; width: 34px; height: 19px; flex-shrink: 0; cursor: pointer; }
+.lbl-switch-sm { margin-left: auto; }
+.lbl-switch input { opacity: 0; width: 0; height: 0; }
+.lbl-switch-track {
+  position: absolute; inset: 0; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 20px; transition: background .15s;
+}
+.lbl-switch-track::before {
+  content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px;
+  background: var(--text3); border-radius: 50%; transition: transform .15s, background .15s;
+}
+.lbl-switch input:checked + .lbl-switch-track { background: rgba(6,214,160,.18); border-color: var(--green); }
+.lbl-switch input:checked + .lbl-switch-track::before { transform: translateX(15px); background: var(--green); }
+.lbl-card-actions .mbadge-clear {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text2); cursor: pointer; font-size: .7rem; line-height: 1; padding: 4px 6px;
+  transition: color .15s, border-color .15s;
+}
+.lbl-card-actions .mbadge-clear:hover { color: var(--accent2); border-color: var(--accent2); }
+
+/* Mode liste — tableau de lignes classique (alternative à .lbl-cards-grid,
+   choix via le bouton grille/liste). */
 .lbl-group-cols {
   display: grid;
   grid-template-columns: 48px 1fr 90px 34px 56px 1fr 1fr 140px 56px;
@@ -461,31 +535,8 @@
 .lbl-row:hover { background: var(--bg3); }
 .lbl-badge-cell { display: flex; align-items: center; }
 .lbl-field { min-width: 0; }
-.lbl-input {
-  width: 100%; background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 4px 8px; font-size: .74rem;
-  color: var(--text); outline: none; transition: border-color .15s;
-}
-.lbl-input:focus { border-color: var(--accent); }
-.lbl-input::placeholder { color: var(--text3); }
 .lbl-color-cell { display: flex; justify-content: center; }
-.lbl-color {
-  width: 28px; height: 24px; padding: 0; border: 1px solid var(--border);
-  border-radius: var(--radius-sm); background: none; cursor: pointer;
-}
 .lbl-toggle-cell { display: flex; justify-content: center; }
-.lbl-switch { position: relative; display: inline-block; width: 34px; height: 19px; flex-shrink: 0; cursor: pointer; }
-.lbl-switch input { opacity: 0; width: 0; height: 0; }
-.lbl-switch-track {
-  position: absolute; inset: 0; background: var(--bg3); border: 1px solid var(--border);
-  border-radius: 20px; transition: background .15s;
-}
-.lbl-switch-track::before {
-  content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px;
-  background: var(--text3); border-radius: 50%; transition: transform .15s, background .15s;
-}
-.lbl-switch input:checked + .lbl-switch-track { background: rgba(6,214,160,.18); border-color: var(--green); }
-.lbl-switch input:checked + .lbl-switch-track::before { transform: translateX(15px); background: var(--green); }
 .lbl-reset-cell { display: flex; justify-content: center; align-items: center; gap: 4px; }
 .lbl-reset-cell .mbadge-clear {
   background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);

@@ -179,14 +179,17 @@ function toggleSortDir() {
 }
 
 function setViewMode(mode, btn) {
-  _tabViewModes[_currentView] = mode;
+  const key = typeof _viewModeStorageKey === 'function' ? _viewModeStorageKey() : _currentView;
+  _tabViewModes[key] = mode;
   document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   if(!_D.settings) _D.settings={};
   if(!_D.settings.tab_view_modes) _D.settings.tab_view_modes={};
-  _D.settings.tab_view_modes[_currentView] = mode;
+  _D.settings.tab_view_modes[key] = mode;
   saveData();
-  renderAll();
+  if (key === 'labels' && typeof renderLabelsList === 'function') renderLabelsList();
+  else if (key === 'mapping' && typeof renderMappingList === 'function') renderMappingList();
+  else renderAll();
 }
 
 // ── Global Progress ────────────────────────────────────────────────────────

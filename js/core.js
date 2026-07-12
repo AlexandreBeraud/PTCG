@@ -19,10 +19,25 @@ var _showNonSorti    = false;
 var _searchQuery     = '';
 // Per-tab view modes
 var _tabViewModes = { extensions:'grid', classeurs:'grid', boosters:'grid', edition:'grid',
-  ventes:'grid', acheteurs:'grid', depenses:'grid', vendeurs:'grid' };
+  ventes:'grid', acheteurs:'grid', depenses:'grid', vendeurs:'grid', labels:'grid' };
 var _currentView = 'extensions';
 // Backward compat helper
 function _viewMode() { return _tabViewModes[_currentView] || 'grid'; }
+// Clé de stockage du mode grille/liste pour le contexte actuel : dans
+// Édition, Mapping TCG et Labels ont chacun leur propre mode (indépendant
+// l'un de l'autre et de celui des Blocs/Extensions), alors que _currentView
+// vaut 'edition' pour tous ces sous-onglets — sans cette distinction, le
+// bouton du header écraserait le même mode pour tout le monde.
+function _viewModeStorageKey() {
+  if (_currentView === 'edition') {
+    if (typeof _editionTab !== 'undefined') {
+      if (_editionTab === 'mapping') return 'mapping';
+      if (_editionTab === 'labels') return 'labels';
+    }
+    return 'edition';
+  }
+  return _currentView;
+}
 var _extSortDir      = 'asc';    // 'asc' | 'desc' — shared across all ext views
 
 // Edition

@@ -60,6 +60,7 @@ function _refreshViewsAfterMappingLoaded() {
 function renderMappingList() {
   const el = document.getElementById('mapping-list');
   if (!el) return;
+  const mode = _tabViewModes['mapping'] || 'grid';
   const q = (_mapping.query||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   let totalFiltered = 0, html = '';
   getBlocs().forEach(bloc => {
@@ -74,7 +75,7 @@ function renderMappingList() {
     const customExts = (_D.custom_exts||[]).filter(e=>e.bloc_id===bloc.id);
     const allExts = sortExts([...builtInExts,...movedHere,...customExts]);
     if (!allExts.length) return;
-    const rows = allExts.map(e => {
+    const items = allExts.map(e => {
       const mapped   = _mapping.mappings[e.id];
       if (_mapping.filter === 'mapped'   && !mapped) return '';
       if (_mapping.filter === 'unmapped' &&  mapped) return '';
@@ -88,16 +89,11 @@ function renderMappingList() {
       }
       totalFiltered++;
       const safeId = e.id.replace(/'/g,"\\'");
-      return `<div class="mrow" id="mrow-${e.id}">
-        <div class="mrow-ext">
-          ${logoSrc  ? `<img src="${logoSrc}"  alt="" class="mrow-logo"      onerror="this.style.display='none'">` : ''}
-          ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="mrow-sigle-img" onerror="this.style.display='none'">` : `<div class="mrow-sigle-ph">${code.slice(0,5)||'?'}</div>`}
-          <div class="mrow-names">
-            <span class="mrow-name">${name}</span>
-            ${code ? `<span class="mrow-code">${code}</span>` : ''}
-          </div>
-        </div>
-        <div class="mrow-set"><div class="mrow-set-wrap">
+      const sigleHtml = sigleSrc ? `<img src="${sigleSrc}" alt="" class="mrow-sigle-img" onerror="this.style.display='none'">` : `<div class="mrow-sigle-ph">${code.slice(0,5)||'?'}</div>`;
+      const statusHtml = mapped
+        ? `<span class="mbadge mbadge-ok">✓</span><button class="mbadge-clear" onclick="clearMapping('${safeId}')" title="Supprimer">×</button>`
+        : `<span class="mbadge mbadge-no">—</span>`;
+      const setInput = `<div class="mrow-set-wrap">
           <input type="text" class="mrow-input" id="mset-${e.id}"
             placeholder="Chercher un set TCGdex…"
             value="${mapped ? mapped.set_name+' ('+mapped.set_id+')' : ''}"
@@ -105,15 +101,34 @@ function renderMappingList() {
             onfocus="showMappingDropdown('${safeId}',this.value)"
             autocomplete="off">
           <div class="mrow-dropdown" id="mdrop-${e.id}" style="display:none"></div>
-        </div></div>
-        <div class="mrow-status" id="mstatus-${e.id}">
-          ${mapped
-            ? `<span class="mbadge mbadge-ok">✓</span><button class="mbadge-clear" onclick="clearMapping('${safeId}')" title="Supprimer">×</button>`
-            : `<span class="mbadge mbadge-no">—</span>`}
+        </div>`;
+      if (mode === 'list') {
+        return `<div class="mrow" id="mrow-${e.id}">
+          <div class="mrow-ext">
+            ${logoSrc ? `<img src="${logoSrc}" alt="" class="mrow-logo" onerror="this.style.display='none'">` : ''}
+            ${sigleHtml}
+            <div class="mrow-names">
+              <span class="mrow-name">${name}</span>
+              ${code ? `<span class="mrow-code">${code}</span>` : ''}
+            </div>
+          </div>
+          <div class="mrow-set">${setInput}</div>
+          <div class="mrow-status" id="mstatus-${e.id}">${statusHtml}</div>
+        </div>`;
+      }
+      return `<div class="mmap-card" id="mrow-${e.id}">
+        <div class="mmap-card-top">
+          ${sigleHtml}
+          <div class="mrow-names">
+            <span class="mrow-name">${name}</span>
+            ${code ? `<span class="mrow-code">${code}</span>` : ''}
+          </div>
+          <div class="mrow-status" id="mstatus-${e.id}">${statusHtml}</div>
         </div>
+        ${setInput}
       </div>`;
     }).filter(Boolean).join('');
-    if (!rows) return;
+    if (!items) return;
     const uid    = 'mbloc_' + bloc.id;
     const isOpen = !sessionStorage.getItem('mbloc_closed_' + bloc.id);
     html += `<div class="mbloc">
@@ -124,7 +139,7 @@ function renderMappingList() {
         <span class="mbloc-count">${allExts.length} ext.</span>
         <div class="cer-chevron ${isOpen?'open':''}" id="mchev-${bloc.id}" style="margin-left:auto">▼</div>
       </div>
-      <div id="${uid}" style="${isOpen?'':'display:none'}">${rows}</div>
+      <div id="${uid}" style="${isOpen?'':'display:none'}" class="${mode==='list'?'':'mmap-cards-grid'}">${items}</div>
     </div>`;
   });
   const counter = document.getElementById('mapping-counter');

@@ -75,6 +75,7 @@ var FORM_LABELS = {
   complete:        { fr:'Complet',           badge:'COMPLET',   color:'#10B981' },
   '10':            { fr:'10%',               badge:'10%',       color:'#EF4444' },
   '50':            { fr:'50%',               badge:'50%',       color:'#6B7280' },
+  '100':           { fr:'100%',              badge:'100%',      color:'#DC2626' },
   'battle-bond':   { fr:'Résolution',        badge:'RÉSOL.',    color:'#2563EB' },
   ash:             { fr:'Sacha',             badge:'SACHA',     color:'#EF4444' },
   'teal-mask':     { fr:'Masque Turquoise',  badge:'TURQ.',     color:'#0D9488' },
@@ -117,7 +118,6 @@ var FORM_LABELS = {
   'three-family':  { fr:'Famille de 3',      badge:'FAM.3',     color:'#F9A8D4' },
   'three-segment': { fr:'3 Segments',        badge:'×3',        color:'#374151' },
   'full-power':    { fr:'Puissance Max',     badge:'MAX',       color:'#7C3AED' },
-  own:             { fr:'Maître',            badge:'MAÎTRE',    color:'#D97706' },
   'east-sea':      { fr:'Mer Orient',        badge:'ORIENT',    color:'#0EA5E9' },
   'west-sea':      { fr:'Mer Occident',      badge:'OCCID.',    color:'#6366F1' },
   active:          { fr:'Actif',             badge:'ACTIF',     color:'#FBBF24' },
@@ -170,7 +170,6 @@ var FORM_LABELS = {
   'blaze-breed':   { fr:'Race Flamme',       badge:'FLAMME',    color:'#F97316' },
   'combat-breed':  { fr:'Race Combat',       badge:'COMBAT',    color:'#EF4444' },
   // Divers
-  totem:           { fr:'Totem',             badge:'TOTEM',     color:'#FFD166' },
   attack:          { fr:'Attaque',           badge:'ATT.',      color:'#EF4444' },
   defense:         { fr:'Défense',           badge:'DÉF.',      color:'#3B82F6' },
   speed:           { fr:'Vitesse',           badge:'VIT.',      color:'#F59E0B' },
@@ -181,11 +180,6 @@ var FORM_LABELS = {
   curly:           { fr:'Vert (Enroulé)',     badge:'ENROUL.',   color:'#22C55E' },
   droopy:          { fr:'Pendant',           badge:'PENDANT',   color:'#93C5FD' },
   stretchy:        { fr:'Allongé',           badge:'ALLONG.',   color:'#FCD34D' },
-  phony:           { fr:'Contrefait',        badge:'CONTREF.',  color:'#9CA3AF' },
-  antique:         { fr:'Authentique',       badge:'AUTH.',     color:'#D97706' },
-  'red-striped':   { fr:'Rayé Rouge',        badge:'ROUGE',     color:'#EF4444' },
-  'blue-striped':  { fr:'Rayé Bleu',         badge:'BLEU',      color:'#3B82F6' },
-  'white-striped': { fr:'Rayé Blanc',        badge:'BLANC',     color:'#E2E8F0' },
   natural:         { fr:'Naturel',           badge:'NAT.',      color:'#84CC16' },
   heart:           { fr:'Cœur',              badge:'CŒUR',      color:'#EC4899' },
   star:            { fr:'Étoile',            badge:'ÉTOILE',    color:'#FBBF24' },
@@ -233,8 +227,6 @@ var DEFAULT_FORM_CARD_PATTERNS = {
   'mega-y': { prefixes: ['Méga-', 'Méga ', 'M ', 'M-'], suffixes: ['Y'] },
   'mega-z': { prefixes: ['Méga-', 'Méga ', 'M ', 'M-'], suffixes: ['Z'] },
   gmax:     { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
-  'amped-gmax':         { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
-  'low-key-gmax':       { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
   'single-strike-gmax': { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
   'rapid-strike-gmax':  { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
   primal:   { prefixes: ['Primo-', 'Primo '], suffixes: [] },
@@ -291,9 +283,9 @@ function getLabelCategories() {
     .filter(g => !(_D.label_category_overrides||{})[g.id]?._hidden)
     .map(g => {
       const ov = (_D.label_category_overrides||{})[g.id] || {};
-      return { id: g.id, name: ov.name !== undefined ? ov.name : g.label, _builtin: true };
+      return { id: g.id, name: ov.name !== undefined ? ov.name : g.label, parentId: ov.parent_id || null, _builtin: true };
     });
-  const custom  = (_D.custom_label_categories || []).map(c => ({ id: c.id, name: c.name, _custom: true }));
+  const custom  = (_D.custom_label_categories || []).map(c => ({ id: c.id, name: c.name, parentId: c.parent_id || null, _custom: true }));
   const all = [...builtin, ...custom];
   const order = _D.label_category_order || [];
   if (order.length) {
@@ -306,6 +298,24 @@ function getLabelCategories() {
     });
   }
   return all;
+}
+
+// Regroupe les catégories en arbre — UN SEUL niveau de sous-catégories (pas
+// de petites-catégories), pour rester simple à afficher/gérer/parcourir. Une
+// catégorie dont le parent n'existe plus (supprimé) ou pointe sur elle-même
+// redevient automatiquement une catégorie de premier niveau.
+function getLabelCategoryTree() {
+  const flat = getLabelCategories();
+  const byId = new Map(flat.map(c => [c.id, { ...c, children: [] }]));
+  const roots = [];
+  byId.forEach(c => {
+    if (c.parentId && c.parentId !== c.id && byId.has(c.parentId)) {
+      byId.get(c.parentId).children.push(c);
+    } else {
+      roots.push(c);
+    }
+  });
+  return roots;
 }
 
 // Catégorie effective d'un label : une assignation manuelle prend le pas sur
@@ -358,6 +368,39 @@ function addLabelCategory() {
   toast('Catégorie créée.', 'success');
 }
 
+// Range une catégorie comme sous-catégorie d'une autre (parentId='' ou null
+// → la remonte au premier niveau). Un seul niveau de sous-catégories est
+// permis : on refuse de ranger une catégorie qui a déjà ses propres
+// sous-catégories, ou sous une catégorie qui est elle-même une
+// sous-catégorie — dans les deux cas on réaffiche quand même la liste pour
+// que le sélecteur revienne à sa valeur réelle (annule visuellement le choix
+// invalide qui vient d'être fait).
+function setLabelCategoryParent(id, parentId) {
+  const tree = getLabelCategoryTree();
+  const selfNode = tree.find(c => c.id === id) || tree.flatMap(c => c.children).find(c => c.id === id);
+  let ok = true, msg = '';
+  if (parentId) {
+    if (parentId === id) { ok = false; msg = 'Une catégorie ne peut pas être sa propre sous-catégorie.'; }
+    else if (!tree.find(c => c.id === parentId)) { ok = false; msg = "Impossible : cette catégorie est déjà une sous-catégorie (un seul niveau de sous-catégories est permis)."; }
+    else if (selfNode && selfNode.children && selfNode.children.length) { ok = false; msg = "Cette catégorie a ses propres sous-catégories : déplace-les d'abord (un seul niveau de sous-catégories est permis)."; }
+  }
+  if (ok) {
+    const custom = (_D.custom_label_categories||[]).find(c => c.id === id);
+    if (custom) {
+      if (parentId) custom.parent_id = parentId; else delete custom.parent_id;
+    } else if (FORM_LABEL_GROUPS.find(g => g.id === id)) {
+      if (!_D.label_category_overrides) _D.label_category_overrides = {};
+      const ov = { ...(_D.label_category_overrides[id]||{}) };
+      if (parentId) ov.parent_id = parentId; else delete ov.parent_id;
+      if (Object.keys(ov).length) _D.label_category_overrides[id] = ov; else delete _D.label_category_overrides[id];
+    }
+    saveData();
+    _pushLabelSettingsToCloud();
+  }
+  renderLabelsList();
+  toast(ok ? (parentId ? 'Catégorie déplacée.' : 'Catégorie remontée au premier niveau.') : msg, ok ? 'success' : 'error');
+}
+
 // Renomme une catégorie, personnalisée OU intégrée (via une surcharge de nom).
 function renameLabelCategory(id) {
   const custom  = (_D.custom_label_categories || []).find(c => c.id === id);
@@ -406,6 +449,16 @@ function deleteLabelCategory(id) {
       if (!(type in (_D.label_category_assignments||{}))) _D.label_category_assignments[type] = '';
     });
   }
+  // Les éventuelles sous-catégories de celle qu'on supprime/masque remontent
+  // au premier niveau plutôt que de disparaître avec elle.
+  (_D.custom_label_categories||[]).forEach(c => { if (c.parent_id === id) delete c.parent_id; });
+  FORM_LABEL_GROUPS.forEach(g => {
+    const ov = (_D.label_category_overrides||{})[g.id];
+    if (ov && ov.parent_id === id) {
+      delete ov.parent_id;
+      if (Object.keys(ov).length === 0) delete _D.label_category_overrides[g.id];
+    }
+  });
   const clearedTypes = [];
   if (_D.label_category_assignments) {
     Object.keys(_D.label_category_assignments).forEach(type => {
