@@ -331,6 +331,16 @@ async function initOrphanCardsView() {
     const known = new Set();
     _pkdx.all.forEach(p => {
       if (!p.frName) return;
+      // Si CE Pokémon (de base) a un label assigné manuellement (sélecteur
+      // "Label" de sa fiche), sa recherche de cartes est restreinte à ce
+      // label précis — exactement comme une forme (voir formType dans
+      // openPokedexModal) — le nom "plat" sans préfixe/suffixe n'est alors
+      // PLUS cherché du tout sur cette fiche. Une carte qui ne porte aucune
+      // décoration devient donc réellement introuvable dans ce cas (elle
+      // doit ressortir comme orpheline), là où sans assignation le nom plat
+      // reste normalement trouvable.
+      const assignedType = (_D.pokemon_label_assignments||{})[p.name];
+      if (assignedType) return;
       _accentVariants(p.frName).forEach(v => known.add(_canonPokeName(v)));
     });
     // Les noms de formes ci-dessus (_pkdx.all avec isForm) ne couvrent que les
