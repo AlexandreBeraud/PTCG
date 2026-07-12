@@ -203,12 +203,9 @@ function loadData() {
       ext_overrides: {},
       bloc_overrides:{},
       custom_blocs:  [],
-      form_label_overrides: {},
-      custom_labels: {},
-      deleted_labels: [],
+      labels:        [],
+      label_categories: [],
       pokemon_label_assignments: {},
-      label_local_ts: {},
-      label_settings_ts: 0,
       ventes:        [],
       acheteurs:     [],
       acheteur_commandes: [],
@@ -234,11 +231,9 @@ function loadData() {
       if (!_D.custom_exts)    _D.custom_exts    = [];
       if (!_D.ext_overrides)  _D.ext_overrides  = {};
       if (!_D.bloc_overrides) _D.bloc_overrides = {};
-      if (!_D.form_label_overrides) _D.form_label_overrides = {};
-      if (!_D.custom_labels) _D.custom_labels = {};
-      if (!_D.deleted_labels) _D.deleted_labels = [];
+      if (!_D.labels)         _D.labels         = [];
+      if (!_D.label_categories) _D.label_categories = [];
       if (!_D.pokemon_label_assignments) _D.pokemon_label_assignments = {};
-      if (!_D.label_local_ts) _D.label_local_ts = {};
       if (!_D.ventes)         _D.ventes         = [];
       if (!_D.acheteurs)      _D.acheteurs      = [];
       if (!_D.acheteur_commandes) _D.acheteur_commandes = [];

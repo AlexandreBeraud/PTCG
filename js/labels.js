@@ -28,13 +28,9 @@ function renderLabelsList() {
   const mode = _tabViewModes['labels'] || 'grid';
 
   const q = _nnLbl(_labelsQuery||'');
-  const deletedSet = new Set(_D.deleted_labels||[]);
   let html = '', totalShown = 0;
 
-  const allTypes = [
-    ...Object.keys(FORM_LABELS).filter(t => !deletedSet.has(t)),
-    ...Object.keys(_D.custom_labels||{}),
-  ];
+  const allTypes = _allLabelTypes();
 
   const colsHtml = `<div class="lbl-group-cols">
     <span>Label</span><span>Nom affiché</span><span>Badge</span><span>Couleur</span><span>Afficher</span><span>Préfixes carte</span><span>Suffixes carte</span><span>Catégorie</span><span></span>
@@ -42,7 +38,7 @@ function renderLabelsList() {
 
   // Grille de cartes compactes (par défaut, évite le défilement interminable
   // pour les catégories à beaucoup de labels) OU tableau de lignes classique
-  // — au choix, via le bouton grille/liste ci-dessus.
+  // — au choix, via le bouton grille/liste du header.
   const cardsForTypes = types => {
     const kept = types.filter(type => {
       const cfg = getFormLabelConfig(type);
@@ -64,11 +60,10 @@ function renderLabelsList() {
     const cardsHtml = cardsForTypes(typesInCat);
     const childrenHtml = (cat.children||[]).map(ch => renderCategory(ch, depth+1)).filter(Boolean).join('');
     if (!cardsHtml && !childrenHtml) {
-      // Catégorie vide (ou entièrement filtrée par la recherche) : on ne la
-      // garde visible que si elle est personnalisée et qu'aucune recherche
-      // n'est active, pour pouvoir toujours la réorganiser/renommer/supprimer
-      // ou y glisser des labels/catégories par la suite.
-      if (!cat._custom || q) return '';
+      // Catégorie vide (ou entièrement filtrée par la recherche) : gardée
+      // visible seulement hors recherche, pour pouvoir toujours la
+      // réorganiser/renommer/supprimer ou y ranger des labels/catégories.
+      if (q) return '';
       return `<details class="lbl-group${depth?' lbl-subgroup':''}" id="${detailsId}" ${isOpen(detailsId,true)?'open':''}>
         ${_labelCategoryHeaderHtml(cat, depth)}
         <p style="color:var(--text3);font-size:.74rem;padding:2px 10px 10px">Catégorie vide — assigne-lui des labels via le menu « Catégorie » d'une carte, ou ranges-y une autre catégorie via le sélecteur ci-dessus.</p>
@@ -83,7 +78,7 @@ function renderLabelsList() {
 
   getLabelCategoryTree().forEach(cat => { html += renderCategory(cat, 0); });
 
-  // Non classés (aucune catégorie par défaut ni assignée)
+  // Non classés (aucune catégorie assignée)
   const unclassified = allTypes.filter(t => _labelCategoryOf(t) === null);
   const unclassifiedHtml = cardsForTypes(unclassified);
   if (unclassifiedHtml) {
@@ -93,46 +88,13 @@ function renderLabelsList() {
     </details>`;
   }
 
-  // Labels supprimés définitivement (repliable, avec restauration possible)
-  const deletedTypes = [...deletedSet].filter(t => FORM_LABELS[t]);
-  if (deletedTypes.length) {
-    html += `<details class="lbl-deleted-group" id="lbl-deleted-block" ${isOpen('lbl-deleted-block',false)?'open':''}>
-      <summary>Labels supprimés (${deletedTypes.length})</summary>
-      ${deletedTypes.map(type => {
-        const base = FORM_LABELS[type];
-        return `<div class="lbl-deleted-row">
-          <span class="pkdx-forms-type-badge" style="background:${base.color};opacity:.5">${base.badge}</span>
-          <span>${base.fr}</span>
-          <button class="btn btn-secondary" style="padding:3px 10px;font-size:.72rem" onclick="restoreDeletedLabel('${type.replace(/'/g,"\\'")}')">Restaurer</button>
-        </div>`;
-      }).join('')}
-    </details>`;
-  }
-
-  // Catégories intégrées masquées (repliable, avec restauration possible)
-  const hiddenCats = FORM_LABEL_GROUPS.filter(g => (_D.label_category_overrides||{})[g.id]?._hidden);
-  if (hiddenCats.length) {
-    html += `<details class="lbl-deleted-group" id="lbl-hidden-cats-block" ${isOpen('lbl-hidden-cats-block',false)?'open':''}>
-      <summary>Catégories masquées (${hiddenCats.length})</summary>
-      ${hiddenCats.map(g => {
-        const name = (_D.label_category_overrides||{})[g.id]?.name ?? g.label;
-        return `<div class="lbl-deleted-row">
-          <span>${_escHtml(name)}</span>
-          <button class="btn btn-secondary" style="padding:3px 10px;font-size:.72rem" onclick="restoreLabelCategory('${_escJs(g.id)}')">Restaurer</button>
-        </div>`;
-      }).join('')}
-    </details>`;
-  }
-
   const counter = document.getElementById('labels-counter');
   if (counter) counter.textContent = `${totalShown} label${totalShown>1?'s':''}`;
   el.innerHTML = html || `<p style="color:var(--text2);font-size:.82rem;padding:16px 0">Aucun résultat.</p>`;
 }
 
 // En-tête de catégorie : glisser-déposer pour réorganiser, renommer,
-// supprimer/masquer, et ranger comme sous-catégorie d'une autre — disponible
-// pour toutes les catégories, intégrées comme personnalisées (une catégorie
-// intégrée est masquée plutôt que supprimée, et reste restaurable).
+// supprimer, et ranger comme sous-catégorie d'une autre.
 function _labelCategoryHeaderHtml(cat, depth) {
   const safe = _escJs(cat.id);
   const roots = getLabelCategoryTree().filter(c => c.id !== cat.id);
@@ -147,21 +109,17 @@ function _labelCategoryHeaderHtml(cat, depth) {
     <select class="lbl-cat-parent-select" title="Ranger comme sous-catégorie de…" onclick="event.stopPropagation()" onchange="event.stopPropagation();setLabelCategoryParent('${safe}',this.value)">${parentOptions}</select>
     <span class="lbl-cat-actions">
       <button class="mbadge-clear" title="Renommer" onclick="event.preventDefault();event.stopPropagation();renameLabelCategory('${safe}')">✎</button>
-      <button class="mbadge-clear" title="${cat._custom ? 'Supprimer la catégorie' : 'Masquer la catégorie'}" onclick="event.preventDefault();event.stopPropagation();deleteLabelCategory('${safe}')">🗑</button>
+      <button class="mbadge-clear" title="Supprimer la catégorie" onclick="event.preventDefault();event.stopPropagation();deleteLabelCategory('${safe}')">🗑</button>
     </span>
   </summary>`;
 }
 
-// Carte compacte pour un label (badge, nom, réglages) — remplace l'ancienne
-// ligne pleine largeur à 8 colonnes : plusieurs cartes tiennent par ligne
-// dans la grille (.lbl-cards-grid), ce qui réduit drastiquement le
-// défilement vertical pour les catégories à beaucoup de labels.
+// Carte compacte pour un label (badge, nom, réglages) — plusieurs cartes
+// tiennent par ligne dans la grille (.lbl-cards-grid), ce qui réduit
+// drastiquement le défilement vertical pour les catégories à beaucoup de labels.
 function _renderLabelCard(type, cfg) {
-  const safe    = type.replace(/'/g,"\\'");
-  const isCustom = cfg.isCustom;
-  const base    = FORM_LABELS[type] || { fr: type, badge: cfg.badge, color: cfg.color };
-  const esc     = s => (s||'').replace(/"/g,'&quot;');
-  const isOv    = !isCustom && !!(_D.form_label_overrides||{})[type];
+  const safe = type.replace(/'/g,"\\'");
+  const esc  = s => (s||'').replace(/"/g,'&quot;');
   const currentCat = _labelCategoryOf(type);
   const catOptions = `<option value="" ${!currentCat?'selected':''}>Non classé</option>`
     + getLabelCategories().map(cat => `<option value="${_escHtml(cat.id)}" ${currentCat===cat.id?'selected':''}>${_escHtml(cat.name)}</option>`).join('');
@@ -173,22 +131,21 @@ function _renderLabelCard(type, cfg) {
         <span class="lbl-switch-track"></span>
       </label>
       <span class="lbl-card-actions">
-        ${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">↺</button>` : ''}
         <button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>
       </span>
     </div>
-    <input type="text" class="lbl-input lbl-input-name" value="${esc(cfg.fr)}" placeholder="${esc(base.fr)}" title="Nom affiché"
-      oninput="_setLabelOverrideValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')">
+    <input type="text" class="lbl-input lbl-input-name" value="${esc(cfg.fr)}" placeholder="Nom affiché" title="Nom affiché"
+      oninput="_setLabelFieldValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')">
     <div class="lbl-card-row2">
-      <input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="${esc(base.badge)}" maxlength="10" title="Badge"
-        oninput="_setLabelOverrideValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')">
+      <input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="Badge" maxlength="10" title="Badge"
+        oninput="_setLabelFieldValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')">
       <input type="color" class="lbl-color" value="${(cfg.color||'#888888').slice(0,7)}" title="Couleur"
-        onchange="_setLabelOverrideValue('${safe}','color',this.value);commitLabelEdit('${safe}')">
+        onchange="_setLabelFieldValue('${safe}','color',this.value);commitLabelEdit('${safe}')">
     </div>
     <input type="text" class="lbl-input" value="${esc((cfg.prefixes||[]).join(', '))}" placeholder="Préfixes carte — ex : Méga-, M "
-      oninput="_setLabelOverrideValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')">
+      oninput="_setLabelFieldValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')">
     <input type="text" class="lbl-input" value="${esc((cfg.suffixes||[]).join(', '))}" placeholder="Suffixes carte — ex : VMAX, X"
-      oninput="_setLabelOverrideValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')">
+      oninput="_setLabelFieldValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')">
     <select class="lbl-input" onchange="setLabelCategory('${safe}',this.value)" title="Catégorie">${catOptions}</select>
   </div>`;
 }
@@ -196,32 +153,28 @@ function _renderLabelCard(type, cfg) {
 // Ligne pleine largeur (mode liste) — mêmes champs que _renderLabelCard,
 // disposés en colonnes façon tableau (voir colsHtml dans renderLabelsList).
 function _renderLabelRow(type, cfg) {
-  const safe    = type.replace(/'/g,"\\'");
-  const isCustom = cfg.isCustom;
-  const base    = FORM_LABELS[type] || { fr: type, badge: cfg.badge, color: cfg.color };
-  const esc     = s => (s||'').replace(/"/g,'&quot;');
-  const isOv    = !isCustom && !!(_D.form_label_overrides||{})[type];
+  const safe = type.replace(/'/g,"\\'");
+  const esc  = s => (s||'').replace(/"/g,'&quot;');
   const currentCat = _labelCategoryOf(type);
   const catOptions = `<option value="" ${!currentCat?'selected':''}>Non classé</option>`
     + getLabelCategories().map(cat => `<option value="${_escHtml(cat.id)}" ${currentCat===cat.id?'selected':''}>${_escHtml(cat.name)}</option>`).join('');
   return `<div class="lbl-row" id="lblrow-${type}">
     <div class="lbl-badge-cell"><span class="pkdx-forms-type-badge" style="background:${cfg.color}">${cfg.badge}</span></div>
-    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.fr)}" placeholder="${esc(base.fr)}"
-      oninput="_setLabelOverrideValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')"></div>
-    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="${esc(base.badge)}" maxlength="10"
-      oninput="_setLabelOverrideValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.fr)}" placeholder="Nom affiché"
+      oninput="_setLabelFieldValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+    <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="Badge" maxlength="10"
+      oninput="_setLabelFieldValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')"></div>
     <div class="lbl-color-cell"><input type="color" class="lbl-color" value="${(cfg.color||'#888888').slice(0,7)}"
-      onchange="_setLabelOverrideValue('${safe}','color',this.value);commitLabelEdit('${safe}')"></div>
+      onchange="_setLabelFieldValue('${safe}','color',this.value);commitLabelEdit('${safe}')"></div>
     <div class="lbl-toggle-cell"><label class="lbl-switch">
       <input type="checkbox" ${cfg.enabled!==false?'checked':''} onchange="updateLabelToggle('${safe}',this.checked)">
       <span class="lbl-switch-track"></span></label></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc((cfg.prefixes||[]).join(', '))}" placeholder="ex : Méga-, M "
-      oninput="_setLabelOverrideValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+      oninput="_setLabelFieldValue('${safe}','prefixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc((cfg.suffixes||[]).join(', '))}" placeholder="ex : VMAX, X"
-      oninput="_setLabelOverrideValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+      oninput="_setLabelFieldValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
     <div class="lbl-field"><select class="lbl-input" onchange="setLabelCategory('${safe}',this.value)">${catOptions}</select></div>
     <div class="lbl-reset-cell">
-      ${isOv ? `<button class="mbadge-clear" title="Réinitialiser" onclick="resetLabelOverride('${safe}')">↺</button>` : ''}
       <button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>
     </div>
   </div>`;
@@ -238,100 +191,48 @@ function _refreshPokedexAfterLabelChange() {
 // pas faire perdre le focus du champ en cours d'édition). C'est cette fonction
 // qui garantit qu'une actualisation de page ne perd jamais la saisie, même si
 // l'utilisateur n'a pas encore quitté le champ (onblur).
-function _setLabelOverrideValue(type, field, value) {
-  if (_isCustomLabelType(type)) {
-    // Un label personnalisé n'a pas de "défaut" : on édite directement sa définition.
-    const c = _D.custom_labels[type];
-    if (field === 'prefixes' || field === 'suffixes') {
-      c[field] = value.split(',').map(s=>s.trim()).filter(Boolean);
-    } else if (field === 'fr' || field === 'badge' || field === 'color') {
-      c[field] = value;
-    }
-    saveData();
-    return;
+function _setLabelFieldValue(type, field, value) {
+  const row = (_D.labels||[]).find(l => l.type === type);
+  if (!row) return;
+  if (field === 'prefixes' || field === 'suffixes') {
+    row[field] = value.split(',').map(s=>s.trim()).filter(Boolean);
+  } else {
+    row[field] = value;
   }
-  if (!_D.form_label_overrides) _D.form_label_overrides = {};
-  const ov = { ...(_D.form_label_overrides[type] || {}) };
-  if (field === 'fr' || field === 'badge') {
-    const base = FORM_LABELS[type];
-    if (!value.trim() || value.trim() === base[field]) delete ov[field]; else ov[field] = value;
-  } else if (field === 'color') {
-    const base = FORM_LABELS[type];
-    if (!value || value === base.color) delete ov.color; else ov.color = value;
-  } else if (field === 'prefixes' || field === 'suffixes') {
-    const list = value.split(',').map(s=>s.trim()).filter(Boolean);
-    const dflt = (DEFAULT_FORM_CARD_PATTERNS[type]||{})[field] || [];
-    const same = list.length === dflt.length && list.every((v,i)=>v===dflt[i]);
-    if (same) delete ov[field]; else ov[field] = list;
-  }
-  if (Object.keys(ov).length === 0) delete _D.form_label_overrides[type];
-  else _D.form_label_overrides[type] = ov;
   saveData();
 }
 
-// Appelé en quittant un champ texte : pousse la valeur vers Supabase, rafraîchit
-// le Pokédex (si déjà ouvert) et redessine la liste (bouton "réinitialiser").
+// Appelé en quittant un champ texte : pousse la valeur vers Supabase (via le
+// moteur générique, déclenché par saveData() plus haut), rafraîchit le
+// Pokédex (si déjà ouvert) et redessine la liste.
 function commitLabelEdit(type) {
-  _pushLabelOverrideToCloud(type);
   _refreshPokedexAfterLabelChange();
   renderLabelsList();
 }
 
 function updateLabelToggle(type, checked) {
-  if (_isCustomLabelType(type)) {
-    _D.custom_labels[type].enabled = checked;
-  } else {
-    if (!_D.form_label_overrides) _D.form_label_overrides = {};
-    const ov = { ...(_D.form_label_overrides[type] || {}) };
-    if (checked === true) delete ov.enabled; else ov.enabled = false;
-    if (Object.keys(ov).length === 0) delete _D.form_label_overrides[type];
-    else _D.form_label_overrides[type] = ov;
-  }
+  const row = (_D.labels||[]).find(l => l.type === type);
+  if (!row) return;
+  row.enabled = checked;
   saveData();
-  _pushLabelOverrideToCloud(type);
   _refreshPokedexAfterLabelChange();
   renderLabelsList();
   toast('Label mis à jour.', 'success');
 }
 
-function resetLabelOverride(type) {
-  if (_D.form_label_overrides) delete _D.form_label_overrides[type];
-  saveData();
-  _pushLabelOverrideToCloud(type);
-  _refreshPokedexAfterLabelChange();
-  renderLabelsList();
-  toast('Label réinitialisé.', 'success');
-}
-
-// Suppression définitive : pour un label personnalisé, il est effacé ; pour un
-// label intégré, il est marqué "supprimé" (restaurable via la section dédiée)
-// et disparaît de toute l'application (badges, filtres, rattachement carte).
+// Suppression définitive et immédiate — comme pour n'importe quelle autre
+// donnée de l'app (vente, acheteur…), il n'y a plus de "valeur par défaut"
+// vers laquelle revenir : supprimer, c'est supprimer.
 function deleteLabelPermanently(type) {
-  if (!confirm(`Supprimer définitivement le label "${getFormLabelConfig(type)?.fr || type}" ?`)) return;
-  if (_isCustomLabelType(type)) {
-    delete _D.custom_labels[type];
-  } else {
-    if (!_D.deleted_labels) _D.deleted_labels = [];
-    if (!_D.deleted_labels.includes(type)) _D.deleted_labels.push(type);
-  }
-  if (_D.form_label_overrides) delete _D.form_label_overrides[type];
+  if (!confirm(`Supprimer définitivement le label "${getFormLabelConfig(type)?.fr || type}" ? Cette action est irréversible.`)) return;
+  _D.labels = (_D.labels||[]).filter(l => l.type !== type);
   saveData();
-  _pushLabelOverrideToCloud(type);
   _refreshPokedexAfterLabelChange();
   renderLabelsList();
   toast('Label supprimé définitivement.', 'success');
 }
 
-function restoreDeletedLabel(type) {
-  _D.deleted_labels = (_D.deleted_labels||[]).filter(t => t !== type);
-  saveData();
-  _pushLabelOverrideToCloud(type);
-  _refreshPokedexAfterLabelChange();
-  renderLabelsList();
-  toast('Label restauré.', 'success');
-}
-
-// Crée un nouveau label personnalisé (aucun équivalent hardcodé).
+// Crée un nouveau label.
 function addCustomLabel() {
   const frInput    = document.getElementById('new-label-fr');
   const badgeInput = document.getElementById('new-label-badge');
@@ -343,13 +244,12 @@ function addCustomLabel() {
 
   let slug = _nnLbl(fr).replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
   if (!slug) slug = 'label';
-  let type = 'custom-' + slug, i = 2;
-  while (FORM_LABELS[type] || (_D.custom_labels||{})[type]) { type = `custom-${slug}-${i++}`; }
+  let type = slug, i = 2;
+  while ((_D.labels||[]).some(l => l.type === type)) { type = `${slug}-${i++}`; }
 
-  if (!_D.custom_labels) _D.custom_labels = {};
-  _D.custom_labels[type] = { fr, badge, color, prefixes: [], suffixes: [] };
+  if (!_D.labels) _D.labels = [];
+  _D.labels.push({ type, fr, badge, color, enabled: true, prefixes: [], suffixes: [], category_id: null, sort_order: _D.labels.length });
   saveData();
-  _pushLabelOverrideToCloud(type);
   if (frInput) frInput.value = '';
   if (badgeInput) badgeInput.value = '';
   renderLabelsList();
@@ -390,167 +290,9 @@ async function assignPokemonLabel(slug, value, reopenType, reopenA, reopenB) {
   else if (reopenType === 'form') openPokedexFormModal(reopenA, reopenB);
 }
 
-// ── Sync cloud des labels (table Supabase dédiée form_label_overrides) ─────
-// Chaque ligne = un couple (user_id, form_type) : surcharge d'un label
-// intégré, définition d'un label personnalisé, ou marqueur de suppression
-// définitive. Contrairement au blob JSON complet de "Synchroniser"
-// (Paramètres), ce sync est automatique : chaque modification est poussée
-// immédiatement, et les données cloud sont récupérées une fois au chargement.
-var _labelCloudPulled = false;
-
-function _labelUserId() {
-  return (window.__PC_CLOUD_CONFIG__ && window.__PC_CLOUD_CONFIG__.user_id) || 'default';
-}
-
-async function _pullLabelOverridesFromCloud() {
-  if (_labelCloudPulled) return;
-  _labelCloudPulled = true;
-  if (typeof _loadingLog === 'function') _loadingLog('form_label_overrides', '⏳', 'form_label_overrides', '…', undefined);
-  try {
-    // Tri explicite par date de mise à jour décroissante : sans lui, l'ordre
-    // renvoyé par PostgREST n'est pas garanti, et une éventuelle ligne en
-    // double pour le même form_type (le POST d'upsert ne dédoublonne que s'il
-    // existe une contrainte d'unicité côté base) pouvait gagner au hasard.
-    const res = await fetch(`${SB_URL}/rest/v1/form_label_overrides?for_user_id=eq.${encodeURIComponent(_labelUserId())}&order=for_updated_at.desc`,
-      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-    if (!res.ok) {
-      if (typeof _loadingLog === 'function') _loadingLog('form_label_overrides', '✗', 'form_label_overrides', 'HTTP ' + res.status, 'err');
-      return; // table absente ou policy manquante : on reste en local
-    }
-    const rows = await res.json();
-    if (typeof _loadingLog === 'function') {
-      _loadingLog('form_label_overrides', '✓', 'form_label_overrides', String(Array.isArray(rows) ? rows.length : 0), 'ok');
-    }
-    if (!Array.isArray(rows) || !rows.length) return;
-    if (!_D.form_label_overrides)  _D.form_label_overrides  = {};
-    if (!_D.custom_labels)         _D.custom_labels         = {};
-    if (!_D.deleted_labels)        _D.deleted_labels        = [];
-    if (!_D.label_local_ts)        _D.label_local_ts        = {};
-    if (!_D.label_category_assignments) _D.label_category_assignments = {};
-
-    const seen = new Set();
-    let changed = false;
-    rows.forEach(r => {
-      if (seen.has(r.for_form_type)) return; // doublon plus ancien pour ce type (tri desc) : ignoré
-      seen.add(r.for_form_type);
-
-      // Rempart anti-perte de données : si CE navigateur a modifié ce label
-      // localement et que le cloud ne s'est pas (encore, ou jamais, en cas
-      // d'échec silencieux du push) mis à jour avec une date plus récente, on
-      // garde la version locale. Sans ce garde-fou, un simple F5 juste après
-      // une modification pouvait ramener l'ancienne valeur cloud et l'écrire
-      // par-dessus l'édition qu'on venait de faire.
-      const localTs = _D.label_local_ts[r.for_form_type] || 0;
-      const cloudTs = r.for_updated_at ? new Date(r.for_updated_at).getTime() : 0;
-      if (localTs && cloudTs <= localTs) return;
-
-      changed = true;
-      // category_id vit dans la même ligne (form_label_overrides) : c'est
-      // l'ancien label_category_assignments[type], maintenant une vraie
-      // colonne au lieu d'un blob séparé.
-      if (r.for_category_id) _D.label_category_assignments[r.for_form_type] = r.for_category_id;
-      else delete _D.label_category_assignments[r.for_form_type];
-
-      if (r.for_is_deleted) {
-        if (!_D.deleted_labels.includes(r.for_form_type)) _D.deleted_labels.push(r.for_form_type);
-        return;
-      }
-      if (r.for_is_custom) {
-        _D.custom_labels[r.for_form_type] = {
-          fr: r.for_fr || r.for_form_type, badge: r.for_badge || '?', color: r.for_color || '#888',
-          prefixes: Array.isArray(r.for_prefixes) ? r.for_prefixes : [],
-          suffixes: Array.isArray(r.for_suffixes) ? r.for_suffixes : [],
-          enabled: r.for_enabled !== false,
-        };
-        return;
-      }
-      const ov = {};
-      if (r.for_fr)    ov.fr    = r.for_fr;
-      if (r.for_badge) ov.badge = r.for_badge;
-      if (r.for_color) ov.color = r.for_color;
-      if (r.for_enabled === false) ov.enabled = false;
-      if (Array.isArray(r.for_prefixes) && r.for_prefixes.length) ov.prefixes = r.for_prefixes;
-      if (Array.isArray(r.for_suffixes) && r.for_suffixes.length) ov.suffixes = r.for_suffixes;
-      if (Object.keys(ov).length) _D.form_label_overrides[r.for_form_type] = ov;
-      else delete _D.form_label_overrides[r.for_form_type];
-    });
-    if (changed) _persistLocalOnly();
-  } catch(e) { console.warn('[PTCG] pull labels cloud error:', e.message); }
-}
-
-async function _pushLabelOverrideToCloud(type) {
-  // On mémorise l'horodatage de cette modification locale AVANT toute requête
-  // réseau : même si le push échoue, est interrompu (page rechargée juste
-  // après) ou que la table cloud contient des doublons mal triés, la
-  // prochaine synchronisation ne pourra plus jamais écraser ce label avec une
-  // valeur cloud plus ancienne que ce que l'on vient de faire ici.
-  if (!_D.label_local_ts) _D.label_local_ts = {};
-  _D.label_local_ts[type] = Date.now();
-  saveData();
-  try {
-    const isCustom   = _isCustomLabelType(type);
-    const isDeleted  = (_D.deleted_labels||[]).includes(type);
-    const custom     = isCustom ? _D.custom_labels[type] : null;
-    const ov         = (_D.form_label_overrides||{})[type];
-    const categoryId = (_D.label_category_assignments||{})[type] || null;
-
-    if (isCustom && !custom) {
-      // Label personnalisé supprimé → ligne cloud supprimée
-      await fetch(`${SB_URL}/rest/v1/form_label_overrides?for_user_id=eq.${encodeURIComponent(_labelUserId())}&for_form_type=eq.${encodeURIComponent(type)}`,
-        { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-      return;
-    }
-    if (!isCustom && !isDeleted && !ov && !categoryId) {
-      // Label intégré revenu à sa valeur par défaut → ligne cloud supprimée
-      await fetch(`${SB_URL}/rest/v1/form_label_overrides?for_user_id=eq.${encodeURIComponent(_labelUserId())}&for_form_type=eq.${encodeURIComponent(type)}`,
-        { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-      return;
-    }
-    const payload = isCustom ? {
-      for_user_id: _labelUserId(), for_form_type: type, for_is_custom: true, for_is_deleted: false,
-      for_fr: custom.fr || null, for_badge: custom.badge || null, for_color: custom.color || null,
-      for_enabled: custom.enabled === false ? false : null,
-      for_prefixes: custom.prefixes?.length ? custom.prefixes : null,
-      for_suffixes: custom.suffixes?.length ? custom.suffixes : null,
-      for_category_id: categoryId,
-      for_updated_at: new Date().toISOString(),
-    } : isDeleted ? {
-      for_user_id: _labelUserId(), for_form_type: type, for_is_custom: false, for_is_deleted: true,
-      for_fr: null, for_badge: null, for_color: null, for_enabled: null, for_prefixes: null, for_suffixes: null,
-      for_category_id: categoryId,
-      for_updated_at: new Date().toISOString(),
-    } : {
-      for_user_id: _labelUserId(), for_form_type: type, for_is_custom: false, for_is_deleted: false,
-      for_fr: ov?.fr || null, for_badge: ov?.badge || null, for_color: ov?.color || null,
-      for_enabled: ov?.enabled === false ? false : null,
-      for_prefixes: ov?.prefixes || null, for_suffixes: ov?.suffixes || null,
-      for_category_id: categoryId,
-      for_updated_at: new Date().toISOString(),
-    };
-    const res = await fetch(`${SB_URL}/rest/v1/form_label_overrides?on_conflict=for_user_id,for_form_type`, {
-      method: 'POST',
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(()=>'');
-      console.warn('[PTCG] push label cloud HTTP', res.status, body);
-      toast(`Supabase (label) : échec HTTP ${res.status}`, 'error');
-    }
-  } catch(e) {
-    console.warn('[PTCG] push label cloud error:', e.message);
-    toast('Supabase (label) : ' + e.message, 'error');
-  }
-}
-
-// ── Catégories de labels + assignation par Pokémon ─────────────────────────
-// L'ancien blob "label_settings" (un seul JSON par utilisateur, voir mémoire
-// du projet) est remplacé par deux tables normalisées : label_categories
-// (une ligne par catégorie) et pokemon_label_assignments (une ligne par
-// Pokémon). Elles font partie du moteur générique de js/sync.js, qui les
-// pousse/tire en même temps que tout le reste — ces deux fonctions ne sont
-// plus que de fins déclencheurs, conservés pour ne pas avoir à modifier tous
-// leurs points d'appel dans le fichier.
+// labels et label_categories font partie du moteur générique de js/sync.js
+// (comme ventes, acheteurs…) : plus besoin d'un mécanisme de sync dédié ici,
+// saveData() suffit à déclencher la synchronisation cloud automatiquement.
 function _pushLabelSettingsToCloud() {
   _scheduleCloudPush();
 }
@@ -848,10 +590,7 @@ function resetData(){
     _v:1,_ts:Date.now(),_tpl_blocs:[],
     collection:{},classeurs:[],boosters_data:{},
     custom_exts:[],ext_overrides:{},bloc_overrides:{},custom_blocs:[],
-    form_label_overrides:{},custom_labels:{},deleted_labels:[],
-    pokemon_label_assignments:{},label_local_ts:{},label_settings_ts:0,
-    custom_label_categories:[],label_category_order:[],
-    label_category_assignments:{},label_category_overrides:{},
+    labels:[],label_categories:[],pokemon_label_assignments:{},
     ventes:[],acheteurs:[],acheteur_commandes:[],depenses:[],vendeurs:[],vendeur_commandes:[],
     settings:{display_mode:'logo'}
   };

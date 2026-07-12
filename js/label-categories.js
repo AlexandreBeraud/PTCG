@@ -39,265 +39,52 @@ var TYPE_FR = {
   steel:'Acier',fairy:'Fée',
 };
 
-// Labels des formes spéciales
-var FORM_LABELS = {
-  // Méga
-  mega:            { fr:'Méga',              badge:'MÉGA',      color:'#7038F8' },
-  'mega-x':        { fr:'Méga X',            badge:'MÉGA X',    color:'#5A28C8' },
-  'mega-y':        { fr:'Méga Y',            badge:'MÉGA Y',    color:'#C03028' },
-  'mega-z':        { fr:'Méga Z',            badge:'MÉGA Z',    color:'#2563EB' },
-  // Gigamax / Primo
-  gmax:            { fr:'Gigamax',           badge:'GIGAMAX',   color:'#E63946' },
-  'single-strike-gmax':{ fr:'Gigamax Poing Unique',  badge:'POING UNIQUE',   color:'#E63946' },
-  'rapid-strike-gmax': { fr:'Gigamax Style Rafale',  badge:'STYLE RAFALE',   color:'#E63946' },
-  primal:          { fr:'Primo',             badge:'PRIMO',     color:'#E8553D' },
-  eternamax:       { fr:'Éternamax',         badge:'ÉTERNA.',   color:'#DC2626' },
-  // Régionales
-  alola:           { fr:'Alola',             badge:'ALOLA',     color:'#06D6A0' },
-  galar:           { fr:'Galar',             badge:'GALAR',     color:'#4A9EFF' },
-  hisui:           { fr:'Hisui',             badge:'HISUI',     color:'#C0984A' },
-  paldea:          { fr:'Paldea',            badge:'PALDEA',    color:'#A855F7' },
-  // Légendaires formes
-  origin:          { fr:'Originel',          badge:'ORIGIN.',   color:'#64748B' },
-  altered:         { fr:'Modifié',           badge:'MODIF.',    color:'#4B5563' },
-  sky:             { fr:'Ciel',              badge:'CIEL',      color:'#38BDF8' },
-  land:            { fr:'Terrestre',         badge:'TERR.',     color:'#84CC16' },
-  incarnate:       { fr:'Incarné',           badge:'INCARNÉ',   color:'#6366F1' },
-  therian:         { fr:'Totémique',         badge:'TOTÉM.',    color:'#78716C' },
-  crowned:         { fr:'Couronné',          badge:'COURON.',   color:'#D4AF37' },
-  black:           { fr:'Noir',              badge:'NOIR',      color:'#1C1917' },
-  white:           { fr:'Blanc',             badge:'BLANC',     color:'#E2E8F0' },
-  'dusk-mane':     { fr:'Crinière Couchant', badge:'CRIN.',     color:'#F59E0B' },
-  'dawn-wings':    { fr:'Ailes Aurore',      badge:'AILES',     color:'#6366F1' },
-  ultra:           { fr:'Ultra',             badge:'ULTRA',     color:'#F97316' },
-  confined:        { fr:'Confiné',           badge:'CONF.',     color:'#7C3AED' },
-  unbound:         { fr:'Déchaîné',          badge:'DÉCHAÎNÉ',  color:'#DC2626' },
-  complete:        { fr:'Complet',           badge:'COMPLET',   color:'#10B981' },
-  '10':            { fr:'10%',               badge:'10%',       color:'#EF4444' },
-  '50':            { fr:'50%',               badge:'50%',       color:'#6B7280' },
-  '100':           { fr:'100%',              badge:'100%',      color:'#DC2626' },
-  'battle-bond':   { fr:'Résolution',        badge:'RÉSOL.',    color:'#2563EB' },
-  ash:             { fr:'Sacha',             badge:'SACHA',     color:'#EF4444' },
-  'teal-mask':     { fr:'Masque Turquoise',  badge:'TURQ.',     color:'#0D9488' },
-  'wellspring-mask':{ fr:'Masque Source',    badge:'SOURCE',    color:'#0EA5E9' },
-  'hearthflame-mask':{ fr:'Masque Foyer',    badge:'FOYER',     color:'#F97316' },
-  'cornerstone-mask':{ fr:'Masque Socle',    badge:'SOCLE',     color:'#78716C' },
-  stellar:         { fr:'Stellaire',         badge:'STELL.',    color:'#A855F7' },
-  terastal:        { fr:'Téracristal',       badge:'TÉRA',      color:'#F59E0B' },
-  original:        { fr:'Passé',             badge:'PASSÉ',     color:'#D97706' },
-  'original-color':{ fr:'Couleur Passé',     badge:'PASSÉ',     color:'#D97706' },
-  'ice-rider':     { fr:'Cavalier Glace',    badge:'GLACE',     color:'#93C5FD' },
-  'shadow-rider':  { fr:'Cavalier Spectre',  badge:'SPECTRE',   color:'#8B5CF6' },
-  // Combat / mécanique
-  blade:           { fr:'Épée',              badge:'ÉPÉE',      color:'#EF4444' },
-  shield:          { fr:'Bouclier',          badge:'BOUCLIER',  color:'#3B82F6' },
-  zen:             { fr:'Mode Zen',          badge:'ZEN',       color:'#8B5CF6' },
-  'galar-zen':     { fr:'Galar Mode Zen',    badge:'GAL.ZEN',   color:'#3B82F6' },
-  pirouette:       { fr:'Pirouette',         badge:'PIROU.',    color:'#EC4899' },
-  aria:            { fr:'Aria',              badge:'ARIA',      color:'#F472B6' },
-  resolute:        { fr:'Résolu',            badge:'RÉSOLU',    color:'#EF4444' },
-  ordinary:        { fr:'Ordinaire',         badge:'ORD.',      color:'#9CA3AF' },
-  busted:          { fr:'Révélé',            badge:'RÉVÉLÉ',    color:'#7C3AED' },
-  disguised:       { fr:'Déguisé',           badge:'DÉGUISÉ',   color:'#059669' },
-  school:          { fr:'Banc',              badge:'BANC',      color:'#06B6D4' },
-  solo:            { fr:'Solo',              badge:'SOLO',      color:'#84CC16' },
-  hangry:          { fr:'Affamé',            badge:'AFFAMÉ',    color:'#DC2626' },
-  'full-belly':    { fr:'Repu',              badge:'REPU',      color:'#16A34A' },
-  hero:            { fr:'Héros',             badge:'HÉROS',     color:'#D97706' },
-  noice:           { fr:'Glace',             badge:'GLACE',     color:'#93C5FD' },
-  amped:           { fr:'Amplifié',          badge:'AMPLI.',    color:'#FBBF24' },
-  'low-key':       { fr:'Discret',           badge:'DISCR.',    color:'#60A5FA' },
-  'single-strike': { fr:'Style Brutal',      badge:'BRUTAL',    color:'#1E3A8A' },
-  'rapid-strike':  { fr:'Style Rapide',      badge:'RAPIDE',    color:'#06A77D' },
-  gulping:         { fr:'Glouton',           badge:'GLOUTON',   color:'#F97316' },
-  gorging:         { fr:'Gavé',              badge:'GAVÉ',      color:'#DC2626' },
-  neutral:         { fr:'Neutre',            badge:'NEUTRE',    color:'#6B7280' },
-  zero:            { fr:'Zéro',              badge:'ZÉRO',      color:'#9CA3AF' },
-  dada:            { fr:'Papa',              badge:'PAPA',      color:'#A78BFA' },
-  'two-segment':   { fr:'Courbée (2 seg.)',        badge:'×2',        color:'#6B7280' },
-  'three-family':  { fr:'Famille de 3',      badge:'FAM.3',     color:'#F9A8D4' },
-  'three-segment': { fr:'3 Segments',        badge:'×3',        color:'#374151' },
-  'full-power':    { fr:'Puissance Max',     badge:'MAX',       color:'#7C3AED' },
-  'east-sea':      { fr:'Mer Orient',        badge:'ORIENT',    color:'#0EA5E9' },
-  'west-sea':      { fr:'Mer Occident',      badge:'OCCID.',    color:'#6366F1' },
-  active:          { fr:'Actif',             badge:'ACTIF',     color:'#FBBF24' },
-  chest:           { fr:'Coffre',            badge:'COFFRE',    color:'#D97706' },
-  roaming:         { fr:'Errant',            badge:'ERRANT',    color:'#9CA3AF' },
-  // Rotom
-  heat:            { fr:'Chaleur',           badge:'CHAUD',     color:'#EF4444' },
-  wash:            { fr:'Lavage',            badge:'LAVAGE',    color:'#3B82F6' },
-  frost:           { fr:'Froid',             badge:'FROID',     color:'#BAE6FD' },
-  fan:             { fr:'Ventilateur',       badge:'VENT.',     color:'#86EFAC' },
-  mow:             { fr:'Tonte',             badge:'TONTE',     color:'#4ADE80' },
-  // Plumeline (Oricorio)
-  baile:           { fr:'Style Flamenco',     badge:'FLAMENCO',  color:'#EF4444' },
-  'pom-pom':       { fr:'Style Pom-Pom',     badge:'POM-POM',   color:'#F59E0B' },
-  pau:             { fr:"Style Pa'u",        badge:"PA'U",      color:'#EC4899' },
-  sensu:           { fr:'Style Sensu',       badge:'SENSU',     color:'#8B5CF6' },
-  // Météo / saisonnières
-  overcast:        { fr:'Nuageux',           badge:'NUAGE',     color:'#94A3B8' },
-  sunshine:        { fr:'Ensoleillé',        badge:'SOLEIL',    color:'#FCD34D' },
-  rainy:           { fr:'Pluvieux',          badge:'PLUIE',     color:'#60A5FA' },
-  snowy:           { fr:'Neigeux',           badge:'NEIGE',     color:'#E0F2FE' },
-  midday:          { fr:'Diurne',            badge:'DIURNE',    color:'#FCD34D' },
-  midnight:        { fr:'Nocturne',          badge:'NOCT.',     color:'#4F46E5' },
-  dusk:            { fr:'Crépusculaire',     badge:'CRÉP.',     color:'#F97316' },
-  dawn:            { fr:'Aube',              badge:'AUBE',      color:'#818CF8' },
-  spring:          { fr:'Printemps',         badge:'PRINT.',    color:'#F9A8D4' },
-  summer:          { fr:'Été',               badge:'ÉTÉ',       color:'#FCD34D' },
-  autumn:          { fr:'Automne',           badge:'AUT.',      color:'#F97316' },
-  winter:          { fr:'Hiver',             badge:'HIVER',     color:'#93C5FD' },
-  // Cheniti / Cheniselle
-  plant:           { fr:'Plante',            badge:'PLANTE',    color:'#22C55E' },
-  sandy:           { fr:'Sable',             badge:'SABLE',     color:'#D97706' },
-  trash:           { fr:'Déchet',            badge:'DÉCHET',    color:'#6B7280' },
-  // Flabébé / Florges
-  red:             { fr:'Rouge',             badge:'ROUGE',     color:'#EF4444' },
-  yellow:          { fr:'Jaune',             badge:'JAUNE',     color:'#FCD34D' },
-  orange:          { fr:'Orange',            badge:'ORANGE',    color:'#F97316' },
-  blue:            { fr:'Bleu',              badge:'BLEU',      color:'#3B82F6' },
-  'eternal-flower':{ fr:'Fleur Éternelle',   badge:'ÉTERN.',    color:'#A78BFA' },
-  // Pikachu
-  cap:             { fr:'Casquette',         badge:'CASQ.',     color:'#FFCB05' },
-  cosplay:         { fr:'Cosplay',           badge:'COSPLAY',   color:'#EC4899' },
-  'rock-star':     { fr:'Rock Star',         badge:'ROCK',      color:'#374151' },
-  belle:           { fr:'Belle',             badge:'BELLE',     color:'#F472B6' },
-  'pop-star':      { fr:'Pop Star',          badge:'POP',       color:'#E879F9' },
-  phd:             { fr:'Chercheuse',        badge:'DR.',       color:'#2563EB' },
-  libre:           { fr:'Catcheuse',         badge:'LIBRE',     color:'#16A34A' },
-  // Tauros Paldea
-  'aqua-breed':    { fr:'Race Aqua',         badge:'AQUA',      color:'#38BDF8' },
-  'blaze-breed':   { fr:'Race Flamme',       badge:'FLAMME',    color:'#F97316' },
-  'combat-breed':  { fr:'Race Combat',       badge:'COMBAT',    color:'#EF4444' },
-  // Divers
-  attack:          { fr:'Attaque',           badge:'ATT.',      color:'#EF4444' },
-  defense:         { fr:'Défense',           badge:'DÉF.',      color:'#3B82F6' },
-  speed:           { fr:'Vitesse',           badge:'VIT.',      color:'#F59E0B' },
-  small:           { fr:'Petite',            badge:'PETITE',    color:'#86EFAC' },
-  large:           { fr:'Grande',            badge:'GRANDE',    color:'#4ADE80' },
-  super:           { fr:'Géante',            badge:'GÉANTE',    color:'#166534' },
-  average:         { fr:'Moyenne',           badge:'MOY.',      color:'#6B7280' },
-  curly:           { fr:'Vert (Enroulé)',     badge:'ENROUL.',   color:'#22C55E' },
-  droopy:          { fr:'Pendant',           badge:'PENDANT',   color:'#93C5FD' },
-  stretchy:        { fr:'Allongé',           badge:'ALLONG.',   color:'#FCD34D' },
-  natural:         { fr:'Naturel',           badge:'NAT.',      color:'#84CC16' },
-  heart:           { fr:'Cœur',              badge:'CŒUR',      color:'#EC4899' },
-  star:            { fr:'Étoile',            badge:'ÉTOILE',    color:'#FBBF24' },
-  diamond:         { fr:'Diamant',           badge:'DIAMANT',   color:'#60A5FA' },
-  debutante:       { fr:'Demoiselle',        badge:'DEMOIS.',   color:'#F9A8D4' },
-  matron:          { fr:'Madame',            badge:'MADAME',    color:'#A78BFA' },
-  dandy:           { fr:'Monsieur',          badge:'MONSIEUR',  color:'#374151' },
-  'la-reine':      { fr:'Reine',             badge:'REINE',     color:'#D4AF37' },
-  kabuki:          { fr:'Kabuki',            badge:'KABUKI',    color:'#EF4444' },
-  pharaoh:         { fr:'Pharaon',           badge:'PHARAON',   color:'#D97706' },
-  bloodmoon:       { fr:'Lune Vermeille',    badge:'L.VERM.',   color:'#DC2626' },
-  male:            { fr:'Mâle',              badge:'♂',         color:'#3B82F6' },
-  female:          { fr:'Femelle',           badge:'♀',         color:'#EC4899' },
-  standard:        { fr:'Standard',          badge:'STD.',      color:'#6B7280' },
-  normal:          { fr:'Normal',            badge:'NORM.',     color:'#9CA3AF' },
-  'normal-silvally': { fr:'Type Aigüe',       badge:'AIGÜE',     color:'#9CA3AF' },
-};
+// Labels des formes spéciales et leurs catégories : plus aucune définition
+// en dur ici. Tout vit dans les tables Supabase "labels" et
+// "label_categories" (voir js/sync.js, domaines génériques), chargées dans
+// _D.labels / _D.label_categories comme n'importe quel autre domaine
+// (ventes, acheteurs…). Seule la DÉTECTION (_detectFormType, plus bas dans
+// ce fichier) reste du code : faire correspondre un nom de forme PokéAPI à
+// un type de label est intrinsèquement une question de logique de parsing,
+// pas une donnée éditable par l'utilisateur.
 
-// Groupes de labels (utilisés par le filtre Pokédex ET l'onglet Édition › Labels)
-var FORM_LABEL_GROUPS = [
-  { id:'regionales',      label: 'Régionales',          types: ['alola','galar','hisui','paldea'] },
-  { id:'mega',            label: 'Méga',                types: ['mega','mega-x','mega-y','mega-z'] },
-  { id:'gmax-primo',      label: 'Gigamax / Primo',     types: ['gmax','amped-gmax','low-key-gmax','single-strike-gmax','rapid-strike-gmax','primal','eternamax'] },
-  { id:'legendaires',     label: 'Légendaires',         types: ['origin','altered','sky','land','therian','incarnate','crowned','black','white','dusk-mane','dawn-wings','ultra','confined','unbound','complete','10','50','battle-bond','ash','teal-mask','wellspring-mask','hearthflame-mask','cornerstone-mask','stellar','terastal','original','original-color','ice-rider','shadow-rider'] },
-  { id:'combat-mecanique',label: 'Combat / Mécanique',  types: ['blade','shield','zen','galar-zen','pirouette','aria','resolute','ordinary','busted','disguised','school','solo','hangry','full-belly','hero','noice','amped','low-key','single-strike','rapid-strike','gulping','gorging','neutral','zero','dada','two-segment','three-segment','three-family'] },
-  { id:'rotom',           label: 'Rotom',               types: ['heat','wash','frost','fan','mow'] },
-  { id:'morpheo',         label: 'Morphéo (Oricorio)',  types: ['baile','pom-pom','pau','sensu'] },
-  { id:'formes-meteo',    label: 'Formes météo',        types: ['overcast','sunshine','rainy','snowy','midday','midnight','dusk','dawn'] },
-  { id:'formes-saisons',  label: 'Formes saisonnières', types: ['spring','summer','autumn','winter'] },
-  { id:'chenipoto',       label: 'Cheniti/Cheniselle',  types: ['plant','sandy','trash'] },
-  { id:'flabebe',         label: 'Flabébé / Florges',   types: ['red','yellow','orange','blue','white','eternal-flower'] },
-  { id:'pikachu-speciaux',label: 'Pikachu spéciaux',    types: ['cap','cosplay','rock-star','belle','pop-star','phd','libre'] },
-  { id:'tauros-paldea',   label: 'Tauros Paldea',       types: ['aqua-breed','blaze-breed','combat-breed'] },
-  { id:'couafarel',       label: 'Couafarel',           types: ['natural','heart','star','diamond','debutante','matron','dandy','la-reine','kabuki','pharaoh'] },
-  { id:'autres',          label: 'Autres',              types: ['totem','attack','defense','speed','small','large','super','average','curly','droopy','stretchy','phony','antique','red-striped','blue-striped','white-striped','male','female','own','east-sea','west-sea','active','chest','roaming','full-power','bloodmoon','standard','normal'] },
-];
-
-// Motifs par défaut (préfixe / suffixe dans le nom de carte TCG) permettant de
-// relier une forme spéciale à ses cartes. Seuls les types ayant un réel
-// équivalent carte ont des motifs par défaut ; les autres labels restent
-// éditables mais ne filtrent rien tant qu'aucun motif n'est renseigné.
-var DEFAULT_FORM_CARD_PATTERNS = {
-  mega:     { prefixes: ['Méga-', 'Méga ', 'M ', 'M-'], suffixes: [] },
-  'mega-x': { prefixes: ['Méga-', 'Méga ', 'M ', 'M-'], suffixes: ['X'] },
-  'mega-y': { prefixes: ['Méga-', 'Méga ', 'M ', 'M-'], suffixes: ['Y'] },
-  'mega-z': { prefixes: ['Méga-', 'Méga ', 'M ', 'M-'], suffixes: ['Z'] },
-  gmax:     { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
-  'single-strike-gmax': { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
-  'rapid-strike-gmax':  { prefixes: [], suffixes: ['Gigamax', 'VMAX'] },
-  primal:   { prefixes: ['Primo-', 'Primo '], suffixes: [] },
-  alola:    { prefixes: [], suffixes: ["d'Alola", 'de Alola', 'Alola'] },
-  galar:    { prefixes: [], suffixes: ['de Galar'] },
-  hisui:    { prefixes: [], suffixes: ['de Hisui', "d'Hisui"] },
-  paldea:   { prefixes: [], suffixes: ['de Paldea'] },
-};
-
-// Fusionne la définition statique d'un label (ou sa version personnalisée)
-// avec la surcharge utilisateur (nom, badge, couleur, visibilité, préfixes/
-// suffixes). Si le label a été supprimé définitivement, il est neutralisé.
+// Renvoie la config effective d'un label — directement depuis _D.labels
+// (chargé depuis Supabase), plus aucune fusion avec une définition en dur.
+// Si le type n'existe pas encore (nouveau type détecté jamais configuré),
+// repli neutre plutôt qu'un plantage : reste affichable (badge générique)
+// tant qu'il n'a pas été configuré dans Édition › Labels.
 function getFormLabelConfig(type) {
   if (!type) return null;
-  if ((_D.deleted_labels||[]).includes(type)) {
-    return { fr:type, badge:'', color:'#555', enabled:false, prefixes:[], suffixes:[], isCustom:false, isDeleted:true };
+  const row = (_D.labels || []).find(l => l.type === type);
+  if (row) {
+    return {
+      fr:       row.fr    || type,
+      badge:    row.badge || (type||'').toUpperCase(),
+      color:    row.color || '#888888',
+      enabled:  row.enabled !== false,
+      prefixes: Array.isArray(row.prefixes) ? row.prefixes.slice() : [],
+      suffixes: Array.isArray(row.suffixes) ? row.suffixes.slice() : [],
+    };
   }
-  const custom = (_D.custom_labels||{})[type];
-  const base   = custom || FORM_LABELS[type] || { fr: type, badge: (type||'').toUpperCase(), color: '#888' };
-  const ov     = (_D.form_label_overrides || {})[type] || {};
-  const dflt   = DEFAULT_FORM_CARD_PATTERNS[type] || { prefixes: [], suffixes: [] };
-  return {
-    fr:       ov.fr       !== undefined ? ov.fr       : base.fr,
-    badge:    ov.badge    !== undefined ? ov.badge    : base.badge,
-    color:    ov.color    !== undefined ? ov.color    : base.color,
-    enabled:  ov.enabled !== undefined ? ov.enabled : (custom && custom.enabled !== undefined ? custom.enabled : true),
-    prefixes: Array.isArray(ov.prefixes) ? ov.prefixes.slice() : (custom ? (custom.prefixes||[]).slice() : dflt.prefixes.slice()),
-    suffixes: Array.isArray(ov.suffixes) ? ov.suffixes.slice() : (custom ? (custom.suffixes||[]).slice() : dflt.suffixes.slice()),
-    isCustom: !!custom,
-    isDeleted:false,
-  };
+  return { fr: type, badge: (type||'').toUpperCase(), color: '#888888', enabled: true, prefixes: [], suffixes: [] };
 }
 
-// Un type de label existe-t-il en tant que label personnalisé (créé par l'utilisateur) ?
-function _isCustomLabelType(type) { return !!(_D.custom_labels||{})[type]; }
-
-// Tous les types de labels actuellement disponibles (hors supprimés définitivement)
+// Tous les types de labels actuellement configurés (une ligne par label dans
+// _D.labels — plus de distinction "intégré vs personnalisé", ce sont tous
+// des labels de même nature).
 function _allLabelTypes() {
-  const deleted = new Set(_D.deleted_labels||[]);
-  const builtins = Object.keys(FORM_LABELS).filter(t => !deleted.has(t));
-  const customs  = Object.keys(_D.custom_labels||{});
-  return [...builtins, ...customs];
+  return (_D.labels || []).map(l => l.type);
 }
 
 // ── Catégories de labels (Édition › Labels) ────────────────────────────────
-// Les catégories intégrées (FORM_LABEL_GROUPS) et celles créées par
-// l'utilisateur (_D.custom_label_categories) sont fusionnées et triées selon
-// _D.label_category_order (même principe que getBlocs() / _D.settings.bloc_order).
-// Une catégorie intégrée peut être renommée ou masquée via
-// _D.label_category_overrides[id] = { name?, _hidden? } — elle n'est jamais
-// supprimée du code, seulement masquée (restaurable).
+// Une ligne par catégorie dans _D.label_categories (chargée depuis Supabase),
+// triée par sort_order, catégories masquées exclues.
 function getLabelCategories() {
-  const builtin = FORM_LABEL_GROUPS
-    .filter(g => !(_D.label_category_overrides||{})[g.id]?._hidden)
-    .map(g => {
-      const ov = (_D.label_category_overrides||{})[g.id] || {};
-      return { id: g.id, name: ov.name !== undefined ? ov.name : g.label, parentId: ov.parent_id || null, _builtin: true };
-    });
-  const custom  = (_D.custom_label_categories || []).map(c => ({ id: c.id, name: c.name, parentId: c.parent_id || null, _custom: true }));
-  const all = [...builtin, ...custom];
-  const order = _D.label_category_order || [];
-  if (order.length) {
-    all.sort((a, b) => {
-      const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
-      if (ia === -1 && ib === -1) return 0;
-      if (ia === -1) return 1;
-      if (ib === -1) return -1;
-      return ia - ib;
-    });
-  }
-  return all;
+  return (_D.label_categories || [])
+    .filter(c => !c.hidden)
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+    .map(c => ({ id: c.id, name: c.name, parentId: c.parent_id || null }));
 }
 
 // Regroupe les catégories en arbre — UN SEUL niveau de sous-catégories (pas
@@ -318,38 +105,23 @@ function getLabelCategoryTree() {
   return roots;
 }
 
-// Catégorie effective d'un label : une assignation manuelle prend le pas sur
-// l'appartenance par défaut à un groupe intégré ; sans les deux, le label est
-// "Non classé" (null). Si la catégorie par défaut a été masquée, le label
-// retombe aussi sur "Non classé" plutôt que de disparaître silencieusement.
+// Catégorie d'un label : directement le champ category_id de sa ligne dans
+// _D.labels. Filet de sécurité : si cette catégorie n'existe plus (supprimée
+// depuis), on retombe sur "Non classé" plutôt que de rendre le label
+// invisible partout dans l'éditeur.
 function _labelCategoryOf(type) {
-  const ov = (_D.label_category_assignments || {})[type];
-  if (ov !== undefined) return ov || null;
-  const grp = FORM_LABEL_GROUPS.find(g => g.types.includes(type));
-  if (!grp) return null;
-  if ((_D.label_category_overrides||{})[grp.id]?._hidden) return null;
-  return grp.id;
+  const row = (_D.labels || []).find(l => l.type === type);
+  if (!row || !row.category_id) return null;
+  if (!getLabelCategories().some(c => c.id === row.category_id)) return null;
+  return row.category_id;
 }
 
 // Déplace un label vers une catégorie (categoryId='' ou null → Non classé).
-// N'enregistre une surcharge que si elle diffère de la catégorie par défaut,
-// pour rester cohérent avec le reste de l'appli (ext_overrides, etc.).
 function setLabelCategory(type, categoryId) {
-  if (!_D.label_category_assignments) _D.label_category_assignments = {};
-  const defaultCat = (FORM_LABEL_GROUPS.find(g => g.types.includes(type)) || {}).id || null;
-  const normalized = categoryId || null;
-  if (normalized === defaultCat) delete _D.label_category_assignments[type];
-  else _D.label_category_assignments[type] = normalized || '';
+  const row = (_D.labels || []).find(l => l.type === type);
+  if (!row) return;
+  row.category_id = categoryId || null;
   saveData();
-  // BUG corrigé : for_category_id vit dans la table form_label_overrides (une
-  // ligne par label), PAS dans label_categories (une ligne par catégorie) ni
-  // dans aucun autre domaine du moteur générique. Appeler seulement
-  // _pushLabelSettingsToCloud() ici ne poussait donc jamais cette assignation
-  // vers Supabase : elle survivait en local (localStorage) mais disparaissait
-  // au prochain pull cloud (autre appareil, ou après un rechargement une fois
-  // le cloud repassé "plus récent") — d'où l'impression que la catégorie
-  // choisie dans Édition › Labels n'était pas prise en compte.
-  _pushLabelOverrideToCloud(type);
   renderLabelsList();
   toast('Catégorie mise à jour.', 'success');
 }
@@ -358,11 +130,11 @@ function addLabelCategory() {
   const input = document.getElementById('new-label-cat');
   const name = (input?.value || '').trim();
   if (!name) { toast('Indique un nom pour la nouvelle catégorie.', 'error'); return; }
-  if (!_D.custom_label_categories) _D.custom_label_categories = [];
+  if (!_D.label_categories) _D.label_categories = [];
   const id = 'lblcat_' + Date.now();
-  _D.custom_label_categories.push({ id, name });
+  const sortOrder = _D.label_categories.length;
+  _D.label_categories.push({ id, name, hidden: false, parent_id: null, sort_order: sortOrder });
   saveData();
-  _pushLabelSettingsToCloud();
   if (input) input.value = '';
   renderLabelsList();
   toast('Catégorie créée.', 'success');
@@ -385,112 +157,44 @@ function setLabelCategoryParent(id, parentId) {
     else if (selfNode && selfNode.children && selfNode.children.length) { ok = false; msg = "Cette catégorie a ses propres sous-catégories : déplace-les d'abord (un seul niveau de sous-catégories est permis)."; }
   }
   if (ok) {
-    const custom = (_D.custom_label_categories||[]).find(c => c.id === id);
-    if (custom) {
-      if (parentId) custom.parent_id = parentId; else delete custom.parent_id;
-    } else if (FORM_LABEL_GROUPS.find(g => g.id === id)) {
-      if (!_D.label_category_overrides) _D.label_category_overrides = {};
-      const ov = { ...(_D.label_category_overrides[id]||{}) };
-      if (parentId) ov.parent_id = parentId; else delete ov.parent_id;
-      if (Object.keys(ov).length) _D.label_category_overrides[id] = ov; else delete _D.label_category_overrides[id];
-    }
-    saveData();
-    _pushLabelSettingsToCloud();
+    const cat = (_D.label_categories||[]).find(c => c.id === id);
+    if (cat) { cat.parent_id = parentId || null; saveData(); }
   }
   renderLabelsList();
   toast(ok ? (parentId ? 'Catégorie déplacée.' : 'Catégorie remontée au premier niveau.') : msg, ok ? 'success' : 'error');
 }
 
-// Renomme une catégorie, personnalisée OU intégrée (via une surcharge de nom).
 function renameLabelCategory(id) {
-  const custom  = (_D.custom_label_categories || []).find(c => c.id === id);
-  const builtin = FORM_LABEL_GROUPS.find(g => g.id === id);
-  if (!custom && !builtin) return;
-  const currentName = custom ? custom.name : ((_D.label_category_overrides||{})[id]?.name ?? builtin.label);
-  const name = prompt('Renommer la catégorie :', currentName);
+  const cat = (_D.label_categories || []).find(c => c.id === id);
+  if (!cat) return;
+  const name = prompt('Renommer la catégorie :', cat.name);
   if (name === null) return;
   const trimmed = name.trim();
   if (!trimmed) { toast('Le nom ne peut pas être vide.', 'error'); return; }
-  if (custom) {
-    custom.name = trimmed;
-  } else {
-    if (!_D.label_category_overrides) _D.label_category_overrides = {};
-    const ov = { ...(_D.label_category_overrides[id] || {}) };
-    if (trimmed === builtin.label) delete ov.name; else ov.name = trimmed;
-    if (Object.keys(ov).length) _D.label_category_overrides[id] = ov;
-    else delete _D.label_category_overrides[id];
-  }
+  cat.name = trimmed;
   saveData();
-  _pushLabelSettingsToCloud();
   renderLabelsList();
   toast('Catégorie renommée.', 'success');
 }
 
-// Supprime une catégorie personnalisée, ou masque une catégorie intégrée
-// (restaurable ensuite). Dans les deux cas, les labels qu'elle contenait
-// repassent en "Non classé" plutôt que de disparaître.
+// Supprime une catégorie. Les labels qu'elle contenait, et ses éventuelles
+// sous-catégories, repassent en "Non classé"/premier niveau plutôt que de
+// disparaître.
 function deleteLabelCategory(id) {
-  const custom  = (_D.custom_label_categories || []).find(c => c.id === id);
-  const builtin = FORM_LABEL_GROUPS.find(g => g.id === id);
-  if (!custom && !builtin) return;
-  const name = custom ? custom.name : ((_D.label_category_overrides||{})[id]?.name ?? builtin.label);
-  const msg = custom
-    ? `Supprimer la catégorie "${name}" ? Les labels qu'elle contient repasseront en "Non classé".`
-    : `Masquer la catégorie intégrée "${name}" ? Les labels qu'elle contient repasseront en "Non classé" (elle reste restaurable en bas de liste).`;
-  if (!confirm(msg)) return;
-
-  if (custom) {
-    _D.custom_label_categories = (_D.custom_label_categories || []).filter(c => c.id !== id);
-  } else {
-    if (!_D.label_category_overrides) _D.label_category_overrides = {};
-    _D.label_category_overrides[id] = { ...(_D.label_category_overrides[id]||{}), _hidden: true };
-    if (!_D.label_category_assignments) _D.label_category_assignments = {};
-    builtin.types.forEach(type => {
-      if (!(type in (_D.label_category_assignments||{}))) _D.label_category_assignments[type] = '';
-    });
-  }
-  // Les éventuelles sous-catégories de celle qu'on supprime/masque remontent
-  // au premier niveau plutôt que de disparaître avec elle.
-  (_D.custom_label_categories||[]).forEach(c => { if (c.parent_id === id) delete c.parent_id; });
-  FORM_LABEL_GROUPS.forEach(g => {
-    const ov = (_D.label_category_overrides||{})[g.id];
-    if (ov && ov.parent_id === id) {
-      delete ov.parent_id;
-      if (Object.keys(ov).length === 0) delete _D.label_category_overrides[g.id];
-    }
-  });
-  const clearedTypes = [];
-  if (_D.label_category_assignments) {
-    Object.keys(_D.label_category_assignments).forEach(type => {
-      if (_D.label_category_assignments[type] === id) { delete _D.label_category_assignments[type]; clearedTypes.push(type); }
-    });
-  }
-  if (_D.label_category_order) _D.label_category_order = _D.label_category_order.filter(cid => cid !== id);
+  const cat = (_D.label_categories || []).find(c => c.id === id);
+  if (!cat) return;
+  if (!confirm(`Supprimer la catégorie "${cat.name}" ? Les labels qu'elle contient repasseront en "Non classé".`)) return;
+  _D.label_categories = (_D.label_categories || []).filter(c => c.id !== id);
+  _D.label_categories.forEach(c => { if (c.parent_id === id) c.parent_id = null; });
+  (_D.labels || []).forEach(l => { if (l.category_id === id) l.category_id = null; });
   saveData();
-  _pushLabelSettingsToCloud();
-  // Chaque label déplacé vers "Non classé" doit aussi voir son for_category_id
-  // remis à null dans form_label_overrides (voir la note dans setLabelCategory
-  // ci-dessus) — sinon la table cloud garde une référence vers une catégorie
-  // qui n'existe plus.
-  clearedTypes.forEach(type => _pushLabelOverrideToCloud(type));
   renderLabelsList();
-  toast(custom ? 'Catégorie supprimée.' : 'Catégorie masquée.', 'success');
-}
-
-// Restaure une catégorie intégrée précédemment masquée.
-function restoreLabelCategory(id) {
-  if ((_D.label_category_overrides||{})[id]) {
-    delete _D.label_category_overrides[id]._hidden;
-    if (Object.keys(_D.label_category_overrides[id]).length === 0) delete _D.label_category_overrides[id];
-  }
-  saveData();
-  _pushLabelSettingsToCloud();
-  renderLabelsList();
-  toast('Catégorie restaurée.', 'success');
+  toast('Catégorie supprimée.', 'success');
 }
 
 // Réorganisation par glisser-déposer des catégories (même principe que
-// onBlocDragStart/Over/Drop pour les blocs d'extensions).
+// onBlocDragStart/Over/Drop pour les blocs d'extensions) — écrit directement
+// le nouveau sort_order de chaque catégorie.
 var _labelCatDragId = null;
 function onLabelCatDragStart(e) { _labelCatDragId = e.currentTarget.dataset.catId; e.dataTransfer.effectAllowed = 'move'; }
 function onLabelCatDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-target'); }
@@ -503,9 +207,11 @@ function onLabelCatDrop(e) {
   const fromIdx = order.indexOf(_labelCatDragId), toIdx = order.indexOf(toId);
   if (fromIdx < 0 || toIdx < 0) { _labelCatDragId = null; return; }
   order.splice(fromIdx, 1); order.splice(toIdx, 0, _labelCatDragId);
-  _D.label_category_order = order;
+  order.forEach((cid, idx) => {
+    const cat = (_D.label_categories||[]).find(c => c.id === cid);
+    if (cat) cat.sort_order = idx;
+  });
   saveData();
-  _pushLabelSettingsToCloud();
   renderLabelsList();
   toast('Ordre des catégories sauvegardé.', 'success');
   _labelCatDragId = null;

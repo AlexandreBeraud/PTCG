@@ -246,7 +246,6 @@ function switchEditionTab(tab) {
     if (orphansPanel) orphansPanel.style.display = 'none';
     if (newBtn)       newBtn.style.display       = 'none';
     renderLabelsList();
-    _pullLabelOverridesFromCloud().then(renderLabelsList);
     return;
   }
 

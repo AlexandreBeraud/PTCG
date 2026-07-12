@@ -534,39 +534,48 @@ var _SYNC_DOMAINS = [
   {
     table: 'label_categories', keyCols: ['lab_id'], userCol: 'lab_user_id', orderBy: 'lab_sort_order.asc',
     toRows: function () {
-      var order = _D.label_category_order || [];
-      var out = [];
-      (_D.custom_label_categories || []).forEach(function (c) {
-        var idx = order.indexOf(c.id);
-        out.push({ lab_user_id: _cloudUserId(), lab_id: c.id, lab_name: c.name || '', lab_is_hidden: false, lab_parent_id: c.parent_id || null, lab_sort_order: idx === -1 ? 999 : idx, lab_updated_at: _isoNow() });
+      return (_D.label_categories || []).map(function (c, idx) {
+        return {
+          lab_user_id: _cloudUserId(), lab_id: c.id, lab_name: c.name || '',
+          lab_is_hidden: !!c.hidden, lab_parent_id: c.parent_id || null,
+          lab_sort_order: c.sort_order != null ? c.sort_order : idx, lab_updated_at: _isoNow(),
+        };
       });
-      Object.keys(_D.label_category_overrides || {}).forEach(function (id) {
-        var ov = _D.label_category_overrides[id] || {};
-        var idx = order.indexOf(id);
-        out.push({ lab_user_id: _cloudUserId(), lab_id: id, lab_name: ov.name || '', lab_is_hidden: !!ov._hidden, lab_parent_id: ov.parent_id || null, lab_sort_order: idx === -1 ? 999 : idx, lab_updated_at: _isoNow() });
-      });
-      return out;
     },
     apply: function (rows) {
       rows.sort(function (a, b) { return (a.lab_sort_order || 0) - (b.lab_sort_order || 0); });
-      var customCats = [], overrides = {}, order = [];
-      rows.forEach(function (r) {
-        order.push(r.lab_id);
-        if (String(r.lab_id).indexOf('lblcat_') === 0) {
-          var cat = { id: r.lab_id, name: r.lab_name || '' };
-          if (r.lab_parent_id) cat.parent_id = r.lab_parent_id;
-          customCats.push(cat);
-        } else {
-          var ov = {};
-          if (r.lab_name) ov.name = r.lab_name;
-          if (r.lab_is_hidden) ov._hidden = true;
-          if (r.lab_parent_id) ov.parent_id = r.lab_parent_id;
-          if (Object.keys(ov).length) overrides[r.lab_id] = ov;
-        }
+      _D.label_categories = rows.map(function (r, idx) {
+        return {
+          id: r.lab_id, name: r.lab_name || '', hidden: !!r.lab_is_hidden,
+          parent_id: r.lab_parent_id || null, sort_order: r.lab_sort_order != null ? r.lab_sort_order : idx,
+        };
       });
-      _D.custom_label_categories = customCats;
-      _D.label_category_overrides = overrides;
-      _D.label_category_order = order;
+    },
+  },
+  {
+    table: 'labels', keyCols: ['lbl_type'], userCol: 'lbl_user_id', orderBy: 'lbl_sort_order.asc',
+    toRows: function () {
+      return (_D.labels || []).map(function (l, idx) {
+        return {
+          lbl_user_id: _cloudUserId(), lbl_type: l.type, lbl_fr: l.fr || '', lbl_badge: l.badge || '',
+          lbl_color: l.color || '#888888', lbl_enabled: l.enabled !== false,
+          lbl_prefixes: l.prefixes || [], lbl_suffixes: l.suffixes || [],
+          lbl_category_id: l.category_id || null, lbl_sort_order: l.sort_order != null ? l.sort_order : idx,
+          lbl_updated_at: _isoNow(),
+        };
+      });
+    },
+    apply: function (rows) {
+      rows.sort(function (a, b) { return (a.lbl_sort_order || 0) - (b.lbl_sort_order || 0); });
+      _D.labels = rows.map(function (r, idx) {
+        return {
+          type: r.lbl_type, fr: r.lbl_fr || r.lbl_type, badge: r.lbl_badge || '', color: r.lbl_color || '#888888',
+          enabled: r.lbl_enabled !== false,
+          prefixes: Array.isArray(r.lbl_prefixes) ? r.lbl_prefixes : [],
+          suffixes: Array.isArray(r.lbl_suffixes) ? r.lbl_suffixes : [],
+          category_id: r.lbl_category_id || null, sort_order: r.lbl_sort_order != null ? r.lbl_sort_order : idx,
+        };
+      });
     },
   },
   {
@@ -902,12 +911,6 @@ async function _cloudInitialSync() {
     _loadingLog('_conn', '✗', 'Erreur', e.message, 'err');
     toast('Restauration cloud interrompue : ' + e.message, 'error');
   }
-  // form_label_overrides garde son mécanisme dédié (une ligne par form_type).
-  try {
-    await _pullLabelOverridesFromCloud();
-    renderLabelsList();
-    _refreshPokedexAfterLabelChange();
-  } catch (e) { /* pas grave, on reste en local */ }
   // Fin de la synchro initiale, quel qu'en ait été le résultat (données
   // trouvées, rien de plus récent, ou même échec réseau/RLS) : à partir
   // d'ici, un saveData() peut légitimement programmer un push.
@@ -948,7 +951,6 @@ async function forceRestoreFromCloud() {
     if (!pulled) { toast('Aucune donnée trouvée sur Supabase pour cet utilisateur.', 'error'); return; }
     _persistLocalOnly();
     renderAll();
-    await _pullLabelOverridesFromCloud();
     renderLabelsList();
     _refreshPokedexAfterLabelChange();
     toast('Données récupérées depuis le cloud.', 'success');
