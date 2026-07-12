@@ -222,6 +222,18 @@ function _normalizeStr(s) {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
 
+// Retire uniquement les accents (garde la casse) — utilisé pour interroger
+// Supabase avec la variante SANS accent d'un nom en plus de l'originale
+// (voir _fetchCardsGroupedByExtension), Postgres ILIKE ne faisant pas cette
+// équivalence tout seul.
+function _stripAccents(s) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function _accentVariants(name) {
+  const stripped = _stripAccents(name);
+  return stripped !== name ? [name, stripped] : [name];
+}
+
 // mode ('all'|'none'|'only') et formTypeFilter (Set de types, ou null = tous)
 // sont deux réglages INDÉPENDANTS qui se combinent (et non plus un seul état
 // exclusif) : on peut par ex. choisir "Formes seules" ET un type précis, et
@@ -901,9 +913,16 @@ async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
   // "contient" faisait remonter des Pokémon sans aucun rapport dont le nom
   // contient la chaîne recherchée en plein milieu ou en préfixe collé (ex.
   // "Abra" dans "Simiabraz", "Draco" en préfixe de "Dracolosse", "Marill"
-  // dans "Azumarill").
-  const nameEsc = encodeURIComponent(frName);
-  const orFilter = `or=(name.ilike.${nameEsc},name.ilike.${nameEsc}%20*,name.ilike.${nameEsc}-*)`;
+  // dans "Azumarill"). On cherche aussi la variante SANS accent (ex.
+  // "Negapi") en plus de celle avec (ex. "Négapi") : certaines cartes sont
+  // enregistrées sans accent selon l'import TCGdex, et ILIKE ne fait pas
+  // l'équivalence accentué/non-accentué tout seul — sans ça ces cartes
+  // étaient invisibles quelle que soit la façon dont on tapait le nom.
+  const nameVariants = _accentVariants(frName);
+  const orFilter = `or=(${nameVariants.flatMap(n => {
+    const e = encodeURIComponent(n);
+    return [`name.ilike.${e}`, `name.ilike.${e}%20*`, `name.ilike.${e}-*`];
+  }).join(',')})`;
   const url = `${SB_URL}/rest/v1/cards?${orFilter}&order=set_id.asc,number.asc&limit=500`;
   const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -927,14 +946,16 @@ async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
     const seen = new Set(cards.map(c => c.id));
     for (const token of shortTokens) {
       for (const joiner of [' ', '-']) {
-        try {
-          const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(token + joiner + frName)}*&order=set_id.asc,number.asc&limit=200`,
-            { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-          const extra = r2.ok ? await r2.json() : [];
-          extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
-            if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
-          });
-        } catch(_) {}
+        for (const nameVariant of nameVariants) {
+          try {
+            const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(token + joiner + nameVariant)}*&order=set_id.asc,number.asc&limit=200`,
+              { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+            const extra = r2.ok ? await r2.json() : [];
+            extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
+              if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
+            });
+          } catch(_) {}
+        }
       }
     }
   } else if (!formType) {
@@ -948,6 +969,23 @@ async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
 
   // Ensure mapping loaded
   if (!_mapping.initialized) await initMappingView();
+
+  const groups = _groupCardsByExtension(cards);
+  const cardsById = new Map();
+  cards.forEach(c => cardsById.set(String(c.id), c));
+
+  return { groups, cardsById };
+}
+
+// Regroupe une liste de cartes par extension PTCG — résolue en priorité via
+// le mapping TCGDex (set_id ↔ extension, voir Édition › Mapping TCG), avec
+// repli sur le nom d'extension (set_name) si le mapping ne connaît pas ce
+// set_id — puis trie les groupes par ordre de bloc/extension et les cartes de
+// chaque groupe par numéro. Logique PARTAGÉE entre la fiche Pokédex/le
+// sélecteur de carte (_fetchCardsGroupedByExtension) et l'onglet "Cartes
+// orphelines" d'Édition (renderOrphanCardsList), pour un affichage identique.
+function _groupCardsByExtension(cards) {
+  if (!cards.length) return [];
 
   // Build ordered list of PTCG extensions for sorting
   const allExts = getAllExtensions();
@@ -969,23 +1007,24 @@ async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
 
   // Reverse mapping: tcgdex set_id → ptcg ext
   const setIdToExt = {};
-  Object.entries(_mapping.mappings).forEach(([extId, m]) => {
+  Object.entries(_mapping.mappings||{}).forEach(([extId, m]) => {
     const ext = allExts.find(e => e.id === extId);
     if (ext) setIdToExt[m.set_id] = ext;
   });
 
-  // Group by set_id
+  // Group by set_id (repli sur set_name si la carte n'a pas de set_id, ex.
+  // saisie manuelle)
   const groupMap = new Map();
   cards.forEach(c => {
-    const key = c.set_id || '?';
+    const key = c.set_id || c.set_name || '?';
     if (!groupMap.has(key)) groupMap.set(key, { set_id: c.set_id, set_name: c.set_name, cards: [] });
     groupMap.get(key).cards.push(c);
   });
 
   // Attache à chaque groupe (et à chaque carte, pour la modale de détail) les
   // infos d'extension PTCG utiles à l'affichage/au tri : id, code, nom, logo, sigle.
-  const groups = Array.from(groupMap.values()).map(group => {
-    const ext = setIdToExt[group.set_id];
+  return Array.from(groupMap.values()).map(group => {
+    const ext = setIdToExt[group.set_id] || allExts.find(e => e.nom === group.set_name);
     const extInfo = {
       extId: ext ? ext.id : null,
       code:  ext ? (ext.code || '') : '',
@@ -994,14 +1033,10 @@ async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
       sigle: ext ? (ext.sigle || '') : '',
       order: ext && extOrder[ext.id] !== undefined ? extOrder[ext.id] : 9999,
     };
+    group.cards.sort((a,b) => (a.number||'').localeCompare(b.number||'', 'fr', { numeric: true }));
     group.cards.forEach(c => { c._ext = extInfo; });
     return { ...group, ext: extInfo };
   }).sort((a,b) => a.ext.order - b.ext.order || (a.set_name||'').localeCompare(b.set_name||''));
-
-  const cardsById = new Map();
-  cards.forEach(c => cardsById.set(String(c.id), c));
-
-  return { groups, cardsById };
 }
 
 // Détermine le formType à utiliser pour charger les cartes d'une entrée
@@ -1246,12 +1281,42 @@ function openCardDetailModal(cardId) {
         </div>
         <div class="modal-footer" style="justify-content:flex-start">
           <button class="btn btn-primary btn-sm" onclick="saveCardEdits('${_escJs(String(cardId))}')">Enregistrer dans Supabase</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCardFromDb('${_escJs(String(cardId))}')">Supprimer cette carte</button>
           ${card.cardmarket_url ? `<a href="${_escHtml(card.cardmarket_url)}" target="_blank" rel="noopener" class="sale-link" style="margin-left:10px">Voir sur CardMarket ↗</a>` : ''}
         </div>
       </div>
     </div>
   `;
   modal.classList.add('open');
+}
+
+// Supprime définitivement une carte de la table Supabase "cards" — utile
+// pour nettoyer les doublons/erreurs de saisie (manuelle ou import TCGDex).
+// Ne touche pas aux ventes/dépenses existantes qui la référencent : elles
+// gardent leurs infos déjà enregistrées (nom, image, extension…), seule la
+// carte source disparaît de la recherche/du Pokédex.
+async function deleteCardFromDb(cardId) {
+  const card = _pkdxModalTcg?.cardsById?.get(String(cardId));
+  const label = card ? `« ${card.name} »` : 'cette carte';
+  if (!confirm(`Supprimer définitivement ${label} de la base de données ? Cette action est irréversible. Les ventes/dépenses existantes qui la référencent ne seront pas supprimées.`)) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/cards?id=eq.${encodeURIComponent(cardId)}`, {
+      method: 'DELETE',
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (_pkdxModalTcg?.cardsById) _pkdxModalTcg.cardsById.delete(String(cardId));
+    if (_pkdxModalTcg?.groups) {
+      _pkdxModalTcg.groups.forEach(g => { g.cards = g.cards.filter(c => String(c.id) !== String(cardId)); });
+      _pkdxModalTcg.groups = _pkdxModalTcg.groups.filter(g => g.cards.length);
+    }
+    closeModal('modal-card-detail');
+    if (typeof _renderPkdxTcgGroups === 'function') _renderPkdxTcgGroups();
+    if (typeof _syncOrphanCardsAfterDelete === 'function') _syncOrphanCardsAfterDelete(cardId);
+    toast('Carte supprimée de la base.', 'success');
+  } catch(e) {
+    toast('Erreur Supabase : ' + e.message, 'error');
+  }
 }
 
 async function saveCardEdits(cardId) {
@@ -1279,6 +1344,7 @@ async function saveCardEdits(cardId) {
     card.image_url = newImg;
     card.cardmarket_url = newCm;
     _renderPkdxTcgGroups();
+    if (typeof _syncOrphanCardsAfterEdit === 'function') _syncOrphanCardsAfterEdit(cardId, { name: newName, image_url: newImg, cardmarket_url: newCm });
     closeModal('modal-card-detail');
     toast('Carte mise à jour dans Supabase !', 'success');
   } catch(e) {

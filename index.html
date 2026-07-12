@@ -546,6 +546,7 @@
         <button class="edition-tab" data-tab="exts" onclick="switchEditionTab('exts')">Extensions</button>
         <button class="edition-tab" data-tab="mapping" onclick="switchEditionTab('mapping')">Mapping TCG</button>
         <button class="edition-tab" data-tab="labels" onclick="switchEditionTab('labels')">Labels</button>
+        <button class="edition-tab" data-tab="orphans" onclick="switchEditionTab('orphans')">Cartes orphelines</button>
       </div>
       <div class="edition-layout" id="edition-layout-main">
         <div>
@@ -624,6 +625,20 @@
         </div>
         <p class="form-hint" style="margin-bottom:14px">Clique sur l'en-tête d'une catégorie pour la replier/déplier ; glisse son icône ⠿ pour la réorganiser. Change la « Catégorie » d'un label depuis sa ligne pour le déplacer.</p>
         <div id="labels-list"></div>
+      </div>
+      <div id="edition-orphans-panel" style="display:none">
+        <p class="form-hint" style="margin-bottom:14px">
+          Cartes de la base de données introuvables depuis une fiche Pokémon ou le sélecteur de carte Ventes/Dépenses — leur nom ne correspond (avec ou sans accent) à aucun nom ou forme connu du Pokédex. Souvent causé par une faute de frappe ou un accent manquant lors de l'import/l'ajout. Renomme-les pour les rendre trouvables, ou supprime-les si ce sont des doublons/erreurs.
+        </p>
+        <div class="mapping-header">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 10px;display:flex;align-items:center;gap:6px;width:260px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" id="orphans-search" placeholder="Filtrer…" oninput="filterOrphanCardsList(this.value)" style="width:100%;background:none;border:none;outline:none;font-size:.8rem;color:var(--text)">
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="refreshOrphanCardsList()">↻ Réanalyser</button>
+          <span id="orphans-counter" style="font-size:.78rem;color:var(--text2)"></span>
+        </div>
+        <div id="orphan-cards-list" class="pkdx-tcg-groups"></div>
       </div>
     </div>
 
@@ -1245,7 +1260,7 @@
     <div id="cardpicker-step3" style="display:none">
       <button type="button" class="btn btn-ghost btn-sm" onclick="_cardPickerBackToStep1()">← Retour à la recherche</button>
       <p style="font-size:.78rem;color:var(--text2);margin:8px 0 14px">
-        Pour une carte dont l'extension n'est pas (encore) indexée dans TCGDex : renseigne ses infos à la main. Une fois liée à une extension existante de l'app, elle affichera automatiquement la bonne couleur et le bon sigle.
+        Pour une carte dont l'extension n'est pas (encore) indexée dans TCGDex : renseigne toutes ses infos. La carte sera créée définitivement dans la base — elle sera retrouvable et réutilisable pour toute future vente/dépense, comme n'importe quelle autre carte.
       </p>
       <div class="settings-field">
         <label>Nom de la carte</label>
@@ -1253,17 +1268,32 @@
       </div>
       <div class="settings-field">
         <label>Extension</label>
-        <select id="cardpicker-manual-ext"><option value="">— Choisir une extension —</option></select>
+        <div style="position:relative">
+          <button type="button" id="cardpicker-manual-ext-toggle" class="pkdx-forms-toggle-btn cardpicker-manual-ext-btn" onclick="_toggleManualExtPicker()">
+            <span id="cardpicker-manual-ext-label">— Choisir une extension —</span>
+          </button>
+          <div id="cardpicker-manual-ext-panel" style="display:none" class="pkdx-ext-dropdown cardpicker-manual-ext-dropdown">
+            <input type="text" id="cardpicker-manual-ext-search" class="cardpicker-manual-ext-search" placeholder="Rechercher une extension…" oninput="_renderManualExtPickerList(this.value)">
+            <div id="cardpicker-manual-ext-list"></div>
+          </div>
+        </div>
+        <input type="hidden" id="cardpicker-manual-ext-id">
       </div>
-      <div class="settings-field">
-        <label>Numéro (optionnel)</label>
-        <input type="text" id="cardpicker-manual-number" placeholder="Ex. 45">
+      <div class="settings-field-row">
+        <div class="settings-field"><label>Numéro (optionnel)</label>
+          <input type="text" id="cardpicker-manual-number" placeholder="Ex. 45"></div>
+        <div class="settings-field"><label>Rareté (optionnel)</label>
+          <input type="text" id="cardpicker-manual-rarity" placeholder="Ex. Rare"></div>
       </div>
       <div class="settings-field">
         <label>URL de l'image (optionnel)</label>
         <input type="url" id="cardpicker-manual-image" placeholder="https://…">
       </div>
-      <button type="button" class="btn btn-primary" onclick="_cardPickerSaveManual()">Utiliser cette carte</button>
+      <div class="settings-field">
+        <label>Lien CardMarket (optionnel)</label>
+        <input type="url" id="cardpicker-manual-cardmarket" placeholder="https://www.cardmarket.com/…">
+      </div>
+      <button type="button" class="btn btn-primary" id="cardpicker-manual-save-btn" onclick="_cardPickerSaveManual()">Créer la carte et l'utiliser</button>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-card-picker')">Fermer</button>

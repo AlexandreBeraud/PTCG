@@ -38,9 +38,23 @@ async function initMappingView() {
     mRows.forEach(r => { _mapping.mappings[r.stm_ptcg_ext_id] = { set_id: r.stm_tcgdex_set_id, set_name: r.stm_tcgdex_set_name }; });
     _mapping.initialized = true;
     renderMappingList();
+    _refreshViewsAfterMappingLoaded();
   } catch(e) {
     if (el) el.innerHTML = `<p style="color:var(--accent2);font-size:.82rem;padding:16px">Erreur : ${e.message}</p>`;
   }
+}
+
+// Les Ventes/Dépenses/Acheteurs/Vendeurs peuvent avoir été affichés AVANT que
+// le mapping TCGDex (nécessaire pour résoudre couleur/sigle/regroupement de
+// façon fiable — voir _extForSetId dans ventes-achats.js) ait fini de
+// charger. On rafraîchit la vue actuellement ouverte une fois le mapping
+// disponible, pour ne jamais avoir à changer d'onglet et revenir pour voir
+// les couleurs/sigles corrects.
+function _refreshViewsAfterMappingLoaded() {
+  if (_currentView === 'ventes'    && typeof renderVentes === 'function')    renderVentes();
+  if (_currentView === 'depenses'  && typeof renderDepenses === 'function')  renderDepenses();
+  if (_currentView === 'acheteurs' && typeof renderAcheteurs === 'function') renderAcheteurs();
+  if (_currentView === 'vendeurs'  && typeof renderVendeurs === 'function')  renderVendeurs();
 }
 
 function renderMappingList() {

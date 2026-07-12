@@ -140,12 +140,32 @@ async function _pushCardMarketUrl(cardId, url) {
   } catch(e) { console.warn('[PTCG] push cardmarket_url:', e.message); }
 }
 
-// Extension correspondant à une vente/dépense, retrouvée par son NOM
-// d'extension (set_name) plutôt que par un identifiant figé au moment de
-// l'ajout — ainsi une extension créée/liée APRÈS coup (ex. via TCGDex) est
+// Extension locale correspondant à un set_id TCGDex, via le mapping défini
+// dans Édition › Mapping TCG (table set_mapping, chargée par mapping.js dans
+// la variable globale _mapping). C'est le lien le plus fiable qui soit,
+// puisqu'il ne dépend d'aucune comparaison de texte.
+function _extForSetId(setId) {
+  if (!setId || typeof _mapping === 'undefined' || !_mapping.mappings || typeof getExt !== 'function') return null;
+  for (const extId in _mapping.mappings) {
+    if (_mapping.mappings[extId].set_id === setId) return getExt(extId) || null;
+  }
+  return null;
+}
+
+// Extension correspondant à une vente/dépense. Résolue en priorité via le
+// mapping TCGDex (set_id de la ligne ↔ set_mapping), qui reste correct même
+// si le nom TCGDex de l'extension diffère de celui défini localement (accent,
+// formulation différente…) — sinon repli sur le NOM d'extension (set_name),
+// qui fonctionne déjà pour les lignes sans set_id (anciennes données, saisie
+// manuelle). Ainsi une extension créée/liée APRÈS coup (ex. via TCGDex) est
 // quand même retrouvée pour les ventes déjà existantes, sans avoir à les
-// ré-éditer une par une. Partagé par le tri, la couleur et le sigle.
+// ré-éditer une par une. Partagé par le tri, la couleur, le sigle et le
+// panneau de filtre par extension.
 function _extForSaleItem(item) {
+  if (item.set_id) {
+    const bySetId = _extForSetId(item.set_id);
+    if (bySetId) return bySetId;
+  }
   if (!item.set_name || typeof getAllExtensions !== 'function') return null;
   try { return getAllExtensions().find(e => e.nom === item.set_name) || null; }
   catch(_) { return null; }
@@ -387,11 +407,19 @@ function _buildSaleExtFilterList(kind) {
   const el = document.getElementById(ids.list); if (!el) return;
   const items = kind === 'vente' ? (_D.ventes||[]) : (_D.depenses||[]);
   const currentFilter = kind === 'vente' ? _venteExtFilter : _depenseExtFilter;
-  const namesPresent = new Set(items.map(it => it.set_name).filter(Boolean));
-  const allExts = (typeof getAllExtensions === 'function') ? getAllExtensions() : [];
-  const relevantExts = allExts.filter(e => namesPresent.has(e.nom));
 
   let html = `<div class="pkdx-ext-filter-item ${currentFilter==='all'?'active':''}" onclick="setSaleExtFilter('${kind}','all')">Toutes les extensions</div>`;
+
+  // Un groupe par set_name DISTINCT réellement présent dans les ventes/
+  // dépenses (c'est la valeur du filtre) — l'extension locale (pour le
+  // bloc/sigle) est résolue via _extForSaleItem, qui utilise en PRIORITÉ le
+  // mapping TCGDex (set_id ↔ extension, voir Édition › Mapping TCG) plutôt
+  // qu'une comparaison de noms : une extension liée au mapping est donc
+  // correctement groupée/siglée même si son nom TCGDex diffère de celui
+  // défini localement (accent, formulation différente…), au lieu de tomber
+  // dans "Autres" avec un simple "?".
+  const bySetName = new Map(); // set_name -> extension résolue (ou null)
+  items.forEach(it => { if (it.set_name && !bySetName.has(it.set_name)) bySetName.set(it.set_name, _extForSaleItem(it)); });
 
   // BUG corrigé : on groupait en itérant getBlocs() et en exigeant
   // getBlocForExt(e.id)?.id === bloc.id. Or pour une extension custom sans
@@ -400,12 +428,14 @@ function _buildSaleExtFilterList(kind) {
   // disparaissait alors du panneau sans jamais apparaître nulle part, même
   // groupée sous "Autres". On regroupe maintenant directement par le bloc
   // RÉSOLU de chaque extension (quel qu'il soit), ce qui n'en perd aucune.
-  const groups = new Map(); // nom affiché -> { bloc, exts:[] }
-  relevantExts.forEach(e => {
-    const bloc = (typeof getBlocForExt === 'function' && getBlocForExt(e.id)) || { id:'?', nom:'Autres', sigle:'' };
+  const groups = new Map(); // nom de bloc affiché -> { bloc, entries:[{name,ext}] }
+  const orphanNames = [];
+  bySetName.forEach((ext, name) => {
+    if (!ext) { orphanNames.push(name); return; }
+    const bloc = (typeof getBlocForExt === 'function' && getBlocForExt(ext.id)) || { id:'?', nom:'Autres', sigle:'' };
     const key = bloc.nom || 'Autres';
-    if (!groups.has(key)) groups.set(key, { bloc, exts: [] });
-    groups.get(key).exts.push(e);
+    if (!groups.has(key)) groups.set(key, { bloc, entries: [] });
+    groups.get(key).entries.push({ name, ext });
   });
 
   const knownOrder = (typeof getBlocs === 'function' ? getBlocs() : []).map(b => b.nom);
@@ -418,23 +448,24 @@ function _buildSaleExtFilterList(kind) {
   });
 
   groupKeys.forEach(key => {
-    const { bloc, exts } = groups.get(key);
+    const { bloc, entries } = groups.get(key);
     html += `<div class="pkdx-ext-filter-bloc-label">${_escHtml(key)}</div>`;
-    html += sortExts(exts).map(e => {
-      const active = currentFilter === e.nom ? 'active' : '';
-      const sigleSrc = e.sigle || bloc.sigle || '';
-      return `<div class="pkdx-ext-filter-item ${active}" onclick="setSaleExtFilter('${kind}','${_escJs(e.nom)}')">
-        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
-        <span>${_escHtml(e.nom)}</span>
-      </div>`;
-    }).join('');
+    html += entries
+      .sort((a,b) => (a.ext.code||'').localeCompare(b.ext.code||'','fr',{numeric:true}))
+      .map(({ name, ext }) => {
+        const active = currentFilter === name ? 'active' : '';
+        const sigleSrc = ext.sigle || bloc.sigle || '';
+        return `<div class="pkdx-ext-filter-item ${active}" onclick="setSaleExtFilter('${kind}','${_escJs(name)}')">
+          ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(ext.code||'')}</span>`}
+          <span>${_escHtml(name)}</span>
+        </div>`;
+      }).join('');
   });
-  // Extensions présentes dans les ventes/dépenses mais introuvables parmi les
-  // extensions connues (ex. nom personnalisé/modifié depuis) : affichées quand
-  // même, sans bloc, pour ne jamais perdre silencieusement une entrée du filtre.
-  const matchedNames = new Set(relevantExts.map(e => e.nom));
-  const orphanNames = [...namesPresent].filter(n => !matchedNames.has(n)).sort((a,b) => a.localeCompare(b,'fr'));
+  // set_name présents dans les ventes/dépenses mais introuvables même via le
+  // mapping (aucune extension liée) : affichés quand même, sans bloc, pour
+  // ne jamais perdre silencieusement une entrée du filtre.
   if (orphanNames.length) {
+    orphanNames.sort((a,b) => a.localeCompare(b,'fr'));
     html += `<div class="pkdx-ext-filter-bloc-label">Autres</div>`;
     html += orphanNames.map(n => `<div class="pkdx-ext-filter-item ${currentFilter===n?'active':''}" onclick="setSaleExtFilter('${kind}','${_escJs(n)}')"><span class="pkdx-ext-filter-code">?</span><span>${_escHtml(n)}</span></div>`).join('');
   }
@@ -2530,11 +2561,14 @@ function _cardPickerSelectCard(idx) {
 
 // ── Saisie manuelle (carte dont l'extension n'est pas — ou pas encore —
 // indexée dans TCGDex, ex. anciens sets Wizards) ────────────────────────────
-// Le nom d'extension choisi correspond exactement au champ `nom` d'une
-// extension existante de l'app : la vente/dépense résultante est donc
-// automatiquement coloriée/sigle-ée comme les autres (voir _extForSaleItem
-// dans buildVenteCard/buildDepenseCard), y compris si l'extension est créée
-// ou liée à TCGDex plus tard.
+// Contrairement à un simple remplissage local, ceci CRÉE une ligne définitive
+// dans la table Supabase "cards" (mêmes colonnes que celles peuplées par
+// l'import TCGDex : id, name, image_url, set_id, set_name, set_logo, number,
+// rarity, cardmarket_url) — la carte devient donc recherchable/réutilisable
+// pour toute future vente/dépense, exactement comme une carte trouvée via
+// TCGDex. Le nom d'extension choisi correspond exactement au champ `nom` de
+// l'extension locale sélectionnée : la vente/dépense résultante est donc
+// automatiquement coloriée/sigle-ée comme les autres (voir _extForSaleItem).
 function _cardPickerOpenManual() {
   document.getElementById('cardpicker-search-field').style.display = 'none';
   document.getElementById('cardpicker-step1').style.display = 'none';
@@ -2543,50 +2577,132 @@ function _cardPickerOpenManual() {
   document.getElementById('cardpicker-step3').style.display = '';
   document.getElementById('cardpicker-manual-name').value = '';
   document.getElementById('cardpicker-manual-number').value = '';
+  document.getElementById('cardpicker-manual-rarity').value = '';
   document.getElementById('cardpicker-manual-image').value = '';
-  _populateCardPickerManualExtSelect();
+  document.getElementById('cardpicker-manual-cardmarket').value = '';
+  document.getElementById('cardpicker-manual-ext-id').value = '';
+  document.getElementById('cardpicker-manual-ext-label').textContent = '— Choisir une extension —';
+  document.getElementById('cardpicker-manual-ext-panel').style.display = 'none';
   setTimeout(() => document.getElementById('cardpicker-manual-name').focus(), 60);
 }
 
-function _populateCardPickerManualExtSelect() {
-  const sel = document.getElementById('cardpicker-manual-ext'); if (!sel) return;
-  let html = '<option value="">— Choisir une extension —</option>';
-  getBlocs().forEach(bloc => {
-    const exts = sortExts(getAllExtensions().filter(e => (getBlocForExt(e.id)||{}).id === bloc.id));
-    if (!exts.length) return;
-    html += `<optgroup label="${_escHtml(bloc.nom||bloc.short||bloc.id)}">`;
-    exts.forEach(e => { html += `<option value="${e.id}">${_escHtml(e.nom||e.code||e.id)}${e.code?' ('+_escHtml(e.code)+')':''}</option>`; });
-    html += '</optgroup>';
-  });
-  sel.innerHTML = html;
+// Panneau de choix d'extension — même liste groupée par bloc + sigle que le
+// filtre par extension des Ventes/Dépenses (voir _buildSaleExtFilterList),
+// avec un champ de recherche en tête vu le nombre d'extensions possibles.
+function _toggleManualExtPicker() {
+  const panel = document.getElementById('cardpicker-manual-ext-panel'); if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) { panel.style.display = 'none'; return; }
+  document.getElementById('cardpicker-manual-ext-search').value = '';
+  _renderManualExtPickerList('');
+  panel.style.display = '';
+  setTimeout(() => document.getElementById('cardpicker-manual-ext-search').focus(), 30);
 }
 
-function _cardPickerSaveManual() {
+function _renderManualExtPickerList(query) {
+  const el = document.getElementById('cardpicker-manual-ext-list'); if (!el) return;
+  const q = _normalizeStr(query||'');
+  const selectedId = document.getElementById('cardpicker-manual-ext-id').value;
+  const allExts = (typeof getAllExtensions === 'function') ? getAllExtensions() : [];
+  const filtered = q ? allExts.filter(e => _normalizeStr(e.nom||'').includes(q) || _normalizeStr(e.code||'').includes(q)) : allExts;
+
+  const groups = new Map(); // nom de bloc -> { bloc, exts:[] }
+  filtered.forEach(e => {
+    const bloc = (typeof getBlocForExt === 'function' && getBlocForExt(e.id)) || { id:'?', nom:'Autres', sigle:'' };
+    const key = bloc.nom || 'Autres';
+    if (!groups.has(key)) groups.set(key, { bloc, exts: [] });
+    groups.get(key).exts.push(e);
+  });
+  const knownOrder = (typeof getBlocs === 'function' ? getBlocs() : []).map(b => b.nom);
+  const groupKeys = [...groups.keys()].sort((a, b) => {
+    const ia = knownOrder.indexOf(a), ib = knownOrder.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b, 'fr');
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  if (!groupKeys.length) { el.innerHTML = '<div class="sales-empty" style="padding:12px">Aucune extension trouvée.</div>'; return; }
+
+  let html = '';
+  groupKeys.forEach(key => {
+    const { bloc, exts } = groups.get(key);
+    html += `<div class="pkdx-ext-filter-bloc-label">${_escHtml(key)}</div>`;
+    html += sortExts(exts).map(e => {
+      const active = selectedId === e.id ? 'active' : '';
+      const sigleSrc = e.sigle || bloc.sigle || '';
+      return `<div class="pkdx-ext-filter-item ${active}" onclick="_selectManualExt('${_jsEscape(e.id)}')">
+        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
+        <span>${_escHtml(e.nom)}</span>
+      </div>`;
+    }).join('');
+  });
+  el.innerHTML = html;
+}
+
+function _selectManualExt(extId) {
+  const ext = getExt(extId); if (!ext) return;
+  document.getElementById('cardpicker-manual-ext-id').value = ext.id;
+  document.getElementById('cardpicker-manual-ext-label').innerHTML =
+    `${ext.sigle ? `<img src="${ext.sigle}" alt="" style="height:16px;max-width:26px;object-fit:contain;margin-right:6px;vertical-align:middle" onerror="this.style.display='none'">` : ''}${_escHtml(ext.nom)}`;
+  document.getElementById('cardpicker-manual-ext-panel').style.display = 'none';
+}
+
+async function _cardPickerSaveManual() {
   const p = _cardPickerTarget; if (!p) return;
-  const name   = document.getElementById('cardpicker-manual-name').value.trim();
-  const extId  = document.getElementById('cardpicker-manual-ext').value;
-  const number = document.getElementById('cardpicker-manual-number').value.trim();
-  const image  = document.getElementById('cardpicker-manual-image').value.trim();
+  const name       = document.getElementById('cardpicker-manual-name').value.trim();
+  const extId      = document.getElementById('cardpicker-manual-ext-id').value;
+  const number     = document.getElementById('cardpicker-manual-number').value.trim();
+  const rarity     = document.getElementById('cardpicker-manual-rarity').value.trim();
+  const image      = document.getElementById('cardpicker-manual-image').value.trim();
+  const cardmarket = document.getElementById('cardpicker-manual-cardmarket').value.trim();
   if (!name)  { toast('Indique le nom de la carte.','error'); return; }
   if (!extId) { toast('Choisis une extension.','error'); return; }
   const ext = getExt(extId);
   if (!ext) { toast('Extension introuvable.','error'); return; }
-  document.getElementById(`${p}-card-id`).value = 'manual_' + Date.now();
-  document.getElementById(`${p}-card-name`).value = name;
-  document.getElementById(`${p}-card-image`).value = image;
+
+  const btn = document.getElementById('cardpicker-manual-save-btn');
+  const btnLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Création…'; }
+
+  const newCard = {
+    id: 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    name, image_url: image || null,
+    set_id: null, set_name: ext.nom || ext.code || '', set_logo: ext.logo || null,
+    number: number || null, rarity: rarity || null,
+    cardmarket_url: cardmarket || null,
+  };
+
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/cards`, {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(newCard),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+    toast('Erreur lors de la création de la carte : ' + e.message, 'error');
+    return;
+  }
+
+  document.getElementById(`${p}-card-id`).value = newCard.id;
+  document.getElementById(`${p}-card-name`).value = newCard.name;
+  document.getElementById(`${p}-card-image`).value = newCard.image_url || '';
   document.getElementById(`${p}-set-id`).value = '';
-  document.getElementById(`${p}-set-name`).value = ext.nom || ext.code || '';
-  document.getElementById(`${p}-set-logo`).value = ext.logo || '';
-  document.getElementById(`${p}-number`).value = number;
-  document.getElementById(`${p}-rarity`).value = '';
+  document.getElementById(`${p}-set-name`).value = newCard.set_name;
+  document.getElementById(`${p}-set-logo`).value = newCard.set_logo || '';
+  document.getElementById(`${p}-number`).value = newCard.number || '';
+  document.getElementById(`${p}-rarity`).value = newCard.rarity || '';
   document.getElementById(`${p}-pokemon-name`).value = name;
   const sigleField = document.getElementById(`${p}-ext-sigle`);
   if (sigleField) sigleField.value = ext.sigle || '';
   const cmField = document.getElementById(`${p}-cardmarket-url`);
-  if (cmField) cmField.value = '';
+  if (cmField) cmField.value = newCard.cardmarket_url || '';
+  if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
   _renderCardPreview(p);
   closeModal('modal-card-picker');
-  toast('Carte ajoutée manuellement.', 'success');
+  toast('Carte créée et ajoutée à la base !', 'success');
 }
 
 function _renderCardPreview(prefix) {

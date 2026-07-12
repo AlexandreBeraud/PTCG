@@ -221,16 +221,18 @@ function switchEditionTab(tab) {
   document.querySelectorAll('.edition-tab').forEach(t => t.classList.remove('active'));
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
 
-  const mainLayout   = document.getElementById('edition-layout-main');
-  const mappingPanel = document.getElementById('edition-mapping-panel');
-  const labelsPanel  = document.getElementById('edition-labels-panel');
-  const newBtn       = document.getElementById('edition-new-btn');
-  const tabsRow      = document.getElementById('edition-tabs-row');
+  const mainLayout    = document.getElementById('edition-layout-main');
+  const mappingPanel  = document.getElementById('edition-mapping-panel');
+  const labelsPanel   = document.getElementById('edition-labels-panel');
+  const orphansPanel  = document.getElementById('edition-orphans-panel');
+  const newBtn        = document.getElementById('edition-new-btn');
+  const tabsRow       = document.getElementById('edition-tabs-row');
 
   if (tab === 'mapping') {
     if (mainLayout)   mainLayout.style.display  = 'none';
     if (mappingPanel) mappingPanel.style.display = '';
     if (labelsPanel)  labelsPanel.style.display  = 'none';
+    if (orphansPanel) orphansPanel.style.display = 'none';
     if (newBtn)       newBtn.style.display       = 'none';
     initMappingView();
     return;
@@ -240,15 +242,27 @@ function switchEditionTab(tab) {
     if (mainLayout)   mainLayout.style.display  = 'none';
     if (mappingPanel) mappingPanel.style.display = 'none';
     if (labelsPanel)  labelsPanel.style.display  = '';
+    if (orphansPanel) orphansPanel.style.display = 'none';
     if (newBtn)       newBtn.style.display       = 'none';
     renderLabelsList();
     _pullLabelOverridesFromCloud().then(renderLabelsList);
     return;
   }
 
+  if (tab === 'orphans') {
+    if (mainLayout)   mainLayout.style.display  = 'none';
+    if (mappingPanel) mappingPanel.style.display = 'none';
+    if (labelsPanel)  labelsPanel.style.display  = 'none';
+    if (orphansPanel) orphansPanel.style.display = '';
+    if (newBtn)       newBtn.style.display       = 'none';
+    initOrphanCardsView();
+    return;
+  }
+
   if (mainLayout)   mainLayout.style.display  = '';
   if (mappingPanel) mappingPanel.style.display = 'none';
   if (labelsPanel)  labelsPanel.style.display  = 'none';
+  if (orphansPanel) orphansPanel.style.display = 'none';
   if (newBtn)       newBtn.style.display       = '';
 
   resetEditionForm();
@@ -257,6 +271,130 @@ function switchEditionTab(tab) {
   document.getElementById('edit-form-hint').textContent = tab === 'blocs'
     ? 'Blocs intégrés : surcharge nom/sigle/couleur. Blocs custom : création libre.'
     : 'Extensions intégrées : surcharge. Extensions custom : création libre.';
+}
+
+// ── Cartes orphelines ────────────────────────────────────────────────────
+// Détecte les cartes de la table Supabase "cards" dont le nom ne correspond
+// (avec ou sans accent — voir _accentVariants dans pokedex.js) à AUCUN nom
+// connu du Pokédex (Pokémon de base ou forme) : ce sont exactement les
+// cartes qu'aucune recherche (fiche Pokédex, sélecteur de carte Ventes/
+// Dépenses) ne peut jamais retrouver, quoi que l'utilisateur tape — le même
+// mécanisme d'ancrage (nom entier, ou suivi d'un espace/tiret) que la
+// recherche elle-même est reproduit ici pour que le diagnostic soit fiable.
+var _orphanCards = { rows: [], query: '', initialized: false, loading: false, knownSet: null };
+
+function _canonPokeName(s) {
+  return _normalizeStr(s).replace(/-+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function _cardNameMatchesKnown(cardName, knownSet) {
+  const norm = _canonPokeName(cardName||'');
+  if (!norm) return false;
+  if (knownSet.has(norm)) return true;
+  const tokens = norm.split(' ');
+  let acc = '';
+  for (let i = 0; i < tokens.length; i++) {
+    acc = acc ? acc + ' ' + tokens[i] : tokens[i];
+    if (knownSet.has(acc)) return true;
+  }
+  return false;
+}
+
+async function initOrphanCardsView() {
+  if (_orphanCards.initialized) { renderOrphanCardsList(); return; }
+  const el = document.getElementById('orphan-cards-list');
+  if (!el || _orphanCards.loading) return;
+  _orphanCards.loading = true;
+  el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2);font-size:.82rem">Chargement du Pokédex (noms français)…</div>';
+  try {
+    if (!_pkdx.initialized) await initPokedex();
+    if (!_mapping.initialized) await initMappingView();
+
+    const known = new Set();
+    _pkdx.all.forEach(p => {
+      if (!p.frName) return;
+      _accentVariants(p.frName).forEach(v => known.add(_canonPokeName(v)));
+    });
+    _orphanCards.knownSet = known;
+
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2);font-size:.82rem">Chargement des cartes…</div>';
+    let allRows = [], offset = 0, pageSize = 1000;
+    while (true) {
+      const res = await fetch(
+        `${SB_URL}/rest/v1/cards?select=id,name,set_id,set_name,image_url,number,rarity,cardmarket_url&order=name.asc`,
+        { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Range-Unit': 'items', 'Range': `${offset}-${offset+pageSize-1}` } }
+      );
+      const rows = await res.json();
+      if (!rows.length) break;
+      allRows = allRows.concat(rows);
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    _orphanCards.rows = allRows.filter(c => !_cardNameMatchesKnown(c.name, known));
+    _orphanCards.initialized = true;
+    renderOrphanCardsList();
+  } catch(e) {
+    el.innerHTML = `<p style="color:var(--accent2);font-size:.82rem;padding:16px">Erreur : ${e.message}</p>`;
+  }
+  _orphanCards.loading = false;
+}
+
+function refreshOrphanCardsList() {
+  _orphanCards.initialized = false;
+  initOrphanCardsView();
+}
+
+function filterOrphanCardsList(q) {
+  _orphanCards.query = q;
+  renderOrphanCardsList();
+}
+
+// Même affichage qu'une fiche Pokédex (_renderTcgCardGroupsHtml, dans
+// pokedex.js) : une extension par ligne, triées par bloc puis extension,
+// cartes triées par numéro à l'intérieur (_groupCardsByExtension gère les
+// deux). Cliquer sur une carte ouvre la MÊME modale de détail que le
+// Pokédex (openCardDetailModal), avec zoom, nom/image/lien CardMarket
+// éditables et bouton de suppression.
+function renderOrphanCardsList() {
+  const el = document.getElementById('orphan-cards-list'); if (!el) return;
+  const counter = document.getElementById('orphans-counter');
+  let rows = _orphanCards.rows;
+  if (_orphanCards.query) {
+    const q = _normalizeStr(_orphanCards.query);
+    rows = rows.filter(c => _normalizeStr(c.name||'').includes(q));
+  }
+  if (counter) counter.textContent = `${rows.length} carte${rows.length>1?'s':''} introuvable${rows.length>1?'s':''}`;
+  if (!rows.length) {
+    el.innerHTML = `<p style="color:var(--text2);font-size:.82rem;padding:16px 0">${_orphanCards.rows.length ? 'Aucun résultat pour ce filtre.' : 'Aucune carte orpheline trouvée 🎉'}</p>`;
+    return;
+  }
+  const groups = _groupCardsByExtension(rows);
+  const cardsById = new Map();
+  rows.forEach(c => cardsById.set(String(c.id), c));
+  // Réutilise le même état global que la fiche Pokédex pour que
+  // openCardDetailModal/saveCardEdits/deleteCardFromDb (pokedex.js)
+  // fonctionnent tels quels depuis cet onglet.
+  _pkdxModalTcg = { groups, cardsById };
+  el.innerHTML = _renderTcgCardGroupsHtml(groups, c => "openCardDetailModal('" + _escJs(String(c.id)) + "')");
+}
+
+// Appelés par saveCardEdits/deleteCardFromDb (pokedex.js) après une
+// modification, pour que cet onglet reste synchronisé qu'il soit ou non la
+// vue active (ex. une carte renommée peut redevenir trouvable et doit
+// disparaître de la liste).
+function _syncOrphanCardsAfterEdit(cardId, changes) {
+  const card = _orphanCards.rows.find(c => String(c.id) === String(cardId));
+  if (!card) return;
+  Object.assign(card, changes);
+  if (_orphanCards.knownSet && _cardNameMatchesKnown(card.name, _orphanCards.knownSet)) {
+    _orphanCards.rows = _orphanCards.rows.filter(c => String(c.id) !== String(cardId));
+  }
+  if (_editionTab === 'orphans') renderOrphanCardsList();
+}
+function _syncOrphanCardsAfterDelete(cardId) {
+  _orphanCards.rows = _orphanCards.rows.filter(c => String(c.id) !== String(cardId));
+  if (_editionTab === 'orphans') renderOrphanCardsList();
 }
 
 function editBloc(blocId) {
@@ -585,6 +723,7 @@ function switchView(view,btn){
   if(view==='statistiques')renderStats();
   if(view==='parametres')initSettingsView();
   if(view==='pokedex')initPokedex();
+  if(['ventes','acheteurs','depenses','vendeurs'].includes(view) && typeof initMappingView==='function' && !_mapping.initialized) initMappingView();
   if(view==='ventes')renderVentes();
   if(view==='acheteurs')renderAcheteurs();
   if(view==='depenses')renderDepenses();
