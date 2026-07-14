@@ -33,6 +33,7 @@ function _viewModeStorageKey() {
     if (typeof _editionTab !== 'undefined') {
       if (_editionTab === 'mapping') return 'mapping';
       if (_editionTab === 'labels') return 'labels';
+      if (_editionTab === 'persoobjets') return 'persoobjets';
     }
     return 'edition';
   }
@@ -74,7 +75,7 @@ var _goodieSearchQuery = ''; // recherche d'extension, propre à l'onglet Goodie
 // seul _D en mémoire, aucun rechargement. On modifie juste le fragment
 // (#...) de l'URL, jamais le chemin du fichier — ça marche donc pareil en
 // local (file://) et une fois déployé sur Netlify.
-var _VALID_VIEWS = ['extensions','classeurs','boosters','goodies','statistiques','edition','parametres','pokedex','ventes','acheteurs','depenses','vendeurs','bilan'];
+var _VALID_VIEWS = ['extensions','classeurs','boosters','goodies','statistiques','edition','parametres','pokedex','personnages','objets','lieux','energies','ventes','acheteurs','depenses','vendeurs','bilan'];
 var _lastSelfHash = null; // dernier hash qu'on a posé nous-mêmes (voir hashchange plus bas)
 
 function _setHash(view, sub) {
@@ -206,6 +207,8 @@ function loadData() {
       labels:        [],
       label_categories: [],
       pokemon_label_assignments: {},
+      perso_objets:  [],
+      card_category_overrides: {},
       ventes:        [],
       acheteurs:     [],
       acheteur_commandes: [],
@@ -234,6 +237,8 @@ function loadData() {
       if (!_D.labels)         _D.labels         = [];
       if (!_D.label_categories) _D.label_categories = [];
       if (!_D.pokemon_label_assignments) _D.pokemon_label_assignments = {};
+      if (!_D.perso_objets)   _D.perso_objets   = [];
+      if (!_D.card_category_overrides) _D.card_category_overrides = {};
       if (!_D.ventes)         _D.ventes         = [];
       if (!_D.acheteurs)      _D.acheteurs      = [];
       if (!_D.acheteur_commandes) _D.acheteur_commandes = [];
@@ -324,6 +329,55 @@ function _persistLocalOnly() {
     console.error('[PTCG] _persistLocalOnly a échoué :', e);
     toast('Échec de la sauvegarde locale : ' + e.message, 'error');
   }
+}
+
+// ── Import d'image locale (fichier) pour n'importe quel champ "URL d'image"
+// de l'appli ────────────────────────────────────────────────────────────
+// L'app n'a pas de stockage fichier propre (Supabase Storage, etc.) — tous
+// les champs "image" sont en réalité des colonnes texte contenant une URL.
+// Une image importée depuis l'appareil est donc convertie en data URL
+// (base64) et déposée telle quelle dans le même champ texte : ça marche
+// comme <img src>, ça se synchronise comme n'importe quelle autre URL, sans
+// rien ajouter côté backend. Seule contrainte : le texte stocké grossit
+// d'environ 33% par rapport au fichier d'origine (encodage base64) — on
+// prévient au-delà de 2 Mo plutôt que de laisser une image énorme ralentir
+// silencieusement la sauvegarde/synchro.
+function _importImageFile(fileInput, targetInputId) {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { toast('Sélectionne un fichier image.', 'error'); fileInput.value=''; return; }
+  const proceed = () => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const target = document.getElementById(targetInputId);
+      if (!target) return;
+      target.value = reader.result; // data URL, utilisable tel quel comme src
+      // Déclenche les aperçus déjà branchés en oninput (previewEditionImg,
+      // previewClasseurImage…) exactement comme une saisie manuelle.
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    reader.onerror = () => toast('Erreur de lecture du fichier.', 'error');
+    reader.readAsDataURL(file);
+  };
+  if (file.size > 2 * 1024 * 1024) {
+    if (confirm(`Cette image fait ${Math.round(file.size/1024/1024*10)/10} Mo. Les images importées sont stockées telles quelles (sans compression) : au-delà de quelques Mo ça peut ralentir la sauvegarde et la synchro cloud. Continuer ?`)) proceed();
+  } else {
+    proceed();
+  }
+  fileInput.value = ''; // permet de réimporter le même fichier une prochaine fois
+}
+
+// Glisser-déposer un fichier directement sur le champ (au lieu du bouton
+// 📁) : par défaut, un navigateur insère le CHEMIN LOCAL du fichier comme
+// simple texte ("file:///C:/Users/…") — une "URL" qui ne se charge jamais,
+// ni immédiatement (restriction de sécurité du navigateur) ni après
+// synchronisation (chemin propre à cet ordinateur). On intercepte le dépôt
+// et on le fait passer par le même chemin que le bouton d'import.
+function _handleImageDrop(event, targetInputId) {
+  event.preventDefault();
+  const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  if (!file) return;
+  _importImageFile({ files: [file], value: '' }, targetInputId);
 }
 
 function toggleSidebar() {

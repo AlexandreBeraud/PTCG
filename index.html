@@ -107,6 +107,31 @@
       </svg>
       <span>Pokédex</span>
     </button>
+    <button class="nav-btn" data-view="personnages" onclick="switchView('personnages',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0116 0v1"/>
+      </svg>
+      <span>Personnages</span>
+    </button>
+    <button class="nav-btn" data-view="objets" onclick="switchView('objets',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20.59 13.41L13.42 20.58a2 2 0 01-2.83 0L2.83 12.83a2 2 0 010-2.83L10 3h4a2 2 0 012 2v4l4.59 4.41z"/>
+        <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/>
+      </svg>
+      <span>Objets</span>
+    </button>
+    <button class="nav-btn" data-view="lieux" onclick="switchView('lieux',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+      </svg>
+      <span>Lieux</span>
+    </button>
+    <button class="nav-btn" data-view="energies" onclick="switchView('energies',this)">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </svg>
+      <span>Énergies</span>
+    </button>
   </div>
   <div class="nav-section">
     <div class="nav-section-label">Config</div>
@@ -547,6 +572,7 @@
         <button class="edition-tab" data-tab="mapping" onclick="switchEditionTab('mapping')">Mapping TCG</button>
         <button class="edition-tab" data-tab="labels" onclick="switchEditionTab('labels')">Labels</button>
         <button class="edition-tab" data-tab="orphans" onclick="switchEditionTab('orphans')">Cartes orphelines</button>
+        <button class="edition-tab" data-tab="persoobjets" onclick="switchEditionTab('persoobjets')">Perso., Objets, Lieux &amp; Énergies</button>
       </div>
       <div class="edition-layout" id="edition-layout-main">
         <div>
@@ -564,9 +590,21 @@
           <div class="field" id="edit-bloc-field" style="display:none"><label>Bloc</label>
             <select id="edit-bloc"><option value="">— Choisir —</option></select></div>
           <div class="field" id="edit-logo-field"><label>URL image / logo</label>
-            <input type="url" id="edit-logo" placeholder="https://…" oninput="previewEditionImg(this.value)"></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="url" id="edit-logo" placeholder="https://…" oninput="previewEditionImg(this.value)" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'edit-logo')">
+              <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Importer une image depuis cet appareil">📁
+                <input type="file" accept="image/*" style="display:none" onchange="_importImageFile(this,'edit-logo')">
+              </label>
+            </div>
+          </div>
           <div class="field"><label>URL sigle (image affichée à côté des extensions)</label>
-            <input type="url" id="edit-sigle" placeholder="https://… (sigle ou icône)"></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="url" id="edit-sigle" placeholder="https://… (sigle ou icône)" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'edit-sigle')">
+              <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Importer une image depuis cet appareil">📁
+                <input type="file" accept="image/*" style="display:none" onchange="_importImageFile(this,'edit-sigle')">
+              </label>
+            </div>
+          </div>
           <div class="field" id="edit-stat-mode-field"><label>Compte dans les statistiques</label>
             <select id="edit-stat-mode">
               <option value="all">Tout (cartes + boosters)</option>
@@ -639,6 +677,63 @@
           <span id="orphans-counter" style="font-size:.78rem;color:var(--text2)"></span>
         </div>
         <div id="orphan-cards-list" class="pkdx-tcg-groups"></div>
+      </div>
+      <div id="edition-persoobjets-panel" style="display:none">
+        <p class="form-hint" style="margin-bottom:14px">
+          Personnages (Supporter), Objets (Objet + Objet Spécial), Lieux (Stade) et Énergies (de base + spéciales) sont regroupés automatiquement par nom réel depuis TCGdex. Corrige ici ce que l'automatique n'a pas su faire : change l'illustration d'une fiche, assigne-lui une carte à la main (elle sort alors définitivement du regroupement automatique — la recherche couvre toutes les cartes TCGdex, toutes catégories confondues), crée une entrée qui n'existe dans aucune des sources, ou supprime une entrée.
+        </p>
+        <div class="mapping-header">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-sm btn-secondary pko-kind-btn active" data-kind="personnage" onclick="switchPkoEditKind('personnage')">Personnages</button>
+            <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="objet" onclick="switchPkoEditKind('objet')">Objets</button>
+            <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="lieu" onclick="switchPkoEditKind('lieu')">Lieux</button>
+            <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="energie" onclick="switchPkoEditKind('energie')">Énergies</button>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 10px;display:flex;align-items:center;gap:6px;width:220px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" id="pko-edit-search" placeholder="Filtrer…" oninput="filterPkoEditionList(this.value)" style="width:100%;background:none;border:none;outline:none;font-size:.8rem;color:var(--text)">
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="refreshPkoCatalog()" title="Recharger le catalogue TCGdex avant le renouvellement automatique (21 jours)">↻ Rafraîchir le catalogue</button>
+          <span id="pko-edit-counter" style="font-size:.78rem;color:var(--text2)"></span>
+        </div>
+
+        <!-- Panneau de correction fixé à droite, toujours visible même en
+             scrollant — même principe que Blocs/Extensions (.edition-layout
+             + .edition-form-card en position:sticky). -->
+        <div class="edition-layout">
+          <div>
+            <div id="pko-edit-list"></div>
+          </div>
+          <div id="pko-edit-form" class="edition-form-card">
+            <h3 id="pko-form-title">Nouvelle entrée manuelle</h3>
+            <div class="field"><label>Nom affiché</label>
+              <input type="text" id="pko-form-name" placeholder="Ex : Sacha"></div>
+            <div class="field"><label>URL illustration</label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="url" id="pko-form-image" placeholder="https://…" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'pko-form-image')">
+                <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Importer une image depuis cet appareil">📁
+                  <input type="file" accept="image/*" style="display:none" onchange="_importImageFile(this,'pko-form-image')">
+                </label>
+              </div>
+            </div>
+            <div class="field">
+              <label>Cartes assignées manuellement</label>
+              <div id="pko-form-cards" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
+            </div>
+            <div class="field">
+              <label>Rechercher une carte TCGdex à assigner</label>
+              <input type="text" id="pko-form-card-search" placeholder="Nom de la carte…" oninput="pkoSearchCatalogCards(this.value)">
+              <div id="pko-form-search-results" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" onclick="pkoSaveEntry()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Enregistrer
+              </button>
+              <button class="btn btn-ghost" onclick="pkoCancelForm()">Annuler</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -771,6 +866,122 @@
       </div>
     </div>
 
+    <!-- Personnages -->
+    <div id="view-personnages" class="view">
+      <div class="pkdx-sticky-header">
+        <div class="page-header" style="margin-bottom:0">
+          <div class="page-header-left">
+            <h1>Personnages</h1>
+            <p>Cartes Dresseur Supporter — données via TCGdex</p>
+          </div>
+          <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input type="text" id="personnages-search" placeholder="Rechercher un personnage…" oninput="filterPersonnages(this.value)" style="width:100%">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="personnages-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
+        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
+        <p>Chargement du catalogue TCGdex…</p>
+      </div>
+      <div id="personnages-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
+      <div id="personnages-grid" class="pkdx-grid"></div>
+      <div id="personnages-load-more" style="text-align:center;padding:24px;display:none">
+        <button class="btn btn-secondary" onclick="personnagesLoadMore()">Charger plus</button>
+      </div>
+    </div>
+
+    <!-- Objets -->
+    <div id="view-objets" class="view">
+      <div class="pkdx-sticky-header">
+        <div class="page-header" style="margin-bottom:0">
+          <div class="page-header-left">
+            <h1>Objets</h1>
+            <p>Cartes Dresseur Objet et Objet Spécial — données via TCGdex</p>
+          </div>
+          <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input type="text" id="objets-search" placeholder="Rechercher un objet…" oninput="filterObjets(this.value)" style="width:100%">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="objets-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
+        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
+        <p>Chargement du catalogue TCGdex…</p>
+      </div>
+      <div id="objets-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
+      <div id="objets-grid" class="pkdx-grid"></div>
+      <div id="objets-load-more" style="text-align:center;padding:24px;display:none">
+        <button class="btn btn-secondary" onclick="objetsLoadMore()">Charger plus</button>
+      </div>
+    </div>
+
+    <!-- Lieux -->
+    <div id="view-lieux" class="view">
+      <div class="pkdx-sticky-header">
+        <div class="page-header" style="margin-bottom:0">
+          <div class="page-header-left">
+            <h1>Lieux</h1>
+            <p>Cartes Dresseur Stade — données via TCGdex</p>
+          </div>
+          <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input type="text" id="lieux-search" placeholder="Rechercher un lieu…" oninput="filterLieux(this.value)" style="width:100%">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="lieux-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
+        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
+        <p>Chargement du catalogue TCGdex…</p>
+      </div>
+      <div id="lieux-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
+      <div id="lieux-grid" class="pkdx-grid"></div>
+      <div id="lieux-load-more" style="text-align:center;padding:24px;display:none">
+        <button class="btn btn-secondary" onclick="lieuxLoadMore()">Charger plus</button>
+      </div>
+    </div>
+
+    <!-- Énergies -->
+    <div id="view-energies" class="view">
+      <div class="pkdx-sticky-header">
+        <div class="page-header" style="margin-bottom:0">
+          <div class="page-header-left">
+            <h1>Énergies</h1>
+            <p>Énergies de base et spéciales — données via TCGdex</p>
+          </div>
+          <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input type="text" id="energies-search" placeholder="Rechercher une énergie…" oninput="filterEnergies(this.value)" style="width:100%">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="energies-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
+        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
+        <p>Chargement du catalogue TCGdex…</p>
+      </div>
+      <div id="energies-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
+      <div id="energies-grid" class="pkdx-grid"></div>
+      <div id="energies-load-more" style="text-align:center;padding:24px;display:none">
+        <button class="btn btn-secondary" onclick="energiesLoadMore()">Charger plus</button>
+      </div>
+    </div>
+
     <!-- Pokédex Detail Modal -->
     <div class="modal-backdrop" id="modal-pokedex" onclick="if(event.target===this)closeModal('modal-pokedex')">
       <div class="modal pkdx-modal" id="pkdx-modal-inner">
@@ -888,7 +1099,12 @@
       <input type="hidden" id="classeur-status-input" value="in_progress">
     </div>
     <div class="settings-field"><label>Image de couverture (URL)</label>
-      <input type="url" id="classeur-image-input" placeholder="https://…" oninput="previewClasseurImage(this.value)">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="url" id="classeur-image-input" placeholder="https://…" oninput="previewClasseurImage(this.value)" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'classeur-image-input')">
+        <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Importer une image depuis cet appareil">📁
+          <input type="file" accept="image/*" style="display:none" onchange="_importImageFile(this,'classeur-image-input')">
+        </label>
+      </div>
       <div class="classeur-image-preview" id="classeur-image-preview">
         <span style="font-size:.7rem;color:var(--text3)">Aperçu</span>
       </div>
@@ -937,7 +1153,13 @@
     <div class="settings-field"><label>Description / Nom</label>
       <input type="text" id="illus-desc" placeholder="Pikachu — Illus. Ken Sugimori"></div>
     <div class="settings-field"><label>URL image (optionnel)</label>
-      <input type="url" id="illus-img" placeholder="https://…"></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="url" id="illus-img" placeholder="https://…" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'illus-img')">
+        <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Importer une image depuis cet appareil">📁
+          <input type="file" accept="image/*" style="display:none" onchange="_importImageFile(this,'illus-img')">
+        </label>
+      </div>
+    </div>
     <div class="settings-field"><label>Type de produit</label>
       <select id="illus-product-type">
         <option value="booster">Booster</option>
@@ -1287,7 +1509,12 @@
       </div>
       <div class="settings-field">
         <label>URL de l'image (optionnel)</label>
-        <input type="url" id="cardpicker-manual-image" placeholder="https://…">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="url" id="cardpicker-manual-image" placeholder="https://…" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'cardpicker-manual-image')">
+          <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Importer une image depuis cet appareil">📁
+            <input type="file" accept="image/*" style="display:none" onchange="_importImageFile(this,'cardpicker-manual-image')">
+          </label>
+        </div>
       </div>
       <div class="settings-field">
         <label>Lien CardMarket (optionnel)</label>
@@ -1354,5 +1581,6 @@
 <script src="js/ventes-achats.js?v=16"></script>
 <script src="js/label-categories.js?v=16"></script>
 <script src="js/pokedex.js?v=16"></script>
+<script src="js/perso-objets.js?v=16"></script>
 </body>
 </html>

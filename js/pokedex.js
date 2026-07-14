@@ -234,6 +234,47 @@ function _accentVariants(name) {
   return stripped !== name ? [name, stripped] : [name];
 }
 
+// Construit l'ensemble de tous les noms FR connus du Pokédex (Pokémon de
+// base + formes, toutes variantes préfixe/suffixe de label actives), sous
+// forme canonique (_canonPokeName, voir edition.js). Factorisé ici pour être
+// utilisé à la fois par "Cartes orphelines" (Édition) et par la recherche
+// locale des fiches Personnages/Objets (perso-objets.js), qui doit exclure
+// toute carte réellement Pokémon pour ne jamais mélanger les deux
+// catégories — auparavant dupliqué en ligne dans initOrphanCardsView.
+function _buildKnownPokemonNameSet() {
+  const known = new Set();
+  _pkdx.all.forEach(p => {
+    if (!p.frName) return;
+    // Un Pokémon de base avec un label assigné manuellement (fiche →
+    // sélecteur "Label") voit sa recherche de cartes restreinte à ce label
+    // précis, exactement comme une forme : son nom "plat" n'est alors plus
+    // cherché du tout — cf. openPokedexModal / _fetchCardsGroupedByExtension.
+    const assignedType = (_D.pokemon_label_assignments || {})[p.name];
+    if (assignedType) return;
+    _accentVariants(p.frName).forEach(v => known.add(_canonPokeName(v)));
+  });
+  // Motifs préfixe/suffixe de chaque label actif (intégré ou personnalisé),
+  // appliqués à chaque Pokémon de base connu — reproduit les mêmes motifs
+  // que la recherche réelle (getFormLabelConfig) pour couvrir aussi les
+  // formes qui ne suivent pas les motifs standards PokéAPI (Origine,
+  // Couronné, Masque…, et tout label personnalisé).
+  const baseEntries = _pkdx.all.filter(p => !p.isForm && p.frName);
+  _allLabelTypes().forEach(type => {
+    const cfg = getFormLabelConfig(type);
+    if (!cfg || cfg.enabled === false) return;
+    const prefixes = cfg.prefixes || [], suffixes = cfg.suffixes || [];
+    if (!prefixes.length && !suffixes.length) return;
+    baseEntries.forEach(p => {
+      _accentVariants(p.frName).forEach(baseVariant => {
+        const baseCanon = _canonPokeName(baseVariant);
+        prefixes.forEach(pre => { const pc = _canonPokeName(pre); if (pc) known.add((pc + ' ' + baseCanon).trim()); });
+        suffixes.forEach(suf => { const sc = _canonPokeName(suf); if (sc) known.add((baseCanon + ' ' + sc).trim()); });
+      });
+    });
+  });
+  return known;
+}
+
 // mode ('all'|'none'|'only') et formTypeFilter (Set de types, ou null = tous)
 // sont deux réglages INDÉPENDANTS qui se combinent (et non plus un seul état
 // exclusif) : on peut par ex. choisir "Formes seules" ET un type précis, et
@@ -685,6 +726,7 @@ async function pokedexLoadMore() {
 async function openPokedexModal(id) {
   const modal = document.getElementById('modal-pokedex');
   const inner = document.getElementById('pkdx-modal-content');
+  if (typeof _pkoCurrentModal !== 'undefined') _pkoCurrentModal = null; // on quitte une éventuelle fiche Personnage/Objet
   inner.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)"><div class="pokeball" style="width:36px;height:36px;margin:0 auto 10px;border-width:3px"></div>Chargement…</div>';
   modal.classList.add('open');
 
@@ -927,6 +969,13 @@ async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
   const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   let cards = await res.json();
+
+  // Une carte forcée manuellement vers "objet" ou "personnage" (fiche carte
+  // → "Catégorie", voir perso-objets.js) ne doit plus jamais apparaître
+  // dans une fiche Pokémon, même si son nom matche par ailleurs.
+  if (typeof _cardCategoryOverride === 'function') {
+    cards = cards.filter(c => { const forced = _cardCategoryOverride(c.id); return !forced || forced === 'pokemon'; });
+  }
 
   if (formType && linkedTypes.includes(formType)) {
     cards = cards.filter(card => _cardMatchesFormType(card.name, formType));
@@ -1284,11 +1333,25 @@ function openCardDetailModal(cardId) {
         </div>
         <div class="settings-field">
           <label>URL de l'illustration</label>
-          <input type="url" id="pkdx-card-edit-img" value="${_escHtml(card.image_url||'')}" placeholder="https://…">
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="url" id="pkdx-card-edit-img" value="${_escHtml(card.image_url||'')}" placeholder="https://…" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'pkdx-card-edit-img')">
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Importer une image depuis cet appareil">📁
+              <input type="file" accept="image/*" style="display:none" onchange="_importImageFile(this,'pkdx-card-edit-img')">
+            </label>
+          </div>
         </div>
         <div class="settings-field">
           <label>Lien CardMarket</label>
           <input type="url" id="pkdx-card-edit-cardmarket" value="${_escHtml(card.cardmarket_url||'')}" placeholder="https://www.cardmarket.com/…">
+        </div>
+        <div class="settings-field">
+          <label>Catégorie</label>
+          <select id="pkdx-card-edit-category">
+            <option value="">Auto (détection par le nom)</option>
+            <option value="pokemon"${_cardCategoryOverride(cardId)==='pokemon'?' selected':''}>Pokémon</option>
+            ${typeof PKO_KINDS !== 'undefined' ? PKO_KINDS.map(k => `<option value="${k}"${_cardCategoryOverride(cardId)===k?' selected':''}>${PKO_LABELS[k].singular.charAt(0).toUpperCase() + PKO_LABELS[k].singular.slice(1)}</option>`).join('') : ''}
+          </select>
+          <p class="form-hint" style="margin-top:4px">À utiliser si cette carte apparaît dans la mauvaise fiche (ex. un Pokémon qui ressort chez un Personnage à cause de son nom) — force la catégorie plutôt que de laisser la détection par nom décider.</p>
         </div>
         <div class="modal-footer" style="justify-content:flex-start">
           <button class="btn btn-primary btn-sm" onclick="saveCardEdits('${_escJs(String(cardId))}')">Enregistrer dans Supabase</button>
@@ -1336,10 +1399,13 @@ async function saveCardEdits(cardId) {
   const nameInp = document.getElementById('pkdx-card-edit-name');
   const imgInp  = document.getElementById('pkdx-card-edit-img');
   const cmInp   = document.getElementById('pkdx-card-edit-cardmarket');
+  const catInp  = document.getElementById('pkdx-card-edit-category');
   const newName = (nameInp?.value || '').trim();
   const newImg  = (imgInp?.value || '').trim();
   const newCm   = (cmInp?.value || '').trim();
+  const newCat  = catInp ? catInp.value : '';
   if (!newName) { toast('Le nom ne peut pas être vide.', 'error'); return; }
+  if (typeof setCardCategoryOverride === 'function') setCardCategoryOverride(cardId, newCat || null, { silent: true, cardName: newName });
 
   try {
     const res = await fetch(`${SB_URL}/rest/v1/cards?id=eq.${encodeURIComponent(cardId)}`, {
@@ -1367,6 +1433,7 @@ async function saveCardEdits(cardId) {
 async function openPokedexFormModal(pokeName, baseFrName) {
   const modal = document.getElementById('modal-pokedex');
   const inner = document.getElementById('pkdx-modal-content');
+  if (typeof _pkoCurrentModal !== 'undefined') _pkoCurrentModal = null;
   inner.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)">Chargement de la forme…</div>';
   modal.classList.add('open');
 

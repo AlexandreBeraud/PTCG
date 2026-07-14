@@ -600,6 +600,57 @@ var _SYNC_DOMAINS = [
       _D.pokemon_label_assignments = map;
     },
   },
+  {
+    // Corrections manuelles Personnages/Objets (voir js/perso-objets.js) :
+    // une même table gère à la fois les entrées 100% custom (id préfixé
+    // "cpo_") et les corrections d'une entrée auto-détectée (id = clé auto,
+    // ex. "auto:sacha") — même principe que blocs/extensions ci-dessus.
+    // pko_manual_card_ids stocke des objets {id,name,image} et pas juste des
+    // ids : une carte assignée à la main peut venir d'une recherche TCGdex
+    // live couvrant des types hors du catalogue auto-détecté (Stade, Objet
+    // Spécial, Énergie spéciale…), donc pas forcément résolvable après coup
+    // via ce catalogue — même nom de colonne qu'avant, contenu enrichi.
+    table: 'perso_objets', keyCols: ['pko_id'], userCol: 'pko_user_id',
+    toRows: function () {
+      return (_D.perso_objets || []).map(function (o, i) {
+        return {
+          pko_user_id: _cloudUserId(), pko_id: o.id, pko_kind: o.kind,
+          pko_display_name: o.display_name || '', pko_image_url: o.image_url || '',
+          pko_manual_card_ids: o.manual_cards || [], pko_is_custom: !!o.is_custom,
+          pko_is_deleted: !!o.is_deleted, pko_sort_order: o.sort_order != null ? o.sort_order : i,
+          pko_updated_at: _isoNow(),
+        };
+      });
+    },
+    apply: function (rows) {
+      rows.sort(function (a, b) { return (a.pko_sort_order || 0) - (b.pko_sort_order || 0); });
+      _D.perso_objets = rows.map(function (r) {
+        var raw = typeof _cleanPatternList === 'function' ? _cleanPatternList(r.pko_manual_card_ids) : (Array.isArray(r.pko_manual_card_ids) ? r.pko_manual_card_ids : []);
+        return {
+          id: r.pko_id, kind: r.pko_kind, display_name: r.pko_display_name || '', image_url: r.pko_image_url || '',
+          manual_cards: raw, is_custom: !!r.pko_is_custom, is_deleted: !!r.pko_is_deleted,
+          sort_order: r.pko_sort_order || 0,
+        };
+      });
+    },
+  },
+  {
+    // Catégorie forcée d'une carte (pokemon/objet/personnage), voir
+    // setCardCategoryOverride dans js/perso-objets.js — même forme minimale
+    // clé -> valeur que pokemon_label_assignments ci-dessus.
+    table: 'card_category_overrides', keyCols: ['cco_card_id'], userCol: 'cco_user_id',
+    toRows: function () {
+      var map = _D.card_category_overrides || {};
+      return Object.keys(map).map(function (k) {
+        return { cco_user_id: _cloudUserId(), cco_card_id: k, cco_category: map[k], cco_updated_at: _isoNow() };
+      });
+    },
+    apply: function (rows) {
+      var map = {};
+      rows.forEach(function (r) { map[r.cco_card_id] = r.cco_category; });
+      _D.card_category_overrides = map;
+    },
+  },
 ];
 
 // Les deux tables "boosters" et "goodies" partagent la même forme de ligne

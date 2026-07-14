@@ -189,6 +189,7 @@ function setViewMode(mode, btn) {
   saveData();
   if (key === 'labels' && typeof renderLabelsList === 'function') renderLabelsList();
   else if (key === 'mapping' && typeof renderMappingList === 'function') renderMappingList();
+  else if (key === 'persoobjets' && typeof _pkoRenderEditionList === 'function') _pkoRenderEditionList();
   else renderAll();
 }
 

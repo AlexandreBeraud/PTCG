@@ -195,6 +195,32 @@ erDiagram
         text pok_label_id "ref souple -> FORM_LABEL_OVERRIDES.for_form_type"
     }
 
+    %% Personnages/Objets/Lieux/Énergies (onglets alimentés par TCGdex, pas PokéAPI) :
+    %% catalogue + regroupement automatique par nom entièrement recalculés
+    %% côté client à chaque session (pas stockés) — seules les CORRECTIONS
+    %% manuelles sont persistées ici. pko_id = "auto:<nom>" pour corriger une
+    %% entrée auto-détectée, ou "cpo_<timestamp>" pour une entrée 100% manuelle.
+    PERSO_OBJETS {
+        text pko_id PK "auto:<nom normalisé> (correction) ou cpo_<timestamp> (créée à la main)"
+        text pko_user_id PK "toujours 'default'"
+        text pko_kind "personnage | objet | lieu | energie"
+        text pko_display_name "nom affiché (surcharge le nom auto-détecté)"
+        text pko_image_url "illustration (surcharge l'image de la 1re carte)"
+        jsonb pko_manual_card_ids "objets {id,name,image} assignés à la main (pas juste des ids, cf. recherche TCGdex live), exclus du regroupement auto ailleurs"
+        bool pko_is_custom "entrée n'existant dans aucune des deux sources"
+        bool pko_is_deleted "masquée du catalogue automatique"
+        int pko_sort_order "position d'affichage"
+    }
+
+    %% Correction de dernier recours quand la détection par nom se trompe
+    %% (ex. un Pokémon nommé d'après un Personnage) — prime sur toute
+    %% détection automatique, dans le Pokédex comme dans Personnages/Objets.
+    CARD_CATEGORY_OVERRIDES {
+        text cco_card_id PK,FK "ref souple -> cards.id"
+        text cco_user_id PK "toujours 'default'"
+        text cco_category "pokemon | objet | personnage | lieu | energie"
+    }
+
     SETTINGS {
         text set_user_id PK "toujours 'default' (une seule ligne)"
         text set_display_mode "logo / autre mode d'affichage des extensions"

@@ -222,18 +222,20 @@ function switchEditionTab(tab) {
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   _syncEditionViewToggle(tab);
 
-  const mainLayout    = document.getElementById('edition-layout-main');
-  const mappingPanel  = document.getElementById('edition-mapping-panel');
-  const labelsPanel   = document.getElementById('edition-labels-panel');
-  const orphansPanel  = document.getElementById('edition-orphans-panel');
-  const newBtn        = document.getElementById('edition-new-btn');
-  const tabsRow       = document.getElementById('edition-tabs-row');
+  const mainLayout      = document.getElementById('edition-layout-main');
+  const mappingPanel    = document.getElementById('edition-mapping-panel');
+  const labelsPanel     = document.getElementById('edition-labels-panel');
+  const orphansPanel    = document.getElementById('edition-orphans-panel');
+  const persoObjetsPanel= document.getElementById('edition-persoobjets-panel');
+  const newBtn          = document.getElementById('edition-new-btn');
+  const tabsRow         = document.getElementById('edition-tabs-row');
 
   if (tab === 'mapping') {
     if (mainLayout)   mainLayout.style.display  = 'none';
     if (mappingPanel) mappingPanel.style.display = '';
     if (labelsPanel)  labelsPanel.style.display  = 'none';
     if (orphansPanel) orphansPanel.style.display = 'none';
+    if (persoObjetsPanel) persoObjetsPanel.style.display = 'none';
     if (newBtn)       newBtn.style.display       = 'none';
     initMappingView();
     return;
@@ -244,6 +246,7 @@ function switchEditionTab(tab) {
     if (mappingPanel) mappingPanel.style.display = 'none';
     if (labelsPanel)  labelsPanel.style.display  = '';
     if (orphansPanel) orphansPanel.style.display = 'none';
+    if (persoObjetsPanel) persoObjetsPanel.style.display = 'none';
     if (newBtn)       newBtn.style.display       = 'none';
     renderLabelsList();
     return;
@@ -254,8 +257,20 @@ function switchEditionTab(tab) {
     if (mappingPanel) mappingPanel.style.display = 'none';
     if (labelsPanel)  labelsPanel.style.display  = 'none';
     if (orphansPanel) orphansPanel.style.display = '';
+    if (persoObjetsPanel) persoObjetsPanel.style.display = 'none';
     if (newBtn)       newBtn.style.display       = 'none';
     initOrphanCardsView();
+    return;
+  }
+
+  if (tab === 'persoobjets') {
+    if (mainLayout)   mainLayout.style.display  = 'none';
+    if (mappingPanel) mappingPanel.style.display = 'none';
+    if (labelsPanel)  labelsPanel.style.display  = 'none';
+    if (orphansPanel) orphansPanel.style.display = 'none';
+    if (persoObjetsPanel) persoObjetsPanel.style.display = '';
+    if (newBtn)       newBtn.style.display       = 'none';
+    initPkoEditionView();
     return;
   }
 
@@ -263,6 +278,7 @@ function switchEditionTab(tab) {
   if (mappingPanel) mappingPanel.style.display = 'none';
   if (labelsPanel)  labelsPanel.style.display  = 'none';
   if (orphansPanel) orphansPanel.style.display = 'none';
+  if (persoObjetsPanel) persoObjetsPanel.style.display = 'none';
   if (newBtn)       newBtn.style.display       = '';
 
   resetEditionForm();
@@ -275,18 +291,18 @@ function switchEditionTab(tab) {
 
 // Le bouton grille/liste du header (#topbar-view-toggle) est réutilisé pour
 // TOUS les sous-onglets d'Édition ayant un mode d'affichage (Blocs/
-// Extensions, Mapping TCG, Labels) plutôt que d'avoir un bouton local par
-// panneau — masqué seulement pour Cartes orphelines, qui n'a pas cette
-// notion. Chaque sous-onglet garde son propre mode mémorisé (voir
-// _viewModeStorageKey dans core.js), donc passer de l'un à l'autre ne perd
-// jamais le choix fait sur les autres.
+// Extensions, Mapping TCG, Labels, Perso. & Objets) plutôt que d'avoir un
+// bouton local par panneau — masqué seulement pour Cartes orphelines, qui
+// n'a pas cette notion. Chaque sous-onglet garde son propre mode mémorisé
+// (voir _viewModeStorageKey dans core.js), donc passer de l'un à l'autre ne
+// perd jamais le choix fait sur les autres.
 function _syncEditionViewToggle(tab) {
   const toggle = document.getElementById('topbar-view-toggle');
   if (!toggle) return;
-  const show = ['blocs','exts','mapping','labels'].includes(tab);
+  const show = ['blocs','exts','mapping','labels','persoobjets'].includes(tab);
   toggle.style.display = show ? 'flex' : 'none';
   if (!show) return;
-  const key = tab === 'mapping' ? 'mapping' : tab === 'labels' ? 'labels' : 'edition';
+  const key = tab === 'mapping' ? 'mapping' : tab === 'labels' ? 'labels' : tab === 'persoobjets' ? 'persoobjets' : 'edition';
   const mode = _tabViewModes[key] || 'grid';
   toggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
 }
@@ -318,6 +334,33 @@ function _cardNameMatchesKnown(cardName, knownSet) {
   return false;
 }
 
+// Variante "contient n'importe où" de _cardNameMatchesKnown (qui, elle, est
+// ancrée en PRÉFIXE — adaptée aux Pokémon). Un Personnage/Objet peut au
+// contraire apparaître n'importe où dans le titre d'une carte (ex. "Ordres
+// de Sacha") : on compare par TOKENS ENTIERS (jamais une simple inclusion de
+// sous-chaîne, voir _tokensContainSeq dans perso-objets.js).
+//
+// BUG corrigé : cette fonction tokenisait `cardName` avec _canonPokeName
+// (qui ne découpe PAS sur les apostrophes ni la ponctuation, ex. "d'Ondine"
+// reste un seul token "d'ondine"), alors que le regroupement Personnages/
+// Objets (perso-objets.js) tokenise avec _pkoNormTokens (qui découpe bien
+// "d'Ondine" en deux tokens "d"/"ondine"). Résultat : une carte correctement
+// rattachée à une fiche Personnage pouvait quand même être signalée comme
+// orpheline, dès que son titre contenait une apostrophe, un "&" ou toute
+// ponctuation non gérée par _canonPokeName. On retokenise maintenant les
+// DEUX côtés avec _pkoNormTokens au moment de la comparaison — peu importe
+// comment `knownSet` a été construit en amont — pour garantir la même
+// normalisation que celle qui a servi à décider l'appartenance de la carte.
+function _cardNameContainsKnown(cardName, knownSet) {
+  const tokens = _pkoNormTokens(cardName || '');
+  if (!tokens.length) return false;
+  for (const known of knownSet) {
+    const kTokens = _pkoNormTokens(known);
+    if (kTokens.length && _tokensContainSeq(tokens, kTokens)) return true;
+  }
+  return false;
+}
+
 async function initOrphanCardsView() {
   if (_orphanCards.initialized) { renderOrphanCardsList(); return; }
   const el = document.getElementById('orphan-cards-list');
@@ -327,48 +370,39 @@ async function initOrphanCardsView() {
   try {
     if (!_pkdx.initialized) await initPokedex();
     if (!_mapping.initialized) await initMappingView();
+    // Personnages/Objets/Lieux/Énergies (perso-objets.js) : chargés ici
+    // aussi (typiquement déjà en cache localStorage, donc quasi instantané —
+    // voir _fetchTcgdexPkoCards) pour que ces cartes ne soient plus
+    // signalées à tort comme orphelines.
+    if (typeof _pkoInitTab === 'function' && typeof PKO_KINDS !== 'undefined') {
+      await Promise.all(PKO_KINDS.filter(k => !_pko.initialized[k]).map(k => _pkoInitTab(k)));
+    }
 
-    const known = new Set();
-    _pkdx.all.forEach(p => {
-      if (!p.frName) return;
-      // Si CE Pokémon (de base) a un label assigné manuellement (sélecteur
-      // "Label" de sa fiche), sa recherche de cartes est restreinte à ce
-      // label précis — exactement comme une forme (voir formType dans
-      // openPokedexModal) — le nom "plat" sans préfixe/suffixe n'est alors
-      // PLUS cherché du tout sur cette fiche. Une carte qui ne porte aucune
-      // décoration devient donc réellement introuvable dans ce cas (elle
-      // doit ressortir comme orpheline), là où sans assignation le nom plat
-      // reste normalement trouvable.
-      const assignedType = (_D.pokemon_label_assignments||{})[p.name];
-      if (assignedType) return;
-      _accentVariants(p.frName).forEach(v => known.add(_canonPokeName(v)));
-    });
-    // Les noms de formes ci-dessus (_pkdx.all avec isForm) ne couvrent que les
-    // motifs PokéAPI standards (voir _buildFormFrName : Méga/Gigamax/régionales
-    // uniquement) — tous les AUTRES labels (Origine, Couronné, Masque…, et
-    // surtout tout label PERSONNALISÉ créé dans Édition › Labels) retombent
-    // sur le nom de base tel quel. Or beaucoup de ces formes s'impriment avec
-    // un PRÉFIXE avant le nom du Pokémon (ex. "Méga Dracaufeu X" ne commence
-    // pas par "Dracaufeu") : sans ça, ces cartes semblaient introuvables alors
-    // qu'elles le sont bien via la fiche du Pokémon concerné. On reproduit
-    // donc ici, pour CHAQUE Pokémon de base connu, les mêmes motifs préfixe/
-    // suffixe que la recherche réelle utilise (getFormLabelConfig), pour
-    // CHAQUE label actif (intégré ou personnalisé).
-    const baseEntries = _pkdx.all.filter(p => !p.isForm && p.frName);
-    _allLabelTypes().forEach(type => {
-      const cfg = getFormLabelConfig(type);
-      if (!cfg || cfg.enabled === false) return;
-      const prefixes = cfg.prefixes || [], suffixes = cfg.suffixes || [];
-      if (!prefixes.length && !suffixes.length) return;
-      baseEntries.forEach(p => {
-        _accentVariants(p.frName).forEach(baseVariant => {
-          const baseCanon = _canonPokeName(baseVariant);
-          prefixes.forEach(pre => { const pc = _canonPokeName(pre); if (pc) known.add((pc + ' ' + baseCanon).trim()); });
-          suffixes.forEach(suf => { const sc = _canonPokeName(suf); if (sc) known.add((baseCanon + ' ' + sc).trim()); });
-        });
-      });
-    });
+    // Noms Pokémon (base + formes + tous motifs préfixe/suffixe de label) —
+    // voir _buildKnownPokemonNameSet (pokedex.js) pour le détail : une carte
+    // qui ne matche AUCUNE de ces variantes n'est trouvable par AUCUNE
+    // recherche de l'appli (fiche Pokédex, sélecteur de carte) et doit
+    // ressortir comme orpheline.
+    const known = _buildKnownPokemonNameSet();
     _orphanCards.knownSet = known;
+
+    // Noms Personnages/Objets/Lieux/Énergies connus (catalogue TCGdex +
+    // entrées manuelles), avec les mêmes variantes accentuées — comparés en
+    // mode "contient n'importe où" (_cardNameContainsKnown), pas en préfixe,
+    // puisqu'un Personnage/Objet/Lieu/Énergie peut apparaître n'importe où
+    // dans le titre. Gardés SÉPARÉS par catégorie (pas fusionnés) :
+    // nécessaire pour vérifier qu'une catégorie forcée correspond bien à une
+    // fiche réelle de CETTE catégorie précise (voir plus bas).
+    const pkoKnownByKind = {};
+    if (typeof _pko !== 'undefined' && typeof PKO_KINDS !== 'undefined') {
+      PKO_KINDS.forEach(kind => {
+        pkoKnownByKind[kind] = new Set();
+        (_pko.entries[kind] || []).forEach(e => _accentVariants(e.displayName).forEach(v => pkoKnownByKind[kind].add(_canonPokeName(v))));
+      });
+    }
+    const pkoKnown = new Set();
+    Object.values(pkoKnownByKind).forEach(set => set.forEach(v => pkoKnown.add(v)));
+    _orphanCards.pkoKnownSet = pkoKnown;
 
     el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2);font-size:.82rem">Chargement des cartes…</div>';
     let allRows = [], offset = 0, pageSize = 1000;
@@ -384,7 +418,23 @@ async function initOrphanCardsView() {
       offset += pageSize;
     }
 
-    _orphanCards.rows = allRows.filter(c => !_cardNameMatchesKnown(c.name, known));
+    _orphanCards.rows = allRows.filter(c => {
+      // Une catégorie forcée (Édition ou fiche carte, voir perso-objets.js)
+      // tranche explicitement : "pokemon" reste évalué comme un Pokémon
+      // (toujours soumis au test de trouvabilité normal). Pour les 3 autres
+      // catégories, en revanche, forcer ne suffit PAS à rendre la carte
+      // trouvable si son nom ne correspond au final à AUCUNE fiche de cette
+      // catégorie (_fetchLocalCardsContainingName, perso-objets.js, exige
+      // toujours que le nom matche l'entrée visée) — sans cette
+      // vérification, la carte disparaissait purement et simplement des
+      // Orphelines sans jamais apparaître nulle part ailleurs, pire
+      // qu'orpheline. On ne la retire donc de la liste que si elle est
+      // réellement rattachable à une fiche de la catégorie forcée.
+      const forced = typeof _cardCategoryOverride === 'function' ? _cardCategoryOverride(c.id) : '';
+      if (forced === 'pokemon') return !_cardNameMatchesKnown(c.name, known);
+      if (forced && pkoKnownByKind[forced]) return !_cardNameContainsKnown(c.name, pkoKnownByKind[forced]);
+      return !_cardNameMatchesKnown(c.name, known) && !_cardNameContainsKnown(c.name, pkoKnown);
+    });
     _orphanCards.initialized = true;
     renderOrphanCardsList();
   } catch(e) {
@@ -428,6 +478,7 @@ function renderOrphanCardsList() {
   // Réutilise le même état global que la fiche Pokédex pour que
   // openCardDetailModal/saveCardEdits/deleteCardFromDb (pokedex.js)
   // fonctionnent tels quels depuis cet onglet.
+  if (typeof _pkoCurrentModal !== 'undefined') _pkoCurrentModal = null;
   _pkdxModalTcg = { groups, cardsById };
   el.innerHTML = _renderTcgCardGroupsHtml(groups, c => "openCardDetailModal('" + _escJs(String(c.id)) + "')");
 }
@@ -440,7 +491,10 @@ function _syncOrphanCardsAfterEdit(cardId, changes) {
   const card = _orphanCards.rows.find(c => String(c.id) === String(cardId));
   if (!card) return;
   Object.assign(card, changes);
-  if (_orphanCards.knownSet && _cardNameMatchesKnown(card.name, _orphanCards.knownSet)) {
+  const nowKnown =
+    (_orphanCards.knownSet && _cardNameMatchesKnown(card.name, _orphanCards.knownSet)) ||
+    (_orphanCards.pkoKnownSet && _cardNameContainsKnown(card.name, _orphanCards.pkoKnownSet));
+  if (nowKnown) {
     _orphanCards.rows = _orphanCards.rows.filter(c => String(c.id) !== String(cardId));
   }
   if (_editionTab === 'orphans') renderOrphanCardsList();
@@ -757,7 +811,7 @@ function switchView(view,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   if(btn)btn.classList.add('active');
-  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',goodies:'Goodies',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres',pokedex:'Pokédex',ventes:'Ventes',acheteurs:'Acheteurs',depenses:'Dépenses',vendeurs:'Vendeurs',bilan:'Bilan'};
+  const titles={extensions:'Extensions',classeurs:'Classeurs',boosters:'Boosters / Illustrations',goodies:'Goodies',statistiques:'Statistiques',edition:'Édition',parametres:'Paramètres',pokedex:'Pokédex',personnages:'Personnages',objets:'Objets',lieux:'Lieux',energies:'Énergies',ventes:'Ventes',acheteurs:'Acheteurs',depenses:'Dépenses',vendeurs:'Vendeurs',bilan:'Bilan'};
   document.getElementById('topbar-title').textContent=titles[view]||view;
   const showSearch=view==='extensions';
   const showToggle=['extensions','classeurs','boosters','goodies','edition','ventes','acheteurs','depenses','vendeurs'].includes(view);
@@ -776,6 +830,10 @@ function switchView(view,btn){
   if(view==='statistiques')renderStats();
   if(view==='parametres')initSettingsView();
   if(view==='pokedex')initPokedex();
+  if(view==='personnages')initPersonnages();
+  if(view==='objets')initObjets();
+  if(view==='lieux')initLieux();
+  if(view==='energies')initEnergies();
   if(['ventes','acheteurs','depenses','vendeurs'].includes(view) && typeof initMappingView==='function' && !_mapping.initialized) initMappingView();
   if(view==='ventes')renderVentes();
   if(view==='acheteurs')renderAcheteurs();
