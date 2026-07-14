@@ -79,17 +79,18 @@ function _loadingEscHtml(s) {
 function _loadingLog(key, icon, label, detail, cls) {
   var el = document.getElementById('loading-status');
   if (!el) return;
-  var line = el.querySelector('[data-key="' + key + '"]');
-  if (!line) {
-    line = document.createElement('div');
-    line.dataset.key = key;
-    el.appendChild(line);
-  }
+  // Une seule ligne visible à la fois — pas un historique qui s'accumule
+  // (le défilement gardait tout l'historique visible en scrollant, mais la
+  // demande est explicitement de n'avoir jamais qu'une ligne à l'écran).
+  // `key` n'est plus utilisé pour retrouver une ligne existante : chaque
+  // appel remplace entièrement le contenu.
+  el.innerHTML = '';
+  var line = document.createElement('div');
   line.className = 'loading-status-line' + (cls ? ' ' + cls : '');
   line.innerHTML = '<span class="lsl-icon">' + icon + '</span>' +
     '<span class="lsl-table">' + _loadingEscHtml(label) + '</span>' +
     (detail ? '<span class="lsl-detail">' + _loadingEscHtml(detail) + '</span>' : '');
-  el.scrollTop = el.scrollHeight;
+  el.appendChild(line);
 }
 
 // Message principal, gros, au-dessus de la barre de progression et du log.

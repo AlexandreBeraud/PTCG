@@ -77,10 +77,11 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
   transition: width .3s ease;
 }
 
-/* ── Loading — log de synchro cloud (debug temps réel) ─────────────────── */
+/* ── Loading — log de synchro cloud (une seule ligne affichée à la fois,
+   remplacée à chaque étape — voir _loadingLog dans sync.js) ─────────────── */
 #loading-status {
-  width: min(480px, 90vw); max-height: 40vh; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 6px;
+  width: min(480px, 90vw);
+  display: flex; flex-direction: column;
   padding: 2px 2px 2px 0;
 }
 #loading-status:empty { display: none; }

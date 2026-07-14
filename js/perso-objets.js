@@ -94,7 +94,26 @@ function _pkoRebuildEntries(kind) {
   const q = _pko.query[kind];
   _pko.filtered[kind] = q ? _pko.entries[kind].filter(e => _normalizeStr(e.displayName).includes(q)) : _pko.entries[kind];
   _pkoRenderPage(kind, true);
-  _pkoComputeOwnedCounts().then(() => _pkoRenderPage(kind, true)).catch(e => console.error('[PTCG] owned count', e));
+  _pkoScheduleOwnedCountsRecompute();
+}
+
+// Le recalcul des cartes possédées (_pkoComputeOwnedCounts) reste le plus
+// gros coût de l'onglet : sans ça, créer/modifier/supprimer plusieurs
+// entrées à la suite (ex. plusieurs "Enregistrer" rapprochés) relançait un
+// passage complet sur toute la collection à CHAQUE fois. Débounce : un
+// seul recalcul, 500ms après la DERNIÈRE modification plutôt qu'après
+// chacune — la liste/grille elle-même reste mise à jour instantanément
+// (_pkoRenderPage juste au-dessus), seul le recalcul des compteurs est
+// différé et regroupé.
+var _pkoOwnedCountsDebounceTimer = null;
+function _pkoScheduleOwnedCountsRecompute() {
+  if (_pkoOwnedCountsDebounceTimer) clearTimeout(_pkoOwnedCountsDebounceTimer);
+  _pkoOwnedCountsDebounceTimer = setTimeout(() => {
+    _pkoOwnedCountsDebounceTimer = null;
+    _pkoComputeOwnedCounts()
+      .then(() => PKO_KINDS.forEach(k => { if (_pko.initialized[k]) _pkoRenderPage(k, true); }))
+      .catch(e => console.error('[PTCG] owned count', e));
+  }, 500);
 }
 
 // Cache partagé de TOUTES les cartes possédées (indépendant de la
@@ -177,6 +196,25 @@ async function _pkoComputeOwnedCounts() {
       knownOtherByKind[kind] = s;
     });
 
+    // PERF corrigé : _cardNameContainsKnown re-tokenisait CHAQUE chaîne du
+    // set reçu à CHAQUE appel — appelée potentiellement plusieurs milliers
+    // de fois par calcul (une fois par carte par candidate), ça revenait à
+    // re-parser les mêmes noms connus encore et encore. Pré-tokenisés UNE
+    // fois ici (ces sets ne changent pas pendant tout le calcul), plus
+    // qu'une comparaison directe token-par-token ensuite (_tokensContainSeq).
+    const knownPokemonTokenized = [];
+    knownPokemon.forEach(s => { const t = _pkoNormTokens(s); if (t.length) knownPokemonTokenized.push(t); });
+    const knownOtherTokenizedByKind = {};
+    PKO_KINDS.forEach(kind => {
+      const out = [];
+      knownOtherByKind[kind].forEach(s => { const t = _pkoNormTokens(s); if (t.length) out.push(t); });
+      knownOtherTokenizedByKind[kind] = out;
+    });
+    const containsAnyTokenized = (cardTokens, list) => {
+      for (let i = 0; i < list.length; i++) { if (_tokensContainSeq(cardTokens, list[i])) return true; }
+      return false;
+    };
+
     // Index de TOUTES les entrées, TOUTES catégories confondues, par
     // premier token du nom — une seule structure pour le passage combiné.
     const byFirstToken = new Map();
@@ -192,7 +230,7 @@ async function _pkoComputeOwnedCounts() {
     });
 
     const cards = _pkoAllLocalCards || [];
-    const CHUNK = 300;
+    const CHUNK = 150;
     for (let i = 0; i < cards.length; i += CHUNK) {
       cards.slice(i, i + CHUNK).forEach(c => {
         const cardTokens = _pkoNormTokens(c.name);
@@ -202,13 +240,24 @@ async function _pkoComputeOwnedCounts() {
         if (!candidates.size) return;
 
         const forced = _cardCategoryOverride(c.id);
+        // PERF corrigé : ces vérifications ne dépendent PAS de l'entrée
+        // candidate testée (juste du nom de la carte) — calculées UNE
+        // SEULE FOIS par carte ici, plutôt qu'une fois par candidate dans
+        // la boucle ci-dessous (une carte au premier token ambigu peut
+        // avoir plusieurs candidates, ce qui répétait ces vérifications
+        // pour rien).
+        let isKnownPokemon = false;
+        if (!forced) {
+          isKnownPokemon = _cardNameMatchesKnown(c.name, knownPokemon)
+            || containsAnyTokenized(cardTokens, knownPokemonTokenized)
+            || (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(c.name));
+        }
+        if (isKnownPokemon) return;
+
         candidates.forEach(({ entry, tokens, kind }) => {
           if (!_tokensContainSeq(cardTokens, tokens)) return;
           if (forced) { if (forced === kind) entry._ownedCount++; return; }
-
-          if (_cardNameMatchesKnown(c.name, knownPokemon) || _cardNameContainsKnown(c.name, knownPokemon)) return;
-          if (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(c.name)) return;
-          if (_cardNameContainsKnown(c.name, knownOtherByKind[kind])) return;
+          if (containsAnyTokenized(cardTokens, knownOtherTokenizedByKind[kind])) return;
           entry._ownedCount++;
         });
       });
@@ -614,12 +663,21 @@ async function _preloadCardCatalogs() {
     _loadingLog('pokedex', '✓', 'Pokédex', (_pkdx.all || []).length + ' entrées', 'ok');
     _loadingProgressTick();
 
+    // BUG corrigé : cette boucle marquait _pko.initialized[kind]=true SANS
+    // jamais appeler _pkoRenderPage — la grille restait vide indéfiniment,
+    // puisque _pkoInitTab (appelé à la première visite de l'onglet)
+    // s'arrête immédiatement dès que _pko.initialized[kind] est déjà vrai
+    // (voir son tout premier if). Les entrées existaient bien (visibles
+    // dans Édition, qui lit directement _pko.entries) mais n'étaient
+    // jamais rendues dans la grille — jusqu'à ce qu'une action modifie une
+    // entrée et déclenche _pkoRebuildEntries, qui rend bien la grille, lui.
     for (const kind of PKO_KINDS) {
       if (!_pko.initialized[kind]) {
         _pko.entries[kind] = _pkoBuildEntries(kind);
         _pko.filtered[kind] = _pko.entries[kind];
         _pko.initialized[kind] = true;
       }
+      _pkoRenderPage(kind, true);
       const n = _pko.entries[kind].length;
       _loadingLog(kind, '✓', PKO_LABELS[kind].title, `${n} entrée${n > 1 ? 's' : ''}`, 'ok');
       _loadingProgressTick();
@@ -630,6 +688,9 @@ async function _preloadCardCatalogs() {
     // rend chaque première ouverture de fiche instantanée plutôt que de
     // devoir attendre ce calcul à ce moment-là.
     await _pkoComputeOwnedCounts();
+    // Re-rendu après coup pour remplacer les badges "…" par le vrai
+    // nombre de cartes possédées, maintenant calculé.
+    PKO_KINDS.forEach(kind => _pkoRenderPage(kind, true));
     _loadingLog('owned', '✓', 'Cartes possédées', 'calculées', 'ok');
     _loadingProgressTick();
   } catch (e) {
