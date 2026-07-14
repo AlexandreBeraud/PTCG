@@ -601,34 +601,32 @@ var _SYNC_DOMAINS = [
     },
   },
   {
-    // Corrections manuelles Personnages/Objets (voir js/perso-objets.js) :
-    // une même table gère à la fois les entrées 100% custom (id préfixé
-    // "cpo_") et les corrections d'une entrée auto-détectée (id = clé auto,
-    // ex. "auto:sacha") — même principe que blocs/extensions ci-dessus.
-    // pko_manual_card_ids stocke des objets {id,name,image} et pas juste des
-    // ids : une carte assignée à la main peut venir d'une recherche TCGdex
-    // live couvrant des types hors du catalogue auto-détecté (Stade, Objet
-    // Spécial, Énergie spéciale…), donc pas forcément résolvable après coup
-    // via ce catalogue — même nom de colonne qu'avant, contenu enrichi.
+    // Corrections manuelles Personnages/Objets/Lieux/Énergies (voir
+    // js/perso-objets.js) — SIMPLIFIÉ : chaque entrée n'est plus qu'un nom +
+    // une image, créée à la main dans Édition (plus de catalogue TCGdex, ni
+    // de cartes assignées une à une : tout est retrouvé automatiquement par
+    // nom). pko_is_custom reste envoyé pour ne pas casser le schéma
+    // existant, mais n'est plus utilisé par l'app — pko_is_deleted reste
+    // filtré à la lecture par sécurité, pour qu'une ancienne entrée masquée
+    // sous l'ancien système ne réapparaisse pas. pko_manual_card_ids n'est
+    // PLUS envoyé du tout (colonne à supprimer, voir migration SQL).
     table: 'perso_objets', keyCols: ['pko_id'], userCol: 'pko_user_id',
     toRows: function () {
       return (_D.perso_objets || []).map(function (o, i) {
         return {
           pko_user_id: _cloudUserId(), pko_id: o.id, pko_kind: o.kind,
           pko_display_name: o.display_name || '', pko_image_url: o.image_url || '',
-          pko_manual_card_ids: o.manual_cards || [], pko_is_custom: !!o.is_custom,
-          pko_is_deleted: !!o.is_deleted, pko_sort_order: o.sort_order != null ? o.sort_order : i,
+          pko_is_custom: true, pko_is_deleted: false,
+          pko_sort_order: o.sort_order != null ? o.sort_order : i,
           pko_updated_at: _isoNow(),
         };
       });
     },
     apply: function (rows) {
       rows.sort(function (a, b) { return (a.pko_sort_order || 0) - (b.pko_sort_order || 0); });
-      _D.perso_objets = rows.map(function (r) {
-        var raw = typeof _cleanPatternList === 'function' ? _cleanPatternList(r.pko_manual_card_ids) : (Array.isArray(r.pko_manual_card_ids) ? r.pko_manual_card_ids : []);
+      _D.perso_objets = rows.filter(function (r) { return !r.pko_is_deleted; }).map(function (r) {
         return {
           id: r.pko_id, kind: r.pko_kind, display_name: r.pko_display_name || '', image_url: r.pko_image_url || '',
-          manual_cards: raw, is_custom: !!r.pko_is_custom, is_deleted: !!r.pko_is_deleted,
           sort_order: r.pko_sort_order || 0,
         };
       });
@@ -754,29 +752,50 @@ async function _cloudPushAll() {
   }
   _pushInProgress = true;
   try {
-    for (var i = 0; i < _SYNC_DOMAINS.length; i++) {
-      var d = _SYNC_DOMAINS[i];
-      var rows = _dedupeByKey(d.toRows(), d.keyCols);
-      var delRes = await fetch(SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()), {
-        method: 'DELETE', headers: _sbHeaders(),
-      });
-      if (!delRes.ok) {
-        var db = await delRes.text().catch(function () { return ''; });
-        throw new Error('suppression ' + d.table + ' refusée (HTTP ' + delRes.status + ') ' + db.slice(0, 200));
-      }
-      if (rows.length) {
-        var insRes = await fetch(SB_URL + '/rest/v1/' + d.table, {
-          method: 'POST',
-          headers: _sbHeaders({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
-          body: JSON.stringify(rows),
+    // BUG corrigé : les ~18 tables étaient poussées une par une (boucle avec
+    // await séquentiel, DELETE puis INSERT à chaque fois) — plusieurs
+    // dizaines de rendez-vous réseau bout à bout à CHAQUE sauvegarde, quel
+    // que soit l'ampleur du changement (ajouter une seule carte à une vente
+    // repoussait quand même les 18 tables en entier, une par une). C'est
+    // exactement le même problème que celui déjà corrigé côté lecture (voir
+    // le commentaire au-dessus de _cloudPullAll) — jamais reporté côté
+    // écriture jusqu'ici. Poussées maintenant EN PARALLÈLE (Promise.all) :
+    // aucune table ne dépend d'une autre (chacune son propre DELETE+INSERT
+    // sur sa propre table), donc rien n'empêchait de les lancer toutes en
+    // même temps. Chaque domaine a aussi son propre try/catch — un problème
+    // sur UNE table (ex. colonne manquante) ne bloque plus la synchro des
+    // 17 autres, contrairement à avant où la première erreur arrêtait tout
+    // net (vécu très concrètement avec l'erreur pko_manual_card_ids).
+    var results = await Promise.all(_SYNC_DOMAINS.map(async function (d) {
+      try {
+        var rows = _dedupeByKey(d.toRows(), d.keyCols);
+        var delRes = await fetch(SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()), {
+          method: 'DELETE', headers: _sbHeaders(),
         });
-        if (!insRes.ok) {
-          var ib = await insRes.text().catch(function () { return ''; });
-          throw new Error('écriture ' + d.table + ' refusée (HTTP ' + insRes.status + ') ' + ib.slice(0, 200));
+        if (!delRes.ok) {
+          var db = await delRes.text().catch(function () { return ''; });
+          throw new Error('suppression ' + d.table + ' refusée (HTTP ' + delRes.status + ') ' + db.slice(0, 200));
         }
+        if (rows.length) {
+          var insRes = await fetch(SB_URL + '/rest/v1/' + d.table, {
+            method: 'POST',
+            headers: _sbHeaders({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+            body: JSON.stringify(rows),
+          });
+          if (!insRes.ok) {
+            var ib = await insRes.text().catch(function () { return ''; });
+            throw new Error('écriture ' + d.table + ' refusée (HTTP ' + insRes.status + ') ' + ib.slice(0, 200));
+          }
+        }
+        return null;
+      } catch (e) {
+        return e; // un domaine en échec ne doit pas empêcher les autres de pousser
       }
-    }
-    // Réglages (ligne unique par utilisateur) + horodatage global de synchro.
+    }));
+
+    // Réglages (ligne unique par utilisateur) + horodatage global de synchro
+    // — tenté même si une ou plusieurs tables ci-dessus ont échoué : c'est
+    // une ligne indépendante, pas de raison de la bloquer pour autant.
     var s = _D.settings || {};
     var settingsRow = {
       set_user_id: _cloudUserId(), set_display_mode: s.display_mode || 'logo', set_sort_dir: s.sort_dir || 'asc',
@@ -791,6 +810,11 @@ async function _cloudPushAll() {
     if (!setRes.ok) {
       var sb = await setRes.text().catch(function () { return ''; });
       throw new Error('écriture settings refusée (HTTP ' + setRes.status + ') ' + sb.slice(0, 200));
+    }
+
+    var failures = results.filter(function (e) { return e; });
+    if (failures.length) {
+      throw new Error(failures.length + '/' + _SYNC_DOMAINS.length + ' table(s) en échec : ' + failures.map(function (e) { return e.message; }).join(' | '));
     }
   } finally {
     _pushInProgress = false;
@@ -857,10 +881,16 @@ async function _cloudPullAll(force) {
     }
     _loadingLog('_conn', '✓', 'Connexion à Supabase', 'ok', 'ok');
     _loadingTitle('Récupération des données…');
-    _loadingProgressStart(_SYNC_DOMAINS.length);
 
+    // BUG UX corrigé : les 18 lignes "⏳ …" apparaissaient TOUTES d'un coup
+    // (dès le lancement du Promise.all, avant même la moindre réponse
+    // réseau), puis se transformaient en "✓"/"✗" dans un ordre quelconque —
+    // donnant l'impression d'un mur figé plutôt que d'un chargement
+    // progressif. Chaque ligne n'est maintenant ajoutée qu'à la toute fin
+    // de SA propre requête (une seule fois, déjà avec son résultat) : les
+    // lignes apparaissent donc une par une, dans l'ordre réel où chaque
+    // table répond.
     var fetched = await Promise.all(_SYNC_DOMAINS.map(async function (d) {
-      _loadingLog(d.table, '⏳', d.table, '…', undefined);
       var url = SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()) + (d.orderBy ? '&order=' + d.orderBy : '');
       try {
         var r = await fetch(url, { headers: _sbHeaders() });
@@ -940,10 +970,20 @@ function _scheduleCloudPush() {
 // core.js attend (await) cette fonction avant de retirer l'écran de
 // chargement : tant qu'elle n'est pas résolue, aucune interaction utilisateur
 // n'est possible, donc aucun saveData()/push ne peut partir. _initialSyncDone
-// n'est mis à true qu'à la toute fin, une fois le pull ET son application à
-// _D (et aux labels) terminés — c'est ce même flag que _scheduleCloudPush
-// vérifie juste au-dessus, en sécurité indépendante de l'écran de chargement.
+// n'est mis à true qu'à la toute fin, une fois le pull, son application à _D,
+// ET le préchargement des cartes (_preloadCardCatalogs, voir plus bas)
+// terminés — c'est ce même flag que _scheduleCloudPush vérifie juste
+// au-dessus, en sécurité indépendante de l'écran de chargement.
 async function _cloudInitialSync() {
+  // Une seule barre de progression pour TOUT ce qu'il y a à charger — pas
+  // seulement la récupération cloud (_SYNC_DOMAINS) mais aussi le
+  // préchargement des cartes (Pokédex + les 4 catégories + leurs comptes
+  // possédés, voir _preloadCardCatalogs). Calculé UNE FOIS ici, au tout
+  // début, pour que la barre ne reparte jamais de zéro en cours de route :
+  // _cloudPullAll et _preloadCardCatalogs se contentent chacun d'appeler
+  // _loadingProgressTick() au fur et à mesure, sur ce même total.
+  var preloadSteps = (typeof PKO_KINDS !== 'undefined') ? PKO_KINDS.length + 2 : 0; // Pokédex + 4 catégories + cartes possédées
+  _loadingProgressStart(_SYNC_DOMAINS.length + preloadSteps);
   try {
     // force=true : on veut TOUJOURS récupérer l'intégralité des données
     // cloud au démarrage, jamais seulement la table settings pour comparer
@@ -969,6 +1009,16 @@ async function _cloudInitialSync() {
     _loadingTitle('Erreur de synchronisation');
     _loadingLog('_conn', '✗', 'Erreur', e.message, 'err');
     toast('Restauration cloud interrompue : ' + e.message, 'error');
+  }
+
+  // On ne quitte PAS l'écran de chargement tant que le Pokédex et les 4
+  // catégories (+ leurs cartes possédées) ne sont pas chargés — c'est ce
+  // qui évite un temps d'attente à chaque fois qu'on regarde pour la
+  // première fois les cartes d'un Pokémon/Personnage/Objet/Lieu/Énergie
+  // dans la session (avant, ce chargement se faisait à la demande, au
+  // premier visite de chaque onglet, un par un).
+  if (_cloudReady() && typeof _preloadCardCatalogs === 'function') {
+    await _preloadCardCatalogs();
   }
   // Fin de la synchro initiale, quel qu'en ait été le résultat (données
   // trouvées, rien de plus récent, ou même échec réseau/RLS) : à partir

@@ -275,6 +275,71 @@ function _buildKnownPokemonNameSet() {
   return known;
 }
 
+// BUG corrigé : _buildKnownPokemonNameSet ci-dessus (utilisée par "Cartes
+// orphelines") exige que "nom de base + suffixe" apparaisse comme une
+// séquence EXACTE ET CONSÉCUTIVE en tout début de titre — alors que la
+// fiche Pokémon elle-même (_cardMatchesFormType, label-categories.js) est
+// plus souple : elle exige seulement que le préfixe ET/OU le suffixe
+// apparaissent CHACUN comme un mot entier n'importe où dans le titre (une
+// fois la carte déjà pré-filtrée par nom de base via la requête SQL). Deux
+// implémentations séparées du "même" test pouvaient donc diverger — une
+// carte affichée correctement sur la fiche du Pokémon (via
+// _cardMatchesFormType) restait signalée comme orpheline (via le test Set
+// plus strict). Repli utilisé seulement quand le test Set rapide échoue :
+// réutilise LITTÉRALEMENT _cardMatchesFormType (la même fonction que la
+// fiche) plutôt que de maintenir une deuxième logique qui peut diverger.
+// PERF corrigé : cette fonction scannait TOUS les Pokémon (~1300, formes
+// comprises) pour CHAQUE carte qui l'atteignait — y compris chaque
+// orpheline authentique, qui par définition ne matchera jamais rien mais
+// payait quand même le scan complet à chaque fois. Avec plusieurs centaines
+// de cartes retombant sur ce repli (Cartes orphelines l'appelle pour toute
+// carte ratant le test rapide), ça pouvait à lui seul expliquer plusieurs
+// secondes de blocage de l'interface (JS mono-thread : ce calcul
+// synchrone gèle l'affichage pendant qu'il tourne). Indexé maintenant par
+// PREMIER TOKEN du nom FR — le lookup ne teste plus qu'une poignée de
+// Pokémon candidats par carte au lieu de la totalité.
+var _pkdxNameIndex = null;
+var _pkdxNameIndexSize = -1;
+function _buildPkdxNameIndex() {
+  const idx = new Map();
+  _pkdx.all.forEach(p => {
+    if (!p.frName) return;
+    const baseTokens = _pkoNormTokens ? _pkoNormTokens(p.frName) : _canonPokeName(p.frName).split(' ');
+    if (!baseTokens.length) return;
+    const key = baseTokens[0];
+    if (!idx.has(key)) idx.set(key, []);
+    idx.get(key).push(baseTokens);
+  });
+  return idx;
+}
+function _cardMatchesSomeLabeledPokemon(cardName) {
+  if (typeof _cardMatchesFormType !== 'function' || typeof _allLinkedFormTypes !== 'function') return false;
+  const types = _allLinkedFormTypes();
+  if (!types.length) return false;
+  const cardTokens = _pkoNormTokens ? _pkoNormTokens(cardName) : _canonPokeName(cardName || '').split(' ');
+  if (!cardTokens.length) return false;
+
+  if (!_pkdxNameIndex || _pkdxNameIndexSize !== _pkdx.all.length) {
+    _pkdxNameIndex = _buildPkdxNameIndex();
+    _pkdxNameIndexSize = _pkdx.all.length;
+  }
+  const candidates = new Set();
+  cardTokens.forEach(t => { const arr = _pkdxNameIndex.get(t); if (arr) arr.forEach(bt => candidates.add(bt)); });
+  if (!candidates.size) return false;
+
+  for (const baseTokens of candidates) {
+    // Le nom de base doit apparaître dans le titre (même principe que le
+    // préfiltre SQL de _fetchCardsGroupedByExtension) — sans ça, un
+    // préfixe/suffixe de label pourrait matcher un Pokémon totalement
+    // différent par coïncidence.
+    if (typeof _tokensContainSeq !== 'function' || !_tokensContainSeq(cardTokens, baseTokens)) continue;
+    for (const type of types) {
+      if (_cardMatchesFormType(cardName, type)) return true;
+    }
+  }
+  return false;
+}
+
 // mode ('all'|'none'|'only') et formTypeFilter (Set de types, ou null = tous)
 // sont deux réglages INDÉPENDANTS qui se combinent (et non plus un seul état
 // exclusif) : on peut par ex. choisir "Formes seules" ET un type précis, et
@@ -1570,8 +1635,25 @@ function _statLabel(s) {
 function setDefaultDate(){
   const f=document.getElementById('illus-date');if(f)f.value=new Date().toISOString().slice(0,10);
 }
-function toast(msg,type=''){
+// BUG corrigé : plusieurs appels ailleurs dans le code (ex.
+// _persistLocalOnly, core.js, pour le toast "quota localStorage dépassé —
+// clique ici pour libérer de la place") passaient déjà un 3e argument
+// {onClick} en attendant un toast cliquable — silencieusement ignoré ici,
+// puisque cette fonction n'acceptait que (msg, type). Résultat : ces
+// toasts s'affichaient bien, mais cliquer dessus ne faisait RIEN, laissant
+// l'utilisateur bloqué sans façon de déclencher la correction proposée.
+function toast(msg, type='', opts) {
   const el=Object.assign(document.createElement('div'),{className:'toast '+type,textContent:msg});
+  if (opts && typeof opts.onClick === 'function') {
+    el.style.cursor = 'pointer';
+    el.style.textDecoration = 'underline';
+    el.title = 'Cliquer pour agir';
+    el.onclick = () => { opts.onClick(); el.remove(); };
+  }
   document.getElementById('toast-container').appendChild(el);
-  setTimeout(()=>el.remove(),3200);
+  // Un toast avec une action cliquable reste affiché plus longtemps (8s
+  // au lieu de 3.2s) — le temps de le remarquer et d'agir dessus, plutôt
+  // que de disparaître avant que l'utilisateur ait pu cliquer.
+  const duration = opts && opts.onClick ? 8000 : 3200;
+  setTimeout(()=>el.remove(),duration);
 }

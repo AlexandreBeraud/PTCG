@@ -371,8 +371,8 @@ async function initOrphanCardsView() {
     if (!_pkdx.initialized) await initPokedex();
     if (!_mapping.initialized) await initMappingView();
     // Personnages/Objets/Lieux/Énergies (perso-objets.js) : chargés ici
-    // aussi (typiquement déjà en cache localStorage, donc quasi instantané —
-    // voir _fetchTcgdexPkoCards) pour que ces cartes ne soient plus
+    // aussi (entrées créées à la main, chargement quasi instantané depuis
+    // _D — plus de catalogue à fetcher) pour que leurs cartes ne soient plus
     // signalées à tort comme orphelines.
     if (typeof _pkoInitTab === 'function' && typeof PKO_KINDS !== 'undefined') {
       await Promise.all(PKO_KINDS.filter(k => !_pko.initialized[k]).map(k => _pkoInitTab(k)));
@@ -418,6 +418,15 @@ async function initOrphanCardsView() {
       offset += pageSize;
     }
 
+    // Combine le test rapide (Set de chaînes exactes) et, seulement s'il
+    // échoue, le repli qui réutilise _cardMatchesFormType — voir le
+    // commentaire de _cardMatchesSomeLabeledPokemon (pokedex.js) pour le
+    // détail du bug que ce repli corrige (carte trouvable sur sa fiche
+    // Pokémon mais quand même signalée orpheline).
+    const isKnownPokemonCard = name =>
+      _cardNameMatchesKnown(name, known) ||
+      (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(name));
+
     _orphanCards.rows = allRows.filter(c => {
       // Une catégorie forcée (Édition ou fiche carte, voir perso-objets.js)
       // tranche explicitement : "pokemon" reste évalué comme un Pokémon
@@ -431,9 +440,9 @@ async function initOrphanCardsView() {
       // qu'orpheline. On ne la retire donc de la liste que si elle est
       // réellement rattachable à une fiche de la catégorie forcée.
       const forced = typeof _cardCategoryOverride === 'function' ? _cardCategoryOverride(c.id) : '';
-      if (forced === 'pokemon') return !_cardNameMatchesKnown(c.name, known);
+      if (forced === 'pokemon') return !isKnownPokemonCard(c.name);
       if (forced && pkoKnownByKind[forced]) return !_cardNameContainsKnown(c.name, pkoKnownByKind[forced]);
-      return !_cardNameMatchesKnown(c.name, known) && !_cardNameContainsKnown(c.name, pkoKnown);
+      return !isKnownPokemonCard(c.name) && !_cardNameContainsKnown(c.name, pkoKnown);
     });
     _orphanCards.initialized = true;
     renderOrphanCardsList();
@@ -492,7 +501,8 @@ function _syncOrphanCardsAfterEdit(cardId, changes) {
   if (!card) return;
   Object.assign(card, changes);
   const nowKnown =
-    (_orphanCards.knownSet && _cardNameMatchesKnown(card.name, _orphanCards.knownSet)) ||
+    (_orphanCards.knownSet && (_cardNameMatchesKnown(card.name, _orphanCards.knownSet) ||
+      (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(card.name)))) ||
     (_orphanCards.pkoKnownSet && _cardNameContainsKnown(card.name, _orphanCards.pkoKnownSet));
   if (nowKnown) {
     _orphanCards.rows = _orphanCards.rows.filter(c => String(c.id) !== String(cardId));

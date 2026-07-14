@@ -320,51 +320,189 @@ function _migrateSalesToCommandes() {
 // (le push, avec son DELETE-puis-INSERT par table, pouvait s'intercaler
 // avant que le pull ait fini d'appliquer toutes les tables). saveData() reste
 // la fonction à utiliser pour toute modification faite PAR l'utilisateur.
+//
+// BUG corrigé : un échec localStorage (quota dépassé, voir _importImageFile
+// plus bas) affichait un toast d'erreur BLOQUANT à CHAQUE saveData() — y
+// compris pour des actions n'ayant rien à voir avec une image — ce qui
+// donnait l'impression que "rien ne marche" alors que la synchro cloud,
+// elle, continuait de fonctionner (Supabase n'a pas cette limite de ~5-10
+// Mo par origine que le navigateur impose à localStorage). Le cache local
+// n'est qu'une AIDE au chargement à froid — la source de vérité reste le
+// cloud — donc un échec ne doit ni bloquer l'action en cours ni spammer un
+// toast à chaque fois : un seul avertissement, avec un vrai bouton d'action
+// pour régler le problème (voir shrinkOversizedLocalImages plus bas).
+var _localStorageQuotaWarned = false;
 function _persistLocalOnly() {
   const s = { ..._D };
   delete s._tpl_blocs; delete s.blocs;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    _localStorageQuotaWarned = false; // un succès ultérieur réarme l'avertissement
   } catch(e) {
     console.error('[PTCG] _persistLocalOnly a échoué :', e);
-    toast('Échec de la sauvegarde locale : ' + e.message, 'error');
+    if (!_localStorageQuotaWarned) {
+      _localStorageQuotaWarned = true;
+      const isQuota = e.name === 'QuotaExceededError' || /quota/i.test(e.message || '');
+      if (isQuota) {
+        toast('Cache local plein (le cloud, lui, est à jour) — clique ici pour migrer les images encore stockées localement vers le cloud.', 'error', { onClick: () => shrinkOversizedLocalImages() });
+      } else {
+        toast('Échec de la sauvegarde locale : ' + e.message, 'error');
+      }
+    }
   }
 }
 
 // ── Import d'image locale (fichier) pour n'importe quel champ "URL d'image"
 // de l'appli ────────────────────────────────────────────────────────────
-// L'app n'a pas de stockage fichier propre (Supabase Storage, etc.) — tous
-// les champs "image" sont en réalité des colonnes texte contenant une URL.
-// Une image importée depuis l'appareil est donc convertie en data URL
-// (base64) et déposée telle quelle dans le même champ texte : ça marche
-// comme <img src>, ça se synchronise comme n'importe quelle autre URL, sans
-// rien ajouter côté backend. Seule contrainte : le texte stocké grossit
-// d'environ 33% par rapport au fichier d'origine (encodage base64) — on
-// prévient au-delà de 2 Mo plutôt que de laisser une image énorme ralentir
-// silencieusement la sauvegarde/synchro.
-function _importImageFile(fileInput, targetInputId) {
+// PIVOT : les images ne sont plus stockées en base64 dans _D (donc plus
+// dans localStorage, ni dans les colonnes texte Supabase) — un fichier
+// importé est uploadé vers un vrai bucket Supabase Storage, et seule l'URL
+// publique qui en résulte (une simple chaîne courte) est déposée dans le
+// champ texte, exactement comme une URL saisie à la main. Nécessite le
+// bucket "ptcg-images" (voir migration_perso_objets.sql) et la synchro
+// cloud configurée (Paramètres) — sans backend, l'app n'a de toute façon
+// aucun autre endroit où stocker durablement un fichier.
+var PTCG_STORAGE_BUCKET = 'ptcg-images';
+
+async function _importImageFile(fileInput, targetInputId) {
   const file = fileInput.files && fileInput.files[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) { toast('Sélectionne un fichier image.', 'error'); fileInput.value=''; return; }
-  const proceed = () => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const target = document.getElementById(targetInputId);
-      if (!target) return;
-      target.value = reader.result; // data URL, utilisable tel quel comme src
-      // Déclenche les aperçus déjà branchés en oninput (previewEditionImg,
-      // previewClasseurImage…) exactement comme une saisie manuelle.
-      target.dispatchEvent(new Event('input', { bubbles: true }));
-    };
-    reader.onerror = () => toast('Erreur de lecture du fichier.', 'error');
-    reader.readAsDataURL(file);
-  };
-  if (file.size > 2 * 1024 * 1024) {
-    if (confirm(`Cette image fait ${Math.round(file.size/1024/1024*10)/10} Mo. Les images importées sont stockées telles quelles (sans compression) : au-delà de quelques Mo ça peut ralentir la sauvegarde et la synchro cloud. Continuer ?`)) proceed();
-  } else {
-    proceed();
+  const target = document.getElementById(targetInputId);
+  if (!target) { fileInput.value = ''; return; }
+  if (typeof _cloudReady !== 'function' || !_cloudReady()) {
+    toast('Configure d\'abord la synchro cloud (Paramètres) : les images importées sont hébergées sur Supabase Storage, jamais stockées localement.', 'error');
+    fileInput.value = '';
+    return;
   }
-  fileInput.value = ''; // permet de réimporter le même fichier une prochaine fois
+  toast("Import de l'image en cours…", '');
+  try {
+    const { blob, mime, ext } = await _prepareImageBlob(file, 1200);
+    const url = await _uploadImageBlob(blob, mime, ext);
+    target.value = url;
+    // Déclenche les aperçus déjà branchés en oninput (previewEditionImg,
+    // previewClasseurImage…) exactement comme une saisie manuelle.
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    toast('Image importée.', 'success');
+  } catch (err) {
+    toast("Erreur d'import de l'image : " + err.message, 'error');
+  } finally {
+    fileInput.value = ''; // permet de réimporter le même fichier une prochaine fois
+  }
+}
+
+// Redimensionne (si besoin) et convertit en Blob prêt à uploader — accepte
+// soit un File (nouvel import), soit une data URL déjà en mémoire (migration
+// d'une image encore stockée localement depuis avant ce correctif, voir
+// shrinkOversizedLocalImages).
+//
+// BUG corrigé : convertir systématiquement en JPEG (qui ne supporte pas la
+// transparence) avec un fond BLANC forcé rendait moche tout logo/
+// illustration à fond transparent (PNG), un carré blanc apparaissant autour
+// du logo — particulièrement visible sur le thème sombre de l'appli. Le PNG
+// (transparence intacte, sans remplissage) est maintenant préservé pour les
+// sources PNG/GIF ; seules les photos déjà opaques basculent en JPEG
+// qualité .85 (bien meilleure compression, sans perte visible pour ce cas).
+function _prepareImageBlob(source, maxDim) {
+  return new Promise((resolve, reject) => {
+    const sourceMime = source instanceof File ? source.type : (String(source).match(/^data:([^;]+);/) || [])[1];
+    const finish = dataUrl => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const preservePng = sourceMime === 'image/png' || sourceMime === 'image/gif';
+        if (!preservePng) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height); }
+        ctx.drawImage(img, 0, 0, width, height);
+        const mime = preservePng ? 'image/png' : 'image/jpeg';
+        const ext  = preservePng ? 'png' : 'jpg';
+        canvas.toBlob(blob => {
+          if (!blob) { reject(new Error('échec de la conversion en image')); return; }
+          resolve({ blob, mime, ext });
+        }, mime, preservePng ? undefined : 0.85);
+      };
+      img.onerror = () => reject(new Error('image illisible ou corrompue'));
+      img.src = dataUrl;
+    };
+    if (source instanceof File) {
+      const reader = new FileReader();
+      reader.onload = () => finish(reader.result);
+      reader.onerror = () => reject(new Error('erreur de lecture du fichier'));
+      reader.readAsDataURL(source);
+    } else {
+      finish(source); // déjà une data URL
+    }
+  });
+}
+
+// Envoie un Blob vers le bucket Supabase Storage et renvoie son URL publique.
+async function _uploadImageBlob(blob, mime, ext) {
+  const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const res = await fetch(`${SB_URL}/storage/v1/object/${PTCG_STORAGE_BUCKET}/${path}`, {
+    method: 'POST',
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': mime },
+    body: blob,
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}${errText ? ' — ' + errText.slice(0, 200) : ''}`);
+  }
+  return `${SB_URL}/storage/v1/object/public/${PTCG_STORAGE_BUCKET}/${path}`;
+}
+
+// ── Migration : déplace vers le stockage cloud toute image encore stockée
+// en base64 localement (imports faits avant ce correctif) ─────────────────
+// Parcourt tout _D à la recherche de data URLs "data:image/…", les uploade
+// vers Supabase Storage, et remplace le champ par l'URL publique obtenue.
+// Déclenchable depuis Paramètres, ou automatiquement proposé dès qu'un échec
+// de sauvegarde locale par quota est détecté (voir _persistLocalOnly) —
+// signe qu'une telle image traîne encore dans les données.
+async function shrinkOversizedLocalImages() {
+  if (typeof _cloudReady !== 'function' || !_cloudReady()) {
+    toast('Configure la synchro cloud (Paramètres) avant de migrer ces images vers le stockage cloud.', 'error');
+    return;
+  }
+  const THRESHOLD = 5 * 1024; // toute image encore en base64 doit migrer, pas seulement les plus grosses
+  const found = [];
+  const seen = new Set();
+  const walk = obj => {
+    if (!obj || typeof obj !== 'object' || seen.has(obj)) return;
+    seen.add(obj);
+    Object.keys(obj).forEach(key => {
+      const val = obj[key];
+      if (typeof val === 'string' && val.length > THRESHOLD && /^data:image\//.test(val)) {
+        found.push({ obj, key });
+      } else if (val && typeof val === 'object') {
+        walk(val);
+      }
+    });
+  };
+  walk(_D);
+
+  if (!found.length) {
+    toast('Aucune image encore stockée localement — rien à migrer.', 'success');
+    return;
+  }
+  toast(`${found.length} image${found.length>1?'s':''} à migrer vers le stockage cloud…`, '');
+  let okCount = 0;
+  for (const f of found) {
+    try {
+      const { blob, mime, ext } = await _prepareImageBlob(f.obj[f.key], 1200);
+      f.obj[f.key] = await _uploadImageBlob(blob, mime, ext);
+      okCount++;
+    } catch (e) {
+      console.error('[PTCG] Échec migration image :', e);
+    }
+  }
+  saveData();
+  toast(`${okCount}/${found.length} image(s) migrée(s) vers le stockage cloud.`, okCount ? 'success' : 'error');
 }
 
 // Glisser-déposer un fichier directement sur le champ (au lieu du bouton

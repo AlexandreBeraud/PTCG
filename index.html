@@ -680,7 +680,7 @@
       </div>
       <div id="edition-persoobjets-panel" style="display:none">
         <p class="form-hint" style="margin-bottom:14px">
-          Personnages (Supporter), Objets (Objet + Objet Spécial), Lieux (Stade) et Énergies (de base + spéciales) sont regroupés automatiquement par nom réel depuis TCGdex. Corrige ici ce que l'automatique n'a pas su faire : change l'illustration d'une fiche, assigne-lui une carte à la main (elle sort alors définitivement du regroupement automatique — la recherche couvre toutes les cartes TCGdex, toutes catégories confondues), crée une entrée qui n'existe dans aucune des sources, ou supprime une entrée.
+          Personnages, Objets, Lieux et Énergies sont créés à la main ici (un nom, éventuellement une image) — l'appli leur rattache automatiquement toute carte possédée dont le nom contient ce nom, n'importe où dans le titre (ex. créer "Cynthia" récupère "Ordres de Cynthia", "Carte Cynthia"…). En cas d'ambiguïté avec une autre catégorie, force la catégorie depuis la fiche de la carte concernée.
         </p>
         <div class="mapping-header">
           <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -693,7 +693,8 @@
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
             <input type="text" id="pko-edit-search" placeholder="Filtrer…" oninput="filterPkoEditionList(this.value)" style="width:100%;background:none;border:none;outline:none;font-size:.8rem;color:var(--text)">
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="refreshPkoCatalog()" title="Recharger le catalogue TCGdex avant le renouvellement automatique (21 jours)">↻ Rafraîchir le catalogue</button>
+          <button class="btn btn-secondary btn-sm" onclick="pkoNewEntry()">+ Nouvelle entrée</button>
+          <button class="btn btn-secondary btn-sm" onclick="refreshPkoOwnedCounts()" title="Recalculer le nombre de cartes possédées (utile après avoir ajouté des cartes ailleurs dans l'appli)">↻ Recalculer les cartes possédées</button>
           <span id="pko-edit-counter" style="font-size:.78rem;color:var(--text2)"></span>
         </div>
 
@@ -705,9 +706,9 @@
             <div id="pko-edit-list"></div>
           </div>
           <div id="pko-edit-form" class="edition-form-card">
-            <h3 id="pko-form-title">Nouvelle entrée manuelle</h3>
+            <h3 id="pko-form-title">Nouvelle entrée</h3>
             <div class="field"><label>Nom affiché</label>
-              <input type="text" id="pko-form-name" placeholder="Ex : Sacha"></div>
+              <input type="text" id="pko-form-name" placeholder="Ex : Cynthia"></div>
             <div class="field"><label>URL illustration</label>
               <div style="display:flex;gap:6px;align-items:center">
                 <input type="url" id="pko-form-image" placeholder="https://…" style="flex:1" ondragover="event.preventDefault()" ondrop="_handleImageDrop(event,'pko-form-image')">
@@ -716,19 +717,11 @@
                 </label>
               </div>
             </div>
-            <div class="field">
-              <label>Cartes assignées manuellement</label>
-              <div id="pko-form-cards" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
-            </div>
-            <div class="field">
-              <label>Rechercher une carte TCGdex à assigner</label>
-              <input type="text" id="pko-form-card-search" placeholder="Nom de la carte…" oninput="pkoSearchCatalogCards(this.value)">
-              <div id="pko-form-search-results" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
-            </div>
             <div class="form-actions">
               <button class="btn btn-primary" onclick="pkoSaveEntry()">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                 Enregistrer
+
               </button>
               <button class="btn btn-ghost" onclick="pkoCancelForm()">Annuler</button>
             </div>
@@ -783,6 +776,15 @@
           <div class="settings-field"><label>Importer</label>
             <input type="file" id="import-json-file" accept="application/json,.json" onchange="importDataFromFile(this)">
             <p class="form-hint" style="margin-top:6px">Choisis un fichier .json exporté depuis cette appli (bouton "Télécharger JSON" ci-dessus).</p>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>Stockage des images importées</h3>
+          <p class="form-hint">
+            Les images importées depuis cet appareil (bouton 📁 sur les champs "URL d'image") sont hébergées sur Supabase Storage — jamais stockées localement — la synchro cloud (ci-dessous) doit donc être configurée pour que l'import fonctionne. Si des images ont été stockées localement avant ce fonctionnement (base64 dans les données), ce bouton les migre vers le stockage cloud.
+          </p>
+          <div class="settings-actions" style="margin-top:8px">
+            <button class="btn btn-secondary" onclick="shrinkOversizedLocalImages()">Migrer les images stockées localement</button>
           </div>
         </div>
         <div class="settings-card">
@@ -872,7 +874,7 @@
         <div class="page-header" style="margin-bottom:0">
           <div class="page-header-left">
             <h1>Personnages</h1>
-            <p>Cartes Dresseur Supporter — données via TCGdex</p>
+            <p>Créés à la main dans Édition — leurs cartes sont retrouvées automatiquement par nom</p>
           </div>
           <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
@@ -884,11 +886,6 @@
           </div>
         </div>
       </div>
-      <div id="personnages-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
-        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
-        <p>Chargement du catalogue TCGdex…</p>
-      </div>
-      <div id="personnages-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
       <div id="personnages-grid" class="pkdx-grid"></div>
       <div id="personnages-load-more" style="text-align:center;padding:24px;display:none">
         <button class="btn btn-secondary" onclick="personnagesLoadMore()">Charger plus</button>
@@ -901,7 +898,7 @@
         <div class="page-header" style="margin-bottom:0">
           <div class="page-header-left">
             <h1>Objets</h1>
-            <p>Cartes Dresseur Objet et Objet Spécial — données via TCGdex</p>
+            <p>Créés à la main dans Édition — leurs cartes sont retrouvées automatiquement par nom</p>
           </div>
           <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
@@ -913,11 +910,6 @@
           </div>
         </div>
       </div>
-      <div id="objets-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
-        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
-        <p>Chargement du catalogue TCGdex…</p>
-      </div>
-      <div id="objets-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
       <div id="objets-grid" class="pkdx-grid"></div>
       <div id="objets-load-more" style="text-align:center;padding:24px;display:none">
         <button class="btn btn-secondary" onclick="objetsLoadMore()">Charger plus</button>
@@ -930,7 +922,7 @@
         <div class="page-header" style="margin-bottom:0">
           <div class="page-header-left">
             <h1>Lieux</h1>
-            <p>Cartes Dresseur Stade — données via TCGdex</p>
+            <p>Créés à la main dans Édition — leurs cartes sont retrouvées automatiquement par nom</p>
           </div>
           <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
@@ -942,11 +934,6 @@
           </div>
         </div>
       </div>
-      <div id="lieux-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
-        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
-        <p>Chargement du catalogue TCGdex…</p>
-      </div>
-      <div id="lieux-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
       <div id="lieux-grid" class="pkdx-grid"></div>
       <div id="lieux-load-more" style="text-align:center;padding:24px;display:none">
         <button class="btn btn-secondary" onclick="lieuxLoadMore()">Charger plus</button>
@@ -959,7 +946,7 @@
         <div class="page-header" style="margin-bottom:0">
           <div class="page-header-left">
             <h1>Énergies</h1>
-            <p>Énergies de base et spéciales — données via TCGdex</p>
+            <p>Créées à la main dans Édition — leurs cartes sont retrouvées automatiquement par nom</p>
           </div>
           <div class="page-header-right" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div class="topbar-search" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;display:flex;align-items:center;gap:8px;min-width:220px">
@@ -971,11 +958,6 @@
           </div>
         </div>
       </div>
-      <div id="energies-loading" style="display:none;text-align:center;padding:48px;color:var(--text2)">
-        <div class="pokeball" style="width:40px;height:40px;margin:0 auto 12px;border-width:3px"></div>
-        <p>Chargement du catalogue TCGdex…</p>
-      </div>
-      <div id="energies-error" style="display:none;text-align:center;padding:48px;color:var(--accent2)"></div>
       <div id="energies-grid" class="pkdx-grid"></div>
       <div id="energies-load-more" style="text-align:center;padding:24px;display:none">
         <button class="btn btn-secondary" onclick="energiesLoadMore()">Charger plus</button>

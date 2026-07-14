@@ -170,7 +170,16 @@ function addLabelCategory() {
   if (!name) { toast('Indique un nom pour la nouvelle catégorie.', 'error'); return; }
   if (!_D.label_categories) _D.label_categories = [];
   const id = 'lblcat_' + Date.now();
-  const sortOrder = _D.label_categories.length;
+  // BUG corrigé : _D.label_categories.length collisionnait avec le
+  // sort_order d'une catégorie EXISTANTE dès qu'une catégorie avait été
+  // supprimée entretemps (ex. 4 catégories avec sort_order 0,1,2,4 après
+  // suppression de celle à 3 : la longueur vaut 4, qui existe déjà) — deux
+  // catégories à égalité de sort_order retombent sur l'ordre "naturel" du
+  // tableau (généralement l'ordre renvoyé par Supabase, pas forcément
+  // l'ordre voulu), donnant l'impression que le classement "ne se souvient
+  // plus" de sa place au fil des créations/suppressions.
+  const maxSortOrder = _D.label_categories.reduce((max, c) => Math.max(max, c.sort_order || 0), -1);
+  const sortOrder = maxSortOrder + 1;
   _D.label_categories.push({ id, name, hidden: false, parent_id: null, sort_order: sortOrder });
   saveData();
   if (input) input.value = '';
@@ -241,13 +250,41 @@ function onLabelCatDrop(e) {
   document.querySelectorAll('.lbl-group-header.drag-target').forEach(el => el.classList.remove('drag-target'));
   const toId = e.currentTarget.dataset.catId;
   if (!_labelCatDragId || _labelCatDragId === toId) { _labelCatDragId = null; return; }
-  const order = getLabelCategories().map(c => c.id);
-  const fromIdx = order.indexOf(_labelCatDragId), toIdx = order.indexOf(toId);
+
+  const all = _D.label_categories || [];
+  const fromCat = all.find(c => c.id === _labelCatDragId);
+  const toCat = all.find(c => c.id === toId);
+  if (!fromCat || !toCat) { _labelCatDragId = null; return; }
+
+  // BUG corrigé : la version précédente réordonnait sur une liste À PLAT
+  // mélangeant catégories principales ET sous-catégories de TOUS les
+  // parents dans une seule séquence continue — un glisser-déposer entre
+  // deux catégories de niveaux/parents différents pouvait alors donner un
+  // classement imprévisible d'un rendu à l'autre. Le glisser-déposer ne
+  // réordonne maintenant que des catégories qui partagent le MÊME parent
+  // (même groupe) ; passer d'un groupe à l'autre reste possible, mais
+  // uniquement via le sélecteur explicite "Ranger comme sous-catégorie
+  // de…", jamais comme effet de bord d'un simple réordonnancement.
+  if ((fromCat.parent_id || null) !== (toCat.parent_id || null)) {
+    toast('Le glisser-déposer ne réordonne que des catégories de même niveau — utilise le sélecteur « Ranger comme sous-catégorie de… » pour changer une catégorie de groupe.', 'error');
+    _labelCatDragId = null;
+    return;
+  }
+
+  const siblingIds = getLabelCategories()
+    .filter(c => (c.parentId || null) === (fromCat.parent_id || null))
+    .map(c => c.id);
+  const fromIdx = siblingIds.indexOf(_labelCatDragId), toIdx = siblingIds.indexOf(toId);
   if (fromIdx < 0 || toIdx < 0) { _labelCatDragId = null; return; }
-  order.splice(fromIdx, 1); order.splice(toIdx, 0, _labelCatDragId);
-  order.forEach((cid, idx) => {
-    const cat = (_D.label_categories||[]).find(c => c.id === cid);
-    if (cat) cat.sort_order = idx;
+  siblingIds.splice(fromIdx, 1); siblingIds.splice(toIdx, 0, _labelCatDragId);
+  // Espacés de 10 en 10 au sein du groupe : laisse de la marge pour de
+  // futures insertions sans devoir renuméroter, et surtout ne touche à
+  // AUCUNE catégorie hors de ce groupe (contrairement à la version
+  // précédente qui renumérotait tout le monde d'un coup, tous niveaux
+  // confondus).
+  siblingIds.forEach((cid, idx) => {
+    const cat = all.find(c => c.id === cid);
+    if (cat) cat.sort_order = idx * 10;
   });
   saveData();
   renderLabelsList();
