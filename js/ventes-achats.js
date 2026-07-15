@@ -2355,16 +2355,66 @@ function _getChipGroup(containerId) {
 var _cardPickerTarget = null;       // 'vente' | 'depense'
 var _cardPickerTimer = null;
 var _cardPickerPokeList = [];       // sous-ensemble courant de _pkdx.all (résultats de recherche)
-var _cardPickerSelectedPoke = null; // entrée _pkdx choisie à l'étape 1
+var _cardPickerSelectedPoke = null; // entrée _pkdx choisie à l'étape 1 (kind='pokemon')
 var _cardPickerGroups = [];         // groupes {ext, set_name, cards[]} de l'étape 2
 var _cardPickerCards = [];          // liste à plat des cartes affichées (pour la sélection par index)
 var CARD_PICKER_MAX_RESULTS = 200;
 
+// ── Kind du sujet recherché à l'étape 1 : un Pokémon (Pokédex, comportement
+// d'origine) OU une entrée Personnage/Objet/Lieu/Énergie (créée dans
+// Édition, voir perso-objets.js) — mêmes étapes 2/3 ensuite (les deux
+// alimentent en bout de course les mêmes champs génériques card_name/
+// pokemon_name/set_name… de la vente/dépense, voir saveVente/saveDepense).
+var _cardPickerKind = 'pokemon';    // 'pokemon' | 'personnage' | 'objet' | 'lieu' | 'energie'
+var _cardPickerPkoList = [];        // sous-ensemble courant de _pko.entries[kind]
+var _cardPickerSelectedPko = null;  // entrée _pko choisie à l'étape 1 (kind ≠ 'pokemon')
+
+var CARD_PICKER_KIND_LABELS = {
+  pokemon:    { tab: 'Pokémon',     search: 'Rechercher un Pokémon',     placeholder: 'Rechercher un Pokémon…' },
+  personnage: { tab: 'Personnages', search: 'Rechercher un personnage', placeholder: 'Rechercher un personnage…' },
+  objet:      { tab: 'Objets',      search: 'Rechercher un objet',      placeholder: 'Rechercher un objet…' },
+  lieu:       { tab: 'Lieux',       search: 'Rechercher un lieu',       placeholder: 'Rechercher un lieu…' },
+  energie:    { tab: 'Énergies',    search: 'Rechercher une énergie',   placeholder: 'Rechercher une énergie…' },
+};
+
+function _renderCardPickerKindTabs() {
+  const el = document.getElementById('cardpicker-kind-tabs');
+  if (!el) return;
+  const kinds = ['pokemon', ...PKO_KINDS];
+  el.innerHTML = kinds.map(k => {
+    const active = k === _cardPickerKind ? ' active' : '';
+    return `<button type="button" class="btn btn-sm btn-secondary pko-kind-btn${active}" onclick="setCardPickerKind('${k}')">${CARD_PICKER_KIND_LABELS[k].tab}</button>`;
+  }).join('');
+}
+
+// Change de catégorie recherchée à l'étape 1, sans fermer/rouvrir la modale.
+async function setCardPickerKind(kind) {
+  if (kind === _cardPickerKind) return;
+  _cardPickerKind = kind;
+  _cardPickerSelectedPoke = null;
+  _cardPickerSelectedPko = null;
+  _renderCardPickerKindTabs();
+  _restoreCardPickerPokeSearch();
+  const el = document.getElementById('cardpicker-step1');
+  if (el) el.innerHTML = '<div class="sales-empty">Chargement…</div>';
+  if (kind === 'pokemon') {
+    if (!_pkdx.initialized) { try { await initPokedex(); } catch(_) {} }
+    _cardPickerRenderPokeList('');
+  } else {
+    if (!_pko.initialized[kind]) { try { await _pkoInitTab(kind); } catch(_) {} }
+    _cardPickerRenderPkoList('');
+  }
+}
+
 async function openCardPicker(target) {
   _cardPickerTarget = target;
+  _cardPickerKind = 'pokemon';
   _cardPickerSelectedPoke = null;
+  _cardPickerSelectedPko = null;
   _cardPickerGroups = [];
   _cardPickerCards = [];
+  _renderCardPickerKindTabs();
+  document.getElementById('cardpicker-kind-tabs').style.display = '';
   _restoreCardPickerPokeSearch();
   document.getElementById('cardpicker-step1').innerHTML = '<div class="sales-empty">Chargement du Pokédex…</div>';
   document.getElementById('cardpicker-search-field').style.display = '';
@@ -2382,7 +2432,11 @@ async function openCardPicker(target) {
 
 function _cardPickerSearch(q) {
   clearTimeout(_cardPickerTimer);
-  _cardPickerTimer = setTimeout(() => _cardPickerRenderPokeList(q.trim()), 200);
+  _cardPickerTimer = setTimeout(() => {
+    const query = q.trim();
+    if (_cardPickerKind === 'pokemon') _cardPickerRenderPokeList(query);
+    else _cardPickerRenderPkoList(query);
+  }, 200);
 }
 
 // Construit la liste des Pokémon correspondant à la recherche à partir des
@@ -2466,6 +2520,7 @@ async function _cardPickerHydratePoke(p, i) {
 async function _cardPickerSelectPokemon(i) {
   const p = _cardPickerPokeList[i]; if (!p) return;
   _cardPickerSelectedPoke = p;
+  document.getElementById('cardpicker-kind-tabs').style.display = 'none';
   document.getElementById('cardpicker-step1').style.display = 'none';
   document.getElementById('cardpicker-step2').style.display = '';
   document.getElementById('cardpicker-pokemon-label').textContent = p.frName || _capitalize(p.name.replace(/-/g,' '));
@@ -2505,6 +2560,67 @@ async function _cardPickerSelectPokemon(i) {
   }
 }
 
+// Étape 1, pour les catégories Personnages/Objets/Lieux/Énergies : liste des
+// entrées créées dans Édition › Personnages-Objets-Lieux-Énergies pour la
+// catégorie courante (_cardPickerKind) — mêmes entrées que celles utilisées
+// par ces onglets (_pko.entries, voir perso-objets.js), avec recherche par
+// nom affiché.
+function _cardPickerRenderPkoList(query) {
+  const el = document.getElementById('cardpicker-step1');
+  if (!el) return;
+  const kind = _cardPickerKind;
+  const all = _pko.entries[kind] || [];
+  const q = _normalizeStr(query||'');
+  const list = q ? all.filter(e => _normalizeStr(e.displayName).includes(q)) : all;
+  _cardPickerPkoList = list;
+
+  if (!list.length) {
+    el.innerHTML = `<div class="sales-empty">${all.length ? 'Aucun résultat.' : `Aucune entrée — crée-en une dans Édition › ${PKO_LABELS[kind].title}.`}</div>`;
+    return;
+  }
+  const color = PKO_LABELS[kind].color;
+  el.innerHTML = list.map((e, i) => `
+    <div class="cardpicker-poke-item" onclick="_cardPickerSelectPkoEntry(${i})">
+      <div class="cardpicker-poke-sprite" style="background:${color}22">
+        ${e.image ? `<img src="${_escHtml(e.image)}" alt="" loading="lazy">` : `<span style="color:${color};font-size:1.1rem">${PKO_ICON[kind]}</span>`}
+      </div>
+      <div class="cardpicker-poke-name">${_escHtml(e.displayName)}</div>
+    </div>`).join('');
+}
+
+// Étape 1 → 2, pour Personnages/Objets/Lieux/Énergies : charge les cartes
+// possédées rattachées à cette entrée — même recherche (nom contenu n'importe
+// où + exclusions croisées) que la fiche de l'entrée dans le Pokédex, voir
+// _pkoLoadLocalCards, pour que le sélecteur trouve exactement les mêmes
+// cartes que la fiche.
+async function _cardPickerSelectPkoEntry(i) {
+  const entry = _cardPickerPkoList[i]; if (!entry) return;
+  _cardPickerSelectedPko = entry;
+  const kind = _cardPickerKind;
+  document.getElementById('cardpicker-kind-tabs').style.display = 'none';
+  document.getElementById('cardpicker-step1').style.display = 'none';
+  document.getElementById('cardpicker-step2').style.display = '';
+  document.getElementById('cardpicker-pokemon-label').textContent = entry.displayName;
+  _cardPickerExtFilter = null;
+  const grid = document.getElementById('cardpicker-cards');
+  grid.innerHTML = '<div class="sales-empty">Chargement des cartes…</div>';
+  try {
+    if (!_pkdx.initialized) await initPokedex();
+    const otherKinds = PKO_KINDS.filter(k => k !== kind);
+    await Promise.all(otherKinds.map(ok => _pko.initialized[ok] ? null : _pkoInitTab(ok)));
+    const knownPokemon = _buildKnownPokemonNameSet();
+    const knownOther = new Set();
+    otherKinds.forEach(ok => (_pko.entries[ok] || []).forEach(e2 => _accentVariants(e2.displayName).forEach(v => knownOther.add(v))));
+    const cards = await _fetchLocalCardsContainingName(entry.displayName, kind, knownPokemon, knownOther);
+    if (!_mapping.initialized) await initMappingView();
+    _cardPickerGroups = _groupCardsByExtension(cards);
+    _buildCardPickerExtSearch();
+    _cardPickerRenderCardGroups();
+  } catch(e) {
+    grid.innerHTML = `<div class="sales-empty">Erreur : ${e.message}</div>`;
+  }
+}
+
 // Une fois entré dans un Pokémon, la recherche de l'étape 1 (par nom de
 // Pokémon) n'a plus lieu d'être : on la remplace par un filtre par extension
 // dans la même barre de recherche.
@@ -2518,9 +2634,12 @@ function _buildCardPickerExtSearch() {
 }
 function _restoreCardPickerPokeSearch() {
   const search = document.getElementById('cardpicker-search');
+  const label  = document.getElementById('cardpicker-search-label');
   if (!search) return;
+  const info = CARD_PICKER_KIND_LABELS[_cardPickerKind] || CARD_PICKER_KIND_LABELS.pokemon;
   search.value = '';
-  search.placeholder = 'Rechercher un Pokémon…';
+  search.placeholder = info.placeholder;
+  if (label) label.textContent = info.search;
   search.oninput = (e) => _cardPickerSearch(e.target.value);
   _cardPickerExtFilter = '';
 }
@@ -2541,18 +2660,23 @@ function _cardPickerRenderCardGroups() {
 }
 
 function _cardPickerBackToStep1() {
+  document.getElementById('cardpicker-kind-tabs').style.display = '';
   document.getElementById('cardpicker-search-field').style.display = '';
   document.getElementById('cardpicker-step1').style.display = '';
   document.getElementById('cardpicker-manual-toggle').style.display = '';
   document.getElementById('cardpicker-step2').style.display = 'none';
   document.getElementById('cardpicker-step3').style.display = 'none';
   _restoreCardPickerPokeSearch();
+  if (_cardPickerKind === 'pokemon') _cardPickerRenderPokeList('');
+  else _cardPickerRenderPkoList('');
 }
 
 function _cardPickerSelectCard(idx) {
   const c = _cardPickerCards[idx]; if (!c) return;
   const p = _cardPickerTarget; if (!p) return;
-  const pokeName = (_cardPickerSelectedPoke && (_cardPickerSelectedPoke.frName || _capitalize(_cardPickerSelectedPoke.name.replace(/-/g,' ')))) || c.name || '';
+  const pokeName = _cardPickerKind === 'pokemon'
+    ? ((_cardPickerSelectedPoke && (_cardPickerSelectedPoke.frName || _capitalize(_cardPickerSelectedPoke.name.replace(/-/g,' ')))) || c.name || '')
+    : ((_cardPickerSelectedPko && _cardPickerSelectedPko.displayName) || c.name || '');
   document.getElementById(`${p}-card-id`).value = c.id||'';
   document.getElementById(`${p}-card-name`).value = c.name||'';
   document.getElementById(`${p}-card-image`).value = c.image_url||'';
@@ -2581,6 +2705,7 @@ function _cardPickerSelectCard(idx) {
 // l'extension locale sélectionnée : la vente/dépense résultante est donc
 // automatiquement coloriée/sigle-ée comme les autres (voir _extForSaleItem).
 function _cardPickerOpenManual() {
+  document.getElementById('cardpicker-kind-tabs').style.display = 'none';
   document.getElementById('cardpicker-search-field').style.display = 'none';
   document.getElementById('cardpicker-step1').style.display = 'none';
   document.getElementById('cardpicker-manual-toggle').style.display = 'none';
