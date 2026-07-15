@@ -191,32 +191,45 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+// Valeurs par défaut de TOUTES les clés de données de _D (une par domaine
+// synchronisé, voir _SYNC_DOMAINS dans sync.js) — SOURCE UNIQUE réutilisée
+// par loadData() (état neuf), resetData() (réinitialisation), exportData()
+// et importDataFromFile() (js/labels.js) : ajouter un nouveau domaine de
+// données ici suffit à le couvrir partout, sans risque d'oubli dans l'un
+// des quatre (c'est ce genre d'oubli qui, par le passé, faisait qu'un champ
+// existait bien dans _D mais pas dans la liste de secours de l'import — et
+// donc plantait l'appli en réimportant un vieil export).
+// Une FONCTION, pas un objet partagé : chaque appel renvoie des
+// tableaux/objets fraîchement créés, jamais une référence commune qui
+// finirait mutée par une partie de l'appli et polluerait toutes les autres.
+function _emptyDataDomains() {
+  return {
+    collection:    {},
+    classeurs:     [],
+    boosters_data: {},
+    custom_exts:   [],
+    ext_overrides: {},
+    bloc_overrides:{},
+    custom_blocs:  [],
+    labels:        [],
+    label_categories: [],
+    pokemon_label_assignments: {},
+    perso_objets:  [],
+    card_category_overrides: {},
+    ventes:        [],
+    acheteurs:     [],
+    acheteur_commandes: [],
+    depenses:      [],
+    vendeurs:      [],
+    vendeur_commandes:  [],
+    settings:      { display_mode: 'logo' }
+  };
+}
+
 // ── Persistence ────────────────────────────────────────────────────────────
 function loadData() {
   const fresh = () => {
-    _D = {
-      _v: 1, _ts: 0,
-      _tpl_blocs:    [],
-      collection:    {},
-      classeurs:     [],
-      boosters_data: {},
-      custom_exts:   [],
-      ext_overrides: {},
-      bloc_overrides:{},
-      custom_blocs:  [],
-      labels:        [],
-      label_categories: [],
-      pokemon_label_assignments: {},
-      perso_objets:  [],
-      card_category_overrides: {},
-      ventes:        [],
-      acheteurs:     [],
-      acheteur_commandes: [],
-      depenses:      [],
-      vendeurs:      [],
-      vendeur_commandes:  [],
-      settings:      { display_mode: 'logo' }
-    };
+    _D = { _v: 1, _ts: 0, _tpl_blocs: [], ..._emptyDataDomains() };
   };
 
   try {
@@ -227,25 +240,8 @@ function loadData() {
       _D = parsed;
       delete _D.blocs; // never store built-in blocs
       _D._tpl_blocs    = (window.__PC_DATA__ && window.__PC_DATA__.blocs) || []; // always []
-      if (!_D.custom_blocs)   _D.custom_blocs   = [];
-      if (!_D.collection)     _D.collection     = {};
-      if (!_D.classeurs)      _D.classeurs      = [];
-      if (!_D.boosters_data)  _D.boosters_data  = {};
-      if (!_D.custom_exts)    _D.custom_exts    = [];
-      if (!_D.ext_overrides)  _D.ext_overrides  = {};
-      if (!_D.bloc_overrides) _D.bloc_overrides = {};
-      if (!_D.labels)         _D.labels         = [];
-      if (!_D.label_categories) _D.label_categories = [];
-      if (!_D.pokemon_label_assignments) _D.pokemon_label_assignments = {};
-      if (!_D.perso_objets)   _D.perso_objets   = [];
-      if (!_D.card_category_overrides) _D.card_category_overrides = {};
-      if (!_D.ventes)         _D.ventes         = [];
-      if (!_D.acheteurs)      _D.acheteurs      = [];
-      if (!_D.acheteur_commandes) _D.acheteur_commandes = [];
-      if (!_D.depenses)       _D.depenses       = [];
-      if (!_D.vendeurs)       _D.vendeurs       = [];
-      if (!_D.vendeur_commandes)  _D.vendeur_commandes  = [];
-      if (!_D.settings)       _D.settings       = { display_mode: 'logo' };
+      const _defaults = _emptyDataDomains();
+      Object.keys(_defaults).forEach(k => { if (!_D[k]) _D[k] = _defaults[k]; });
       _migrateSalesToCommandes();
       // Discard old ext_overrides and bloc_overrides that referenced built-in IDs
       // (they're meaningless now that template is empty)

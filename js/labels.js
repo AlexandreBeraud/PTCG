@@ -145,6 +145,7 @@ function _renderLabelCard(type, cfg) {
         <span class="lbl-switch-track"></span>
       </label>
       <span class="lbl-card-actions">
+        <button class="mbadge-clear" title="Dupliquer" onclick="duplicateLabel('${safe}')">⧉</button>
         <button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>
       </span>
     </div>
@@ -187,6 +188,7 @@ function _renderLabelRow(type, cfg) {
       oninput="_setLabelFieldValue('${safe}','suffixes',this.value)" onblur="commitLabelEdit('${safe}')"></div>
     <div class="lbl-field"><select class="lbl-input" onchange="setLabelCategory('${safe}',this.value)">${catOptions}</select></div>
     <div class="lbl-reset-cell">
+      <button class="mbadge-clear" title="Dupliquer" onclick="duplicateLabel('${safe}')">⧉</button>
       <button class="mbadge-clear" title="Supprimer définitivement" onclick="deleteLabelPermanently('${safe}')">🗑</button>
     </div>
   </div>`;
@@ -242,6 +244,24 @@ function deleteLabelPermanently(type) {
   _refreshPokedexAfterLabelChange();
   renderLabelsList();
   toast('Label supprimé définitivement.', 'success');
+}
+
+// Duplique un label existant (même badge/couleur/préfixes/suffixes/
+// catégorie) pour créer rapidement un label très proche d'un autre sans
+// tout ressaisir — ex. une variante VMAX/VSTAR d'un label déjà configuré.
+// Seul `type` (l'identifiant technique, jamais affiché) doit être unique ;
+// tout le reste part identique à l'original et se corrige sur place.
+function duplicateLabel(type) {
+  const row = (_D.labels||[]).find(l => l.type === type);
+  if (!row) return;
+  let newType = `${row.type}-copie`, i = 2;
+  while ((_D.labels||[]).some(l => l.type === newType)) { newType = `${row.type}-copie-${i++}`; }
+  const copy = { ...row, type: newType, fr: (row.fr || row.type) + ' (copie)', sort_order: (_D.labels||[]).length };
+  _D.labels.push(copy);
+  saveData();
+  _refreshPokedexAfterLabelChange();
+  renderLabelsList();
+  toast('Label dupliqué — modifie son nom/ses préfixes si besoin.', 'success');
 }
 
 // Crée un nouveau label.
@@ -561,12 +581,27 @@ function saveUiScale(){
   toast('Taille appliquée.','success');
 }
 function exportData(){
+  // {..._D} d'abord : capture tout ce qui existe RÉELLEMENT dans _D au
+  // moment de l'export, y compris un futur champ qu'on ajouterait sans
+  // penser à mettre à jour _emptyDataDomains() (core.js). _tpl_blocs/blocs
+  // sont exclus : ce sont les blocs INTÉGRÉS, statiques, redéfinis à
+  // chaque chargement depuis data.js — jamais des données personnelles, les
+  // réimporter ne ferait que dupliquer ce que l'appli sait déjà.
   const s={..._D};delete s._tpl_blocs;delete s.blocs;
+  // Ceinture ET bretelles : toute clé de données connue (voir la liste
+  // centrale dans core.js) mais jamais encore écrite localement — ex. juste
+  // après un reset, avant la moindre action — est quand même présente dans
+  // le fichier exporté, avec sa valeur vide correcte. Un export ne doit
+  // jamais omettre un champ en silence.
+  const _defaults = _emptyDataDomains();
+  Object.keys(_defaults).forEach(k => { if (s[k] === undefined) s[k] = _defaults[k]; });
+  s._export_app  = 'PTCG Collection';
+  s._export_date = new Date().toISOString();
   const a=Object.assign(document.createElement('a'),{
     href:URL.createObjectURL(new Blob([JSON.stringify(s,null,2)],{type:'application/json'})),
     download:`ptcg_collection_${new Date().toISOString().slice(0,10)}.json`
   });
-  a.click();toast('Export téléchargé.','success');
+  a.click();toast('Export téléchargé (toutes les données).','success');
 }
 // Import via un vrai sélecteur de fichier (plutôt que copier-coller un JSON
 // dans une zone de texte, peu pratique pour un gros export) : on lit le
@@ -580,8 +615,13 @@ function importDataFromFile(input) {
       const parsed = JSON.parse(String(reader.result).trim());
       const tplBlocs = (window.__PC_DATA__ && window.__PC_DATA__.blocs) || [];
       _D = { ...parsed, _tpl_blocs: tplBlocs };
-      ['boosters_data','custom_exts','ext_overrides','bloc_overrides','custom_blocs'].forEach(k=>{if(!_D[k])_D[k]=k==='boosters_data'?{}:[];});
-      if (!_D.settings) _D.settings = { display_mode:'logo' };
+      // TOUTES les clés de données connues reçoivent une valeur par défaut
+      // si absentes du fichier importé — pas seulement les 5 d'avant. Utile
+      // pour réimporter un export plus ancien, généré avant l'ajout d'un
+      // champ (ex. perso_objets, card_category_overrides) : sans ça l'appli
+      // plantait en cherchant à lire une clé manquante juste après l'import.
+      const _defaults = _emptyDataDomains();
+      Object.keys(_defaults).forEach(k => { if (!_D[k]) _D[k] = _defaults[k]; });
       saveData(); renderAll();
       toast('Import réussi !', 'success');
     } catch(e) {
@@ -598,14 +638,7 @@ function importDataFromFile(input) {
 function resetData(){
   if(!confirm('Supprimer TOUTES vos données ?'))return;
   localStorage.removeItem(STORAGE_KEY);
-  _D={
-    _v:1,_ts:Date.now(),_tpl_blocs:[],
-    collection:{},classeurs:[],boosters_data:{},
-    custom_exts:[],ext_overrides:{},bloc_overrides:{},custom_blocs:[],
-    labels:[],label_categories:[],pokemon_label_assignments:{},
-    ventes:[],acheteurs:[],acheteur_commandes:[],depenses:[],vendeurs:[],vendeur_commandes:[],
-    settings:{display_mode:'logo'}
-  };
+  _D={ _v:1, _ts:Date.now(), _tpl_blocs:[], ..._emptyDataDomains() };
   saveData();renderAll();toast('Données réinitialisées.','success');
 }
 

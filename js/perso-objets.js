@@ -542,6 +542,7 @@ function _pkoEntryRowHtml(kind, entry) {
       </div>
       <div class="edition-ext-actions">
         <button class="btn btn-icon btn-sm" title="Corriger" onclick="pkoEditEntryOpen('${_escJs(kind)}','${_escJs(entry.id)}')">✎</button>
+        <button class="btn btn-icon btn-sm" title="Dupliquer" onclick="pkoDuplicateEntry('${_escJs(kind)}','${_escJs(entry.id)}')">⧉</button>
         <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="pkoDeleteEntry('${_escJs(kind)}','${_escJs(entry.id)}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
@@ -564,6 +565,7 @@ function _pkoEntryCardHtml(kind, entry) {
         <div class="edition-card-meta">${nbCards} carte${nbCards === 1 ? '' : 's'} possédée${nbCards === 1 ? '' : 's'}</div>
       </div>
       <div class="edition-card-actions">
+        <button class="btn btn-icon btn-sm" title="Dupliquer" onclick="event.stopPropagation();pkoDuplicateEntry('${_escJs(kind)}','${_escJs(entry.id)}')">⧉</button>
         <button class="btn btn-icon btn-sm btn-danger" title="Supprimer" onclick="event.stopPropagation();pkoDeleteEntry('${_escJs(kind)}','${_escJs(entry.id)}')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
@@ -602,6 +604,15 @@ function pkoNewEntry() {
 
 function pkoCancelForm() { pkoNewEntry(); }
 
+// Id local unique — un simple Date.now() (utilisé avant) n'est pas garanti
+// unique si deux entrées sont créées/dupliquées à la même milliseconde (cf.
+// le commentaire sur _dedupeByKey dans sync.js) ; un suffixe aléatoire lève
+// le doute, en particulier pour la duplication où deux clics rapprochés
+// sont plus probables qu'en saisie manuelle.
+function _pkoUniqueId() {
+  return 'pko_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+}
+
 function pkoSaveEntry() {
   const kind = _pkoEdit.kind;
   const name  = document.getElementById('pko-form-name').value.trim();
@@ -610,7 +621,7 @@ function pkoSaveEntry() {
 
   if (!_D.perso_objets) _D.perso_objets = [];
   const isNew = !_pkoEdit.editingId;
-  const id = _pkoEdit.editingId || ('pko_' + Date.now());
+  const id = _pkoEdit.editingId || _pkoUniqueId();
   let ov = _D.perso_objets.find(o => o.id === id && o.kind === kind);
   if (!ov) { ov = { id, kind, sort_order: _D.perso_objets.length }; _D.perso_objets.push(ov); }
   ov.display_name = name;
@@ -620,6 +631,24 @@ function pkoSaveEntry() {
   _pkoInvalidateOrphanCache();
   pkoCancelForm();
   toast(isNew ? 'Entrée créée ! Ses cartes possédées apparaissent automatiquement.' : 'Entrée mise à jour.', 'success');
+}
+
+// Duplique une entrée (nom + image) pour en créer rapidement une variante
+// proche sans tout ressaisir (ex. plusieurs formes d'un même personnage) —
+// ouvre directement le formulaire sur la copie pour n'avoir plus qu'à
+// ajuster le nom/l'image puis Enregistrer.
+function pkoDuplicateEntry(kind, entryId) {
+  const ov = (_D.perso_objets||[]).find(o => o.id === entryId && o.kind === kind);
+  if (!ov) return;
+  if (!_D.perso_objets) _D.perso_objets = [];
+  const newId = _pkoUniqueId();
+  const copy = { ...ov, id: newId, display_name: (ov.display_name||'') + ' (copie)', sort_order: _D.perso_objets.length };
+  _D.perso_objets.push(copy);
+  saveData();
+  _pkoRebuildEntries(kind);
+  _pkoInvalidateOrphanCache();
+  pkoEditEntryOpen(kind, newId);
+  toast('Entrée dupliquée — ajuste le nom puis Enregistrer.', 'success');
 }
 
 function pkoDeleteEntry(kind, entryId) {
