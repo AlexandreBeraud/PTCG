@@ -2377,13 +2377,16 @@ var CARD_PICKER_KIND_LABELS = {
   energie:    { tab: 'Énergies',    search: 'Rechercher une énergie',   placeholder: 'Rechercher une énergie…' },
 };
 
+var CARD_PICKER_KIND_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h8M14 12h8M12 2v4M12 18v4"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>';
+
 function _renderCardPickerKindTabs() {
   const el = document.getElementById('cardpicker-kind-tabs');
   if (!el) return;
   const kinds = ['pokemon', ...PKO_KINDS];
   el.innerHTML = kinds.map(k => {
     const active = k === _cardPickerKind ? ' active' : '';
-    return `<button type="button" class="btn btn-sm btn-secondary pko-kind-btn${active}" onclick="setCardPickerKind('${k}')">${CARD_PICKER_KIND_LABELS[k].tab}</button>`;
+    const icon = k === 'pokemon' ? CARD_PICKER_KIND_ICON_SVG : PKO_ICON[k];
+    return `<button type="button" class="cardpicker-kind-btn${active}" onclick="setCardPickerKind('${k}')"><span class="cpk-icon">${icon}</span>${CARD_PICKER_KIND_LABELS[k].tab}</button>`;
   }).join('');
 }
 

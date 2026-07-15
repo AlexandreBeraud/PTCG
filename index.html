@@ -98,7 +98,7 @@
     </button>
   </div>
   <div class="nav-section">
-    <div class="nav-section-label">Pokédex</div>
+    <div class="nav-section-label">Encyclopédie</div>
     <button class="nav-btn" data-view="pokedex" onclick="switchView('pokedex',this)">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/>
@@ -732,17 +732,24 @@
 
     <!-- Paramètres -->
     <div id="view-parametres" class="view">
-      <div class="page-header"><div class="page-header-left"><h1>Paramètres</h1><p>Export, import et sync cloud</p></div></div>
+      <div class="page-header"><div class="page-header-left"><h1>Paramètres</h1><p>Apparence, export, import et synchronisation cloud</p></div></div>
       <div class="settings-grid">
         <div class="settings-card">
-          <h3>Affichage</h3>
-          <div class="settings-display-row">
+          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 100 20c1.5 0 2-1 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-.8.7-1.5 1.5-1.5H16a4 4 0 004-4c0-5.5-4.5-10-8-10z"/><circle cx="7.5" cy="10.5" r="1" fill="currentColor"/><circle cx="10.5" cy="7" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/><circle cx="17" cy="11" r="1" fill="currentColor"/></svg></span>Apparence</h3>
+          <div class="settings-field">
+            <label>Thème</label>
+            <div class="theme-picker" id="theme-picker"></div>
+          </div>
+          <div class="settings-display-row" style="margin-top:16px">
             <label>Taille de l'interface :</label>
             <input type="range" id="settings-ui-scale" min="0.7" max="1.4" step="0.05" value="1"
               style="flex:1;accent-color:var(--accent)" oninput="applyUiScale(this.value)">
             <button class="btn btn-primary btn-sm" onclick="saveUiScale()">Sauvegarder</button>
           </div>
-          <div class="settings-display-row" style="margin-top:10px">
+        </div>
+        <div class="settings-card">
+          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>Affichage</h3>
+          <div class="settings-display-row">
             <label>Cartes par ligne — mode grille :</label>
             <input type="number" id="settings-cards-per-row-grid" min="2" max="10" step="1" value="5"
               style="width:70px" oninput="applyCardsPerRow('grid', this.value)">
@@ -762,7 +769,7 @@
           </div>
         </div>
         <div class="settings-card">
-          <h3>Export / Import</h3>
+          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3L4 7l4 4"/><path d="M4 7h11a4 4 0 014 4v1"/><path d="M16 21l4-4-4-4"/><path d="M20 17H9a4 4 0 01-4-4v-1"/></svg></span>Export / Import</h3>
           <div class="settings-field"><label>Exporter</label>
             <div class="settings-actions">
               <button class="btn btn-secondary" onclick="exportData()">
@@ -779,7 +786,7 @@
           </div>
         </div>
         <div class="settings-card">
-          <h3>Stockage des images importées</h3>
+          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>Stockage des images importées</h3>
           <p class="form-hint">
             Les images importées depuis cet appareil (bouton 📁 sur les champs "URL d'image") sont hébergées sur Supabase Storage — jamais stockées localement — la synchro cloud (ci-dessous) doit donc être configurée pour que l'import fonctionne. Si des images ont été stockées localement avant ce fonctionnement (base64 dans les données), ce bouton les migre vers le stockage cloud.
           </p>
@@ -788,7 +795,7 @@
           </div>
         </div>
         <div class="settings-card">
-          <h3>Synchronisation Cloud</h3>
+          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg></span>Synchronisation Cloud</h3>
           <div class="settings-field"><label>Supabase URL</label>
             <input type="text" id="cfg-url" placeholder="https://xxx.supabase.co"></div>
           <div class="settings-field"><label>Clé anonyme</label>
@@ -800,8 +807,8 @@
           </div>
           <p class="form-hint" style="margin-top:8px">« Synchroniser » envoie ou reçoit selon ce qui est le plus récent. « Récupérer depuis le cloud » ignore ça et applique toujours ce qu'il y a sur Supabase ici, sans rien envoyer.</p>
         </div>
-        <div class="settings-card">
-          <h3>Zone de danger</h3>
+        <div class="settings-card" style="--settings-card-accent:var(--accent2)">
+          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>Zone de danger</h3>
           <p style="font-size:.78rem;color:var(--text2);margin-bottom:14px">Irréversible.</p>
           <button class="btn btn-danger" onclick="resetData()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1448,7 +1455,7 @@
 <div class="modal-backdrop" id="modal-card-picker">
   <div class="modal" style="width:680px">
     <h2>Choisir une carte</h2>
-    <div id="cardpicker-kind-tabs" class="cardpicker-kind-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+    <div id="cardpicker-kind-tabs" class="cardpicker-kind-tabs"></div>
     <div class="settings-field" id="cardpicker-search-field">
       <label id="cardpicker-search-label">Rechercher un Pokémon</label>
       <input type="text" id="cardpicker-search" placeholder="Rechercher un Pokémon…">

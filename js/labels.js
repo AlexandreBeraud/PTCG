@@ -151,6 +151,7 @@ function _renderLabelCard(type, cfg) {
     </div>
     <input type="text" class="lbl-input lbl-input-name" value="${esc(cfg.fr)}" placeholder="Nom affiché" title="Nom affiché"
       oninput="_setLabelFieldValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')">
+    <div class="lbl-type-tag" title="Identifiant technique interne — utilisé par la détection automatique des formes PokéAPI, non modifiable ici" style="font-size:.68rem;color:var(--text3);font-family:monospace;margin:-2px 2px 4px;opacity:.75">${_escHtml(type)}</div>
     <div class="lbl-card-row2">
       <input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="Badge" maxlength="10" title="Badge"
         oninput="_setLabelFieldValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')">
@@ -174,7 +175,8 @@ function _renderLabelRow(type, cfg) {
   return `<div class="lbl-row" id="lblrow-${type}">
     <div class="lbl-badge-cell"><span class="pkdx-forms-type-badge" style="background:${cfg.color}">${cfg.badge}</span></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.fr)}" placeholder="Nom affiché"
-      oninput="_setLabelFieldValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')"></div>
+      oninput="_setLabelFieldValue('${safe}','fr',this.value)" onblur="commitLabelEdit('${safe}')">
+      <div class="lbl-type-tag" title="Identifiant technique interne — utilisé par la détection automatique des formes PokéAPI, non modifiable ici" style="font-size:.65rem;color:var(--text3);font-family:monospace;opacity:.75">${_escHtml(type)}</div></div>
     <div class="lbl-field"><input type="text" class="lbl-input" value="${esc(cfg.badge)}" placeholder="Badge" maxlength="10"
       oninput="_setLabelFieldValue('${safe}','badge',this.value)" onblur="commitLabelEdit('${safe}')"></div>
     <div class="lbl-color-cell"><input type="color" class="lbl-color" value="${(cfg.color||'#888888').slice(0,7)}"
@@ -564,6 +566,52 @@ function saveDisplayMode(){
   if(!_D.settings)_D.settings={};
   _D.settings.display_mode=sel.value;
   saveData();renderAll();toast('Préférence sauvegardée.','success');
+}
+
+// ── Thèmes ───────────────────────────────────────────────────────────────
+// Un jeu de couleurs par "type d'énergie" plutôt qu'un simple sombre/clair —
+// voir les blocs html[data-theme="…"] dans base.css pour les valeurs réelles
+// (ici on ne garde que ce qu'il faut pour dessiner les pastilles du
+// sélecteur). "braise" est la valeur par défaut : aucun attribut data-theme
+// dédié n'est nécessaire pour elle, :root suffit déjà.
+var THEMES = {
+  braise:     { name: 'Braise',    bg: '#0f1117', accent: '#e63946' },
+  abysses:    { name: 'Abysses',   bg: '#0a141f', accent: '#2196d8' },
+  sylve:      { name: 'Sylve',     bg: '#0b1310', accent: '#22a06b' },
+  amethyste:  { name: 'Améthyste', bg: '#120e1a', accent: '#9333ea' },
+  aurore:     { name: 'Aurore',    bg: '#f4f1ea', accent: '#c81f30' },
+};
+
+// Applique un thème à l'affichage SANS le sauvegarder (utilisé au chargement
+// pour restaurer le thème enregistré, et par selectTheme() ci-dessous).
+function applyTheme(theme) {
+  const t = THEMES[theme] ? theme : 'braise';
+  document.documentElement.setAttribute('data-theme', t);
+  renderThemePicker(t);
+}
+
+// Choix explicite de l'utilisateur (clic sur une pastille) : applique ET sauvegarde.
+function selectTheme(theme) {
+  if (!THEMES[theme]) return;
+  applyTheme(theme);
+  if (!_D.settings) _D.settings = {};
+  _D.settings.theme = theme;
+  saveData();
+  toast('Thème appliqué : ' + THEMES[theme].name + '.', 'success');
+}
+
+function renderThemePicker(activeTheme) {
+  const el = document.getElementById('theme-picker');
+  if (!el) return;
+  const current = activeTheme || _D.settings?.theme || 'braise';
+  el.innerHTML = Object.keys(THEMES).map(key => {
+    const t = THEMES[key];
+    const active = key === current ? ' active' : '';
+    return `<button type="button" class="theme-swatch${active}" style="--sw-bg:${t.bg};--sw-accent:${t.accent}" onclick="selectTheme('${key}')" title="${_escHtml(t.name)}">
+      <span class="theme-swatch-dot"></span>
+      <span class="theme-swatch-name">${_escHtml(t.name)}</span>
+    </button>`;
+  }).join('');
 }
 
 function applyUiScale(val){
