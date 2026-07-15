@@ -724,23 +724,87 @@ function _dedupeByKey(rows, keyCols) {
 var _pushInProgress = false;
 var _pushRerunNeeded = false;
 
-// Chaque domaine fait un DELETE puis un INSERT en 2 requêtes séparées. Une
-// synchro complète (15 tables) prend donc plusieurs secondes — largement le
-// temps qu'une nouvelle sauvegarde (ex. cocher une carte dans le Pokédex)
-// déclenche un DEUXIÈME push pendant que le premier tourne encore. Sans
-// verrou, les deux s'exécutent en parallèle sur les MÊMES tables : l'un
-// supprime/réinsère pendant que l'autre le fait aussi avec un instantané
-// légèrement différent de _D, ce qui provoque exactement ce genre de
-// "duplicate key" (23505) quand les deux écritures s'entrelacent.
+// ═══════════════════════════════════════════════════════════════════════════
+//  REFONTE DE SÉCURITÉ — après TROIS incidents de perte de données réels
+//  (dépenses + commandes vendeur vidées ; puis des tables cassées par des
+//  409 de clé étrangère ; puis labels vidée), le modèle "DELETE tout, puis
+//  INSERT tout" a été abandonné. Il portait en lui, structurellement, le
+//  risque de vider une table cloud dès que l'état local semblait vide ou
+//  incomplet pour une raison quelconque (pull partiellement raté, onglet
+//  périmé, course entre deux écritures…) — les correctifs précédents
+//  n'étaient que des garde-fous ADDITIONNELS autour de ce risque de fond,
+//  pas une suppression du risque lui-même.
+//
+//  Nouveau modèle :
+//   1. UPSERT (insère ou met à jour, ne supprime JAMAIS) l'état local
+//      actuel — via Prefer: resolution=merge-duplicates. Une table locale
+//      vide/incomplète pour une mauvaise raison n'efface plus rien : elle
+//      n'upserte simplement rien.
+//   2. Suppression CIBLÉE, seulement des lignes dont on a la PREUVE
+//      qu'elles ont disparu localement DANS CETTE SESSION (comparaison
+//      avec _lastKnownRowKeys, alimenté par les pulls/push réussis
+//      précédents) — jamais une suppression déduite d'un état local
+//      simplement vide. Tant qu'une table n'a jamais été confirmée cette
+//      session, AUCUNE suppression n'est tentée pour elle, quoi qu'il
+//      arrive.
+//   3. Les 18 tables sont poussées en SÉQUENCE, dans l'ordre du tableau
+//      _SYNC_DOMAINS (l'ordre qui fonctionnait déjà avant toute
+//      parallélisation, il reflète les dépendances de clé étrangère —
+//      acheteurs avant acheteur_commandes avant ventes, extensions avant
+//      collection, etc.). Un upsert ne supprimant plus rien, ce risque
+//      était déjà bien moindre qu'avec delete+insert, mais rien ne
+//      justifie de reprendre un risque de parallélisation sans nécessité
+//      absolue après ce qui s'est passé.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// table -> Set des clés (une par ligne, keyCols joints) CONFIRMÉES contre le
+// cloud cette session — via un pull réussi ou un push réussi. Tant qu'une
+// table n'a pas cette confirmation, aucune suppression n'est tentée pour
+// elle (voir _cloudPushAll ci-dessous).
+var _lastKnownRowKeys = {};
+// table -> instantané (JSON trié) du contenu réellement synchronisé avec le
+// cloud (dernier pull ou push réussi) — permet à _cloudPushAll de sauter
+// entièrement une table dont rien n'a changé, au lieu de la repousser à
+// chaque sauvegarde comme les 17 autres.
+var _lastPushedSnapshot = {};
+
+function _rowKeyStr(row, keyCols) {
+  return keyCols.map(function (k) { return String(row[k]); }).join('\u0001');
+}
+
+// Sérialise en triant les clés de chaque ligne — la comparaison ne doit
+// jamais dépendre du simple ordre des propriétés (qui peut différer entre
+// ce que toRows() construit localement et ce que Postgres renvoie au pull).
+function _stableSnapshot(rows) {
+  return JSON.stringify(rows.map(function (row) {
+    var sorted = {};
+    Object.keys(row).sort().forEach(function (k) { sorted[k] = row[k]; });
+    return sorted;
+  }));
+}
+
+// Construit le filtre PostgREST qui cible EXACTEMENT les lignes à supprimer
+// (jamais une table entière) — clé simple : col=in.("v1","v2",…) ; clé
+// composite (classeur_extensions, collection) : or=(and(col1.eq.v1,
+// col2.eq.v2),…), sans le "table entière" delete d'avant.
+function _pgDeleteFilterForKeys(keyCols, keyStrings) {
+  if (keyCols.length === 1) {
+    var quoted = keyStrings.map(function (v) { return '"' + v.replace(/"/g, '\\"') + '"'; });
+    return keyCols[0] + '=in.(' + quoted.join(',') + ')';
+  }
+  var conds = keyStrings.map(function (keyStr) {
+    var parts = keyStr.split('\u0001');
+    var andParts = keyCols.map(function (col, i) { return col + '.eq.' + encodeURIComponent(parts[i]); });
+    return 'and(' + andParts.join(',') + ')';
+  });
+  return 'or=(' + conds.join(',') + ')';
+}
+
 async function _cloudPushAll() {
   if (!_cloudReady()) return;
   if (_pullInProgress) {
-    // Un pull est en cours (restauration au chargement, bouton Synchroniser
-    // ou Récupérer depuis le cloud) : ne surtout pas pousser par-dessus. Le
-    // push fait un DELETE puis un INSERT par table ; s'il s'intercale au
-    // milieu d'un pull qui n'a pas fini de lire/appliquer toutes les tables,
-    // il peut vider des lignes que le pull n'a pas encore traitées. On
-    // réessaie simplement un peu plus tard plutôt que de forcer.
+    // Un pull est en cours : ne surtout pas pousser par-dessus tant qu'il
+    // n'a pas fini de lire/appliquer toutes les tables.
     setTimeout(_cloudPushAll, 400);
     return;
   }
@@ -753,46 +817,88 @@ async function _cloudPushAll() {
   }
   _pushInProgress = true;
   try {
-    // BUG corrigé : les ~18 tables étaient poussées une par une (boucle avec
-    // await séquentiel, DELETE puis INSERT à chaque fois) — plusieurs
-    // dizaines de rendez-vous réseau bout à bout à CHAQUE sauvegarde, quel
-    // que soit l'ampleur du changement (ajouter une seule carte à une vente
-    // repoussait quand même les 18 tables en entier, une par une). C'est
-    // exactement le même problème que celui déjà corrigé côté lecture (voir
-    // le commentaire au-dessus de _cloudPullAll) — jamais reporté côté
-    // écriture jusqu'ici. Poussées maintenant EN PARALLÈLE (Promise.all) :
-    // aucune table ne dépend d'une autre (chacune son propre DELETE+INSERT
-    // sur sa propre table), donc rien n'empêchait de les lancer toutes en
-    // même temps. Chaque domaine a aussi son propre try/catch — un problème
-    // sur UNE table (ex. colonne manquante) ne bloque plus la synchro des
-    // 17 autres, contrairement à avant où la première erreur arrêtait tout
-    // net (vécu très concrètement avec l'erreur pko_manual_card_ids).
-    var results = await Promise.all(_SYNC_DOMAINS.map(async function (d) {
+    var results = [];
+    for (var i = 0; i < _SYNC_DOMAINS.length; i++) {
+      var d = _SYNC_DOMAINS[i];
       try {
         var rows = _dedupeByKey(d.toRows(), d.keyCols);
-        var delRes = await fetch(SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()), {
-          method: 'DELETE', headers: _sbHeaders(),
-        });
-        if (!delRes.ok) {
-          var db = await delRes.text().catch(function () { return ''; });
-          throw new Error('suppression ' + d.table + ' refusée (HTTP ' + delRes.status + ') ' + db.slice(0, 200));
+
+        // BUG corrigé (lag) : les 18 tables étaient repoussées à CHAQUE
+        // sauvegarde, quelle que soit l'ampleur du changement — cocher une
+        // carte dans le Pokédex (qui ne touche que `collection`) déclenchait
+        // quand même 18 requêtes réseau. On compare maintenant le contenu
+        // actuel de CHAQUE table à ce qu'on a réellement poussé la dernière
+        // fois (_lastPushedSnapshot) — identique + déjà confirmée contre le
+        // cloud => on ne fait STRICTEMENT AUCUN appel réseau pour cette
+        // table, ni upsert ni suppression. _stableSnapshot trie les clés de
+        // chaque ligne avant de sérialiser, pour que la comparaison ne soit
+        // jamais faussée par un simple ordre de propriétés différent entre
+        // ce que toRows() construit et ce que Postgres a renvoyé au dernier
+        // pull.
+        var known = _lastKnownRowKeys[d.table];
+        var snapshot = _stableSnapshot(rows);
+        if (known && snapshot === _lastPushedSnapshot[d.table]) {
+          results.push(null);
+          continue;
         }
+
+        var currentKeys = new Set(rows.map(function (r) { return _rowKeyStr(r, d.keyCols); }));
+
+        // 1) UPSERT — ne supprime jamais, insère les nouvelles lignes et
+        // met à jour les existantes en une seule requête.
         if (rows.length) {
-          var insRes = await fetch(SB_URL + '/rest/v1/' + d.table, {
+          // BUG corrigé (HTTP 400 / 42P10 "no unique or exclusion constraint
+          // matching ON CONFLICT") : PostgREST exige que la spécification
+          // ON CONFLICT corresponde EXACTEMENT à une contrainte unique/index
+          // réel côté Postgres. keyCols seul ne correspondait à la vraie
+          // contrainte que pour une partie des tables (visiblement, les
+          // autres ont leur contrainte réelle sur (user_id, id) composite,
+          // sans que ce soit visible depuis le client) — 10 tables sur 18
+          // échouaient. Plutôt que deviner table par table, on cible un
+          // index UNIQUE dédié, connu et identique pour toutes les tables
+          // (user_col + keyCols), créé explicitement par la migration SQL
+          // (perso_objets_sync_uniq, etc.) — peu importe la/les contrainte(s)
+          // déjà existantes, Postgres autorise plusieurs index uniques sur
+          // les mêmes colonnes.
+          var upRes = await fetch(SB_URL + '/rest/v1/' + d.table + '?on_conflict=' + d.userCol + ',' + d.keyCols.join(','), {
             method: 'POST',
-            headers: _sbHeaders({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+            headers: _sbHeaders({ 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
             body: JSON.stringify(rows),
           });
-          if (!insRes.ok) {
-            var ib = await insRes.text().catch(function () { return ''; });
-            throw new Error('écriture ' + d.table + ' refusée (HTTP ' + insRes.status + ') ' + ib.slice(0, 200));
+          if (!upRes.ok) {
+            var ub = await upRes.text().catch(function () { return ''; });
+            throw new Error('écriture ' + d.table + ' refusée (HTTP ' + upRes.status + ') ' + ub.slice(0, 200));
           }
         }
-        return null;
+
+        // 2) Suppression CIBLÉE — uniquement les clés vues disparaître
+        // localement depuis la dernière confirmation (pull ou push réussi).
+        // known === undefined (jamais confirmée cette session) => on ne
+        // supprime RIEN, quel que soit l'état local actuel.
+        if (known) {
+          var toDelete = [];
+          known.forEach(function (k) { if (!currentKeys.has(k)) toDelete.push(k); });
+          for (var b = 0; b < toDelete.length; b += 100) { // par lots : évite une URL trop longue
+            var batch = toDelete.slice(b, b + 100);
+            var filter = _pgDeleteFilterForKeys(d.keyCols, batch);
+            var delRes = await fetch(
+              SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()) + '&' + filter,
+              { method: 'DELETE', headers: _sbHeaders() }
+            );
+            if (!delRes.ok) {
+              var db = await delRes.text().catch(function () { return ''; });
+              throw new Error('suppression ciblée ' + d.table + ' refusée (HTTP ' + delRes.status + ') ' + db.slice(0, 200));
+            }
+          }
+        }
+
+        _lastKnownRowKeys[d.table] = currentKeys;
+        _lastPushedSnapshot[d.table] = snapshot;
+        results.push(null);
       } catch (e) {
-        return e; // un domaine en échec ne doit pas empêcher les autres de pousser
+        results.push(e); // un domaine en échec ne doit pas empêcher les autres de pousser
       }
-    }));
+    }
 
     // Réglages (ligne unique par utilisateur) + horodatage global de synchro
     // — tenté même si une ou plusieurs tables ci-dessus ont échoué : c'est
@@ -878,6 +984,18 @@ async function _cloudPullAll(force) {
     var cloudTs = rows[0].set_data_ts || 0;
     if (!force && cloudTs <= (_D._ts || 0)) {
       _loadingLog('_conn', '✓', 'Connexion à Supabase', 'local déjà à jour', 'ok');
+      // BUG corrigé : sans ceci, _lastKnownRowKeys restait vide pour TOUTE
+      // la session dès que ce raccourci était pris (le cas le plus courant
+      // au quotidien) — _cloudPushAll ne supprimant que des clés déjà
+      // "connues", aucune suppression n'aurait alors JAMAIS été poussée
+      // vers le cloud tant qu'un pull complet n'avait pas eu lieu. Comme on
+      // vient de vérifier que le cloud n'est pas plus récent que le local,
+      // on fait confiance à l'état local actuel comme référence de départ.
+      _SYNC_DOMAINS.forEach(function (d) {
+        var localRows = _dedupeByKey(d.toRows(), d.keyCols);
+        _lastKnownRowKeys[d.table] = new Set(localRows.map(function (r2) { return _rowKeyStr(r2, d.keyCols); }));
+        _lastPushedSnapshot[d.table] = _stableSnapshot(localRows);
+      });
       return false;
     }
     _loadingLog('_conn', '✓', 'Connexion à Supabase', 'ok', 'ok');
@@ -903,6 +1021,15 @@ async function _cloudPullAll(force) {
         var data = await r.json();
         _loadingLog(d.table, '✓', d.table, String(data.length), 'ok');
         _loadingProgressTick();
+        // Établit/rafraîchit la référence de ce qui existe vraiment côté
+        // cloud pour ce domaine — MÊME si data.length est 0 : une table
+        // réellement vide, une fois VUE depuis le cloud, est un état de
+        // confiance légitime. C'est cette référence (_lastKnownRowKeys,
+        // sync.js) que _cloudPushAll compare à l'état local pour décider
+        // quelles lignes, précisément, ont été supprimées — jamais une
+        // suppression déduite d'un état local simplement vide/incomplet.
+        _lastKnownRowKeys[d.table] = new Set(data.map(function (r2) { return _rowKeyStr(r2, d.keyCols); }));
+        _lastPushedSnapshot[d.table] = _stableSnapshot(data);
         return { domain: d, rows: data };
       } catch (e) {
         _loadingLog(d.table, '✗', d.table, e.message, 'err');
@@ -916,6 +1043,20 @@ async function _cloudPullAll(force) {
       _loadingTitle('Erreur de synchronisation');
       _loadingLog('_conn', '✗', 'Toutes les tables sont vides', 'policies RLS ?', 'err');
       throw new Error("le cloud a répondu mais TOUTES les tables sont vides — vérifie les policies RLS dans Supabase (lecture SELECT autorisée pour la clé anon, sur chaque table). Rien n'a été modifié en local.");
+    }
+
+    // Échec PARTIEL (une partie des ~18 tables seulement, pas la totalité) —
+    // ne déclenchait auparavant AUCUN signalement : anyRowsFound ci-dessus
+    // ne détecte qu'un échec TOTAL. Une table en échec garde son ancien
+    // contenu local (jamais écrasée avec du vide, voir plus bas), mais sur
+    // un navigateur/appareil sans donnée locale préalable, "ancien contenu"
+    // veut dire vide quand même — et un push ultérieur pourrait alors
+    // supprimer de vraies données côté cloud pour CETTE table précise (le
+    // garde-fou de _cloudPushAll bloque maintenant ce cas, mais mieux vaut
+    // prévenir tout de suite plutôt que d'en arriver là).
+    var failedDomains = fetched.filter(function (f) { return f.rows === null; }).map(function (f) { return f.domain.table; });
+    if (failedDomains.length) {
+      toast('Synchro incomplète : ' + failedDomains.join(', ') + ' n\'ont pas pu être récupérées — recharge la page avant de continuer pour éviter de perdre des données.', 'error');
     }
 
     fetched.forEach(function (f) { if (f.rows) f.domain.apply(f.rows); });
