@@ -583,11 +583,17 @@ var THEMES = {
 };
 
 // Applique un thème à l'affichage SANS le sauvegarder (utilisé au chargement
-// pour restaurer le thème enregistré, et par selectTheme() ci-dessous).
+// pour restaurer le thème enregistré, et par selectTheme() ci-dessous). Une
+// couleur d'accent personnalisée (si réglée) reste appliquée PAR-DESSUS le
+// thème choisi — elle vit dans une propriété inline sur <html>, qui a
+// toujours priorité sur la règle html[data-theme="…"] du fichier CSS.
 function applyTheme(theme) {
   const t = THEMES[theme] ? theme : 'braise';
   document.documentElement.setAttribute('data-theme', t);
+  applyCustomAccent(_D.settings?.custom_accent || '');
   renderThemePicker(t);
+  const accentInp = document.getElementById('settings-custom-accent');
+  if (accentInp) accentInp.value = _D.settings?.custom_accent || THEMES[t].accent;
 }
 
 // Choix explicite de l'utilisateur (clic sur une pastille) : applique ET sauvegarde.
@@ -612,6 +618,75 @@ function renderThemePicker(activeTheme) {
       <span class="theme-swatch-name">${_escHtml(t.name)}</span>
     </button>`;
   }).join('');
+}
+
+// ── Couleur d'accent personnalisée ──────────────────────────────────────
+// Éclaircit une couleur hex vers le blanc d'un facteur 0-1 — utilisé pour
+// dériver --accent2 (variante claire) à partir de la seule couleur choisie
+// par l'utilisateur, sur le même principe que la paire accent/accent2 de
+// chaque thème.
+function _lightenHex(hex, amt) {
+  let h = (hex||'').replace('#','');
+  if (h.length === 3) h = h.split('').map(c=>c+c).join('');
+  const num = parseInt(h,16);
+  if (isNaN(num)) return hex;
+  let r=(num>>16)&255, g=(num>>8)&255, b=num&255;
+  r = Math.round(r + (255-r)*amt);
+  g = Math.round(g + (255-g)*amt);
+  b = Math.round(b + (255-b)*amt);
+  return '#' + [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+// hex='' efface la surcharge et revient à la couleur du thème.
+function applyCustomAccent(hex) {
+  if (hex) {
+    document.documentElement.style.setProperty('--accent', hex);
+    document.documentElement.style.setProperty('--accent2', _lightenHex(hex, .35));
+  } else {
+    document.documentElement.style.removeProperty('--accent');
+    document.documentElement.style.removeProperty('--accent2');
+  }
+}
+
+function selectCustomAccent(hex) {
+  applyCustomAccent(hex);
+  if (!_D.settings) _D.settings = {};
+  _D.settings.custom_accent = hex || null;
+  saveData();
+  toast('Couleur d\u2019accent personnalisée appliquée.', 'success');
+}
+
+function resetCustomAccent() {
+  if (!_D.settings) _D.settings = {};
+  _D.settings.custom_accent = null;
+  saveData();
+  applyTheme(_D.settings.theme || 'braise');
+  toast('Couleur d\u2019accent réinitialisée sur celle du thème.', 'success');
+}
+
+// ── Arrondi des coins ────────────────────────────────────────────────────
+var RADIUS_MODES = { sharp: 'Anguleux', normal: 'Normal', round: 'Arrondi' };
+
+function applyRadius(mode) {
+  const m = RADIUS_MODES[mode] ? mode : 'normal';
+  document.documentElement.setAttribute('data-radius', m);
+  renderRadiusPicker(m);
+}
+
+function selectRadius(mode) {
+  applyRadius(mode);
+  if (!_D.settings) _D.settings = {};
+  _D.settings.radius = mode;
+  saveData();
+}
+
+function renderRadiusPicker(activeMode) {
+  const el = document.getElementById('radius-picker');
+  if (!el) return;
+  const current = activeMode || _D.settings?.radius || 'normal';
+  el.innerHTML = Object.keys(RADIUS_MODES).map(m =>
+    `<button type="button" class="radius-swatch${m===current?' active':''}" onclick="selectRadius('${m}')">${RADIUS_MODES[m]}</button>`
+  ).join('');
 }
 
 function applyUiScale(val){

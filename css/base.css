@@ -61,6 +61,11 @@ html[data-theme="aurore"] {
   --accent: #c81f30; --accent2: #e15064;
 }
 
+/* Arrondi des coins — trois presets sur --radius/--radius-sm (l'option
+   "normal" est celle déjà définie dans :root, pas de règle dédiée à écrire). */
+html[data-radius="sharp"] { --radius: 4px; --radius-sm: 3px; }
+html[data-radius="round"] { --radius: 18px; --radius-sm: 11px; }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body { font-family: var(--font); background: var(--bg); color: var(--text); display: flex; overflow: hidden; height: 100vh; transition: background-color .25s ease, color .25s ease; }
@@ -414,8 +419,10 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .classeur-image-preview { height: 64px; border-radius: var(--radius-sm); margin-top: 6px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 
 /* ── Boosters ───────────────────────────────────────────────────────────── */
-.boosters-layout { display: grid; grid-template-columns: 1fr 264px; gap: 20px; }
-@media (max-width: 960px) { .boosters-layout { grid-template-columns: 1fr; } }
+/* La largeur réelle de .boosters-layout est définie dans collection.css
+   (chargé après ce fichier, donc prioritaire) — la règle était dupliquée
+   ici avec une valeur différente (264px vs 300px), jamais appliquée en
+   pratique mais source de confusion en cas de modif future. */
 .booster-bloc { margin-bottom: 36px; }
 .booster-bloc-header { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .bloc-logo-sm { width: 22px; height: 22px; object-fit: contain; border-radius: 3px; flex-shrink: 0; }
@@ -443,7 +450,7 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .bea-body.open { display: block; }
 
 /* Illustration grid */
-.illus-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.illus-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 8px; margin-bottom: 10px; }
 .illus-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; position: relative; aspect-ratio: 2/3; display: flex; flex-direction: column; transition: transform .15s; }
 .illus-card:hover { transform: translateY(-2px); }
 .illus-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -452,12 +459,12 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .illus-card-overlay {
   position: absolute; bottom: 0; left: 0; right: 0; z-index: 3;
   background: linear-gradient(transparent, rgba(0,0,0,.85));
-  padding: 18px 4px 4px;
-  display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 16px 3px 4px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px;
   opacity: 0; transition: opacity .2s;
 }
 .illus-card:hover .illus-card-overlay { opacity: 1; }
-.illus-btn { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; border: 1.5px solid; transition: transform .15s; cursor: pointer; }
+.illus-btn { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: .62rem; font-weight: 700; border: 1.5px solid; transition: transform .15s; cursor: pointer; flex-shrink: 0; }
 .illus-btn:hover { transform: scale(1.1); }
 .illus-btn-toggle.obtained { background: rgba(6,214,160,.25); color: var(--green); border-color: var(--green); }
 .illus-btn-toggle.missing  { background: rgba(230,57,70,.25); color: var(--accent); border-color: var(--accent); }
@@ -527,10 +534,11 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .settings-card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 20px; position: relative; overflow: hidden; transition: border-color .25s ease, background-color .25s ease;
+  padding: 20px; position: relative; transition: border-color .25s ease, background-color .25s ease;
 }
 .settings-card::before {
   content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  border-radius: var(--radius) var(--radius) 0 0;
   background: var(--settings-card-accent, var(--accent));
 }
 .settings-card h3 {
@@ -568,8 +576,34 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 }
 .theme-swatch-name { font-size: .68rem; font-weight: 600; color: var(--text2); }
 .theme-swatch.active .theme-swatch-name { color: var(--text); }
-.settings-display-row { display: flex; align-items: center; gap: 10px; }
+
+/* Arrondi des coins — mini-boutons qui démontrent leur propre réglage
+   (ils utilisent --radius-sm, donc "Anguleux"/"Arrondi" se voit sur eux-mêmes). */
+.radius-picker { display: flex; gap: 8px; }
+.radius-swatch {
+  padding: 8px 16px; font-size: .78rem; font-weight: 600;
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
+  border-radius: var(--radius-sm); cursor: pointer; transition: all .15s;
+}
+.radius-swatch:hover { color: var(--text); border-color: var(--text3); }
+.radius-swatch.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.settings-display-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .settings-display-row label { font-size: .78rem; color: var(--text2); flex-shrink: 0; }
+
+/* Zone de danger — bannière pleine largeur plutôt qu'une carte de grille
+   isolée (qui, seule sur sa ligne, laissait un grand vide à côté d'elle). */
+.settings-danger-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  background: var(--bg2); border: 1px solid rgba(230,57,70,.3); border-radius: var(--radius);
+  padding: 16px 20px; margin-top: 16px; position: relative;
+}
+.settings-danger-banner::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  border-radius: var(--radius) var(--radius) 0 0; background: var(--accent);
+}
+.settings-danger-banner h3 { font-size: .85rem; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.settings-danger-banner p { font-size: .78rem; color: var(--text2); }
 
 /* ── Stats ──────────────────────────────────────────────────────────────── */
 .stats-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }

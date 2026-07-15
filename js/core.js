@@ -547,6 +547,7 @@ function renderAll() {
   safe(updateGlobalProgress,'updateGlobalProgress');
   safe(updateBadges,        'updateBadges');
   safe(() => applyTheme(_D.settings?.theme || 'braise'), 'applyTheme');
+  safe(() => applyRadius(_D.settings?.radius || 'normal'), 'applyRadius');
   safe(() => {
     const saved = _D.settings?.sales_cards_per_row;
     const gridVal    = typeof saved === 'number' ? saved : (saved?.grid || 5);

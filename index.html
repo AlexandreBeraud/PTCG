@@ -740,6 +740,18 @@
             <label>Thème</label>
             <div class="theme-picker" id="theme-picker"></div>
           </div>
+          <div class="settings-field" style="margin-top:16px">
+            <label>Couleur d'accent personnalisée (optionnel)</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="color" id="settings-custom-accent" value="#e63946" style="width:44px;height:34px;padding:2px;cursor:pointer;flex-shrink:0" onchange="selectCustomAccent(this.value)">
+              <button class="btn btn-secondary btn-sm" onclick="resetCustomAccent()">Réinitialiser</button>
+            </div>
+            <p class="form-hint" style="margin-top:6px">Remplace la couleur d'accent du thème choisi ci-dessus, sans y toucher.</p>
+          </div>
+          <div class="settings-field" style="margin-top:16px">
+            <label>Arrondi des coins</label>
+            <div class="radius-picker" id="radius-picker"></div>
+          </div>
           <div class="settings-display-row" style="margin-top:16px">
             <label>Taille de l'interface :</label>
             <input type="range" id="settings-ui-scale" min="0.7" max="1.4" step="0.05" value="1"
@@ -786,15 +798,6 @@
           </div>
         </div>
         <div class="settings-card">
-          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>Stockage des images importées</h3>
-          <p class="form-hint">
-            Les images importées depuis cet appareil (bouton 📁 sur les champs "URL d'image") sont hébergées sur Supabase Storage — jamais stockées localement — la synchro cloud (ci-dessous) doit donc être configurée pour que l'import fonctionne. Si des images ont été stockées localement avant ce fonctionnement (base64 dans les données), ce bouton les migre vers le stockage cloud.
-          </p>
-          <div class="settings-actions" style="margin-top:8px">
-            <button class="btn btn-secondary" onclick="shrinkOversizedLocalImages()">Migrer les images stockées localement</button>
-          </div>
-        </div>
-        <div class="settings-card">
           <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg></span>Synchronisation Cloud</h3>
           <div class="settings-field"><label>Supabase URL</label>
             <input type="text" id="cfg-url" placeholder="https://xxx.supabase.co"></div>
@@ -807,16 +810,18 @@
           </div>
           <p class="form-hint" style="margin-top:8px">« Synchroniser » envoie ou reçoit selon ce qui est le plus récent. « Récupérer depuis le cloud » ignore ça et applique toujours ce qu'il y a sur Supabase ici, sans rien envoyer.</p>
         </div>
-        <div class="settings-card" style="--settings-card-accent:var(--accent2)">
-          <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>Zone de danger</h3>
-          <p style="font-size:.78rem;color:var(--text2);margin-bottom:14px">Irréversible.</p>
-          <button class="btn btn-danger" onclick="resetData()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-            Réinitialiser
-          </button>
+      </div>
+      <div class="settings-danger-banner">
+        <div>
+          <h3><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Zone de danger</h3>
+          <p>Supprime toutes les données locales. Irréversible.</p>
         </div>
+        <button class="btn btn-danger" onclick="resetData()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          Réinitialiser
+        </button>
       </div>
     </div>
 
