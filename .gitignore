@@ -10,3 +10,12 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Secrets
+**/.env
+api/docker-compose.yml
+
+# Résidus Python
+migration/__pycache__/
+migration/venv/
+*.log
