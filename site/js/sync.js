@@ -481,7 +481,7 @@ var _SYNC_DOMAINS = [
           ven_user_id: _cloudUserId(), ven_id: v.id, ven_card_id: v.card_id || '', ven_card_name: v.card_name || '',
           ven_card_image: v.card_image || '', ven_set_id: v.set_id || '', ven_set_name: v.set_name || '', ven_set_logo: v.set_logo || '',
           ven_ext_sigle: v.ext_sigle || '', ven_crop: v.crop || 'center', ven_number: v.number || '', ven_rarity: v.rarity || '',
-          ven_pokemon_name: v.pokemon_name || '', ven_etat: v.etat || 'Near Mint', ven_prix: v.prix || 0, ven_qty: v.qty || 1,
+          ven_pokemon_name: v.pokemon_name || '', ven_pokemon_key: v.pokemon_key || '', ven_etat: v.etat || 'Near Mint', ven_prix: v.prix || 0, ven_qty: v.qty || 1,
           ven_types: v.types || [], ven_langue: v.langue || 'Français', ven_statut: v.statut || 'a_mettre',
           ven_commande_id: v.commande_id || null, ven_cardmarket_url: v.cardmarket_url || '',
           ven_created_at: new Date(v.created_at || Date.now()).toISOString(), ven_updated_at: _isoNow(),
@@ -494,6 +494,7 @@ var _SYNC_DOMAINS = [
           id: r.ven_id, card_id: r.ven_card_id || '', card_name: r.ven_card_name || '', card_image: r.ven_card_image || '',
           set_id: r.ven_set_id || '', set_name: r.ven_set_name || '', set_logo: r.ven_set_logo || '', ext_sigle: r.ven_ext_sigle || '',
           crop: r.ven_crop || 'center', number: r.ven_number || '', rarity: r.ven_rarity || '', pokemon_name: r.ven_pokemon_name || '',
+          pokemon_key: r.ven_pokemon_key || '',
           etat: r.ven_etat || 'Near Mint', prix: r.ven_prix || 0, qty: r.ven_qty || 1, types: r.ven_types || [], langue: r.ven_langue || 'Français',
           statut: r.ven_statut || 'a_mettre', commande_id: r.ven_commande_id || null, cardmarket_url: r.ven_cardmarket_url || '',
           created_at: r.ven_created_at ? new Date(r.ven_created_at).getTime() : Date.now(),
@@ -511,7 +512,7 @@ var _SYNC_DOMAINS = [
           dep_user_id: _cloudUserId(), dep_id: d.id, dep_card_id: d.card_id || '', dep_card_name: d.card_name || '',
           dep_card_image: d.card_image || '', dep_set_id: d.set_id || '', dep_set_name: d.set_name || '', dep_set_logo: d.set_logo || '',
           dep_ext_sigle: d.ext_sigle || '', dep_crop: d.crop || 'center', dep_number: d.number || '', dep_rarity: d.rarity || '',
-          dep_pokemon_name: d.pokemon_name || '', dep_etat: d.etat || 'Near Mint', dep_prix: d.prix || 0, dep_qty: d.qty || 1,
+          dep_pokemon_name: d.pokemon_name || '', dep_pokemon_key: d.pokemon_key || '', dep_etat: d.etat || 'Near Mint', dep_prix: d.prix || 0, dep_qty: d.qty || 1,
           dep_types: d.types || [], dep_langue: d.langue || 'Français', dep_commande_id: d.commande_id || null,
           dep_cardmarket_url: d.cardmarket_url || '',
           dep_created_at: new Date(d.created_at || Date.now()).toISOString(), dep_updated_at: _isoNow(),
@@ -524,6 +525,7 @@ var _SYNC_DOMAINS = [
           id: r.dep_id, card_id: r.dep_card_id || '', card_name: r.dep_card_name || '', card_image: r.dep_card_image || '',
           set_id: r.dep_set_id || '', set_name: r.dep_set_name || '', set_logo: r.dep_set_logo || '', ext_sigle: r.dep_ext_sigle || '',
           crop: r.dep_crop || 'center', number: r.dep_number || '', rarity: r.dep_rarity || '', pokemon_name: r.dep_pokemon_name || '',
+          pokemon_key: r.dep_pokemon_key || '',
           etat: r.dep_etat || 'Near Mint', prix: r.dep_prix || 0, qty: r.dep_qty || 1, types: r.dep_types || [], langue: r.dep_langue || 'Français',
           commande_id: r.dep_commande_id || null, cardmarket_url: r.dep_cardmarket_url || '',
           created_at: r.dep_created_at ? new Date(r.dep_created_at).getTime() : Date.now(),
@@ -907,6 +909,7 @@ async function _cloudPushAll() {
     var settingsRow = {
       set_user_id: _cloudUserId(), set_display_mode: s.display_mode || 'logo', set_sort_dir: s.sort_dir || 'asc',
       set_ui_scale: s.ui_scale || 1, set_bloc_order: s.bloc_order || [], set_tab_view_modes: s.tab_view_modes || {},
+      set_sprite_source: s.sprite_source || 'official',
       set_data_ts: _D._ts || Date.now(), set_updated_at: _isoNow(),
     };
     var setRes = await fetch(SB_URL + '/rest/v1/settings?on_conflict=set_user_id', {
@@ -1071,6 +1074,7 @@ async function _cloudPullAll(force) {
       ..._D.settings,
       display_mode: s.set_display_mode || 'logo', sort_dir: s.set_sort_dir || 'asc', ui_scale: s.set_ui_scale || 1,
       bloc_order: s.set_bloc_order || [], tab_view_modes: s.set_tab_view_modes || {},
+      sprite_source: s.set_sprite_source || 'official',
     };
     _D._ts = cloudTs;
     return true;

@@ -925,5 +925,26 @@ function initSettingsView(){
   if(compactInp)compactInp.value=compactVal;
   const peopleInp=document.getElementById('settings-cards-per-row-people');
   if(peopleInp)peopleInp.value=peopleVal;
+
+  const spriteMode = _D.settings?.sprite_source || 'official';
+  document.querySelectorAll('#settings-sprite-source .chip-toggle-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.value === spriteMode);
+  });
+}
+
+// Source des sprites Pokémon (Pokédex & Ventes) — Official Art (PokeAPI) ou
+// Home (NAS FileBrowser, voir _nasSpriteUrl dans js/pokedex.js). Synchronisé
+// au cloud comme les autres préférences d'affichage (voir js/sync.js).
+function setSpriteSource(mode, btn){
+  if(!_D.settings) _D.settings = {};
+  _D.settings.sprite_source = mode;
+  document.querySelectorAll('#settings-sprite-source .chip-toggle-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  saveData(); renderAll();
+  // La grille Pokédex n'est pas reconstruite par renderAll() (chargée à la
+  // demande) — si elle a déjà été ouverte, on force le réaffichage de la
+  // page courante pour refléter immédiatement le nouveau réglage.
+  if (typeof _pkdx !== 'undefined' && _pkdx.initialized) renderPokedexPage(true);
+  toast('Source des sprites mise à jour.', 'success');
 }
 

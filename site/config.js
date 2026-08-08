@@ -11,6 +11,17 @@ window.__PC_CLOUD_CONFIG__ = {
   user_id: 'default',
 };
 
+// ─── Sprites Pokémon "Home" (NAS FileBrowser) ───────────────────────────────
+// Alternative aux sprites Official Art de PokeAPI : va chercher l'image dans
+// le partage FileBrowser du NAS, rangée par génération (1G…9G) puis par
+// numéro de Pokédex sur 4 chiffres (+ suffixe _01, _02… pour les formes
+// alternatives). Voir _nasSpriteUrl (js/pokedex.js). La clé fait partie du
+// lien de partage FileBrowser — à mettre à jour ici si jamais elle change.
+window.__PC_NAS_SPRITES__ = {
+  base: 'http://100.72.66.5:8090/api/preview/big/Fichiers/Images/PTCG/Pokemon',
+  key: '1756562554000',
+};
+
 // ─── Ancienne config Supabase (rollback) ─────────────────────
 // window.__PC_CLOUD_CONFIG__ = {
 //   url: 'https://kfyphcestbcgtkzurvas.supabase.co',

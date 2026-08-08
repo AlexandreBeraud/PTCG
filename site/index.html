@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=16">
-<link rel="stylesheet" href="css/collection.css?v=16">
-<link rel="stylesheet" href="css/pokedex.css?v=16">
-<link rel="stylesheet" href="css/ventes-achats.css?v=16">
+<link rel="stylesheet" href="css/base.css?v=17">
+<link rel="stylesheet" href="css/collection.css?v=17">
+<link rel="stylesheet" href="css/pokedex.css?v=17">
+<link rel="stylesheet" href="css/ventes-achats.css?v=17">
 </head>
 <body>
 
@@ -779,6 +779,14 @@
               style="width:70px" oninput="applyCardsPerRow('people', this.value)">
             <button class="btn btn-primary btn-sm" onclick="saveCardsPerRow('people')">Sauvegarder</button>
           </div>
+          <div class="settings-field" style="margin-top:16px">
+            <label>Source des sprites Pokémon (Pokédex &amp; Ventes)</label>
+            <div class="chip-toggle-group" id="settings-sprite-source">
+              <button type="button" class="chip-toggle-btn active" data-value="official" onclick="setSpriteSource('official', this)">Official Art</button>
+              <button type="button" class="chip-toggle-btn" data-value="home" onclick="setSpriteSource('home', this)">Home</button>
+            </div>
+            <p class="form-hint" style="margin-top:6px">« Home » va chercher le sprite sur le NAS ; si aucun fichier ne correspond, l'Official Art est utilisé à la place.</p>
+          </div>
         </div>
         <div class="settings-card">
           <h3><span class="settings-card-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3L4 7l4 4"/><path d="M4 7h11a4 4 0 014 4v1"/><path d="M16 21l4-4-4-4"/><path d="M20 17H9a4 4 0 01-4-4v-1"/></svg></span>Export / Import</h3>
@@ -1200,6 +1208,7 @@
       <input type="hidden" id="vente-number">
       <input type="hidden" id="vente-rarity">
       <input type="hidden" id="vente-pokemon-name">
+      <input type="hidden" id="vente-pokemon-key">
       <input type="hidden" id="vente-ext-sigle">
     </div>
     <div class="settings-field"><label>Lien CardMarket <span class="form-hint" style="margin:0">(partagé avec la fiche carte du Pokédex)</span></label>
@@ -1315,6 +1324,7 @@
       <input type="hidden" id="depense-number">
       <input type="hidden" id="depense-rarity">
       <input type="hidden" id="depense-pokemon-name">
+      <input type="hidden" id="depense-pokemon-key">
       <input type="hidden" id="depense-ext-sigle">
     </div>
     <div class="settings-field"><label>Lien CardMarket <span class="form-hint" style="margin:0">(partagé avec la fiche carte du Pokédex)</span></label>
@@ -1526,9 +1536,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=16"></script>
-<script src="data.js?v=16"></script>
-<script src="js/sync.js?v=16"></script>
+<script src="config.js?v=17"></script>
+<script src="data.js?v=17"></script>
+<script src="js/sync.js?v=17"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1568,14 +1578,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=16"></script>
-<script src="js/collection.js?v=16"></script>
-<script src="js/edition.js?v=16"></script>
-<script src="js/mapping.js?v=16"></script>
-<script src="js/labels.js?v=16"></script>
-<script src="js/ventes-achats.js?v=16"></script>
-<script src="js/label-categories.js?v=16"></script>
-<script src="js/pokedex.js?v=16"></script>
-<script src="js/perso-objets.js?v=16"></script>
+<script src="js/core.js?v=17"></script>
+<script src="js/collection.js?v=17"></script>
+<script src="js/edition.js?v=17"></script>
+<script src="js/mapping.js?v=17"></script>
+<script src="js/labels.js?v=17"></script>
+<script src="js/ventes-achats.js?v=17"></script>
+<script src="js/label-categories.js?v=17"></script>
+<script src="js/pokedex.js?v=17"></script>
+<script src="js/perso-objets.js?v=17"></script>
 </body>
 </html>

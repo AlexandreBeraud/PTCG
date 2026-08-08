@@ -17,6 +17,85 @@ function _spriteUrl(url) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Source des sprites : Official Art (PokeAPI, par défaut) ou "Home" (NAS
+//  FileBrowser) — réglage global Paramètres › Affichage. Utilisé partout où
+//  un sprite Pokémon est affiché (Pokédex ET Ventes/Achats).
+// ═══════════════════════════════════════════════════════════════════════════
+function _spriteSourceMode() {
+  return (_D.settings && _D.settings.sprite_source) || 'official';
+}
+
+// URL du sprite sur le NAS : {base}/{gen}G/{id sur 4 chiffres}[_XX].png?...
+// dexId = TOUJOURS le numéro de Pokédex de l'espèce de BASE, même pour une
+// forme (ex. Ogerpon Masque du Puits → 1017_01.png, pas 10273_...). formIndex
+// = position (1-indexée) de la forme dans species.varieties hors variante
+// par défaut, telle que rangée sur le NAS.
+function _nasSpriteUrl(dexId, formIndex) {
+  const cfg = window.__PC_NAS_SPRITES__;
+  if (!cfg || !cfg.base || !dexId) return null;
+  const gen = _pkdxGenForId(dexId);
+  if (!gen) return null;
+  const idStr  = String(dexId).padStart(4, '0');
+  const suffix = formIndex ? `_${String(formIndex).padStart(2, '0')}` : '';
+  return `${cfg.base}/${gen}G/${idStr}${suffix}.png?inline=true&key=${cfg.key}`;
+}
+
+// Position (1-indexée) d'une forme précise dans la liste des variétés PokeAPI
+// de son espèce de base (hors variante par défaut) — sert à retrouver le
+// suffixe _01/_02… du sprite Home quand on ne connaît pas déjà cet ordre
+// (ex. grille principale du Pokédex, qui construit ses formes à partir de la
+// liste globale /pokemon, pas des varieties d'une espèce précise). Résultat
+// mis en cache via _fetchSpecies (même cache que le reste du Pokédex).
+async function _pokeFormIndexFor(baseId, formPokemonName) {
+  try {
+    const spec = await _fetchSpecies(`${POKEAPI}/pokemon-species/${baseId}/`);
+    if (!spec || !spec.varieties) return null;
+    const alts = spec.varieties.filter(v => !v.is_default);
+    const idx  = alts.findIndex(v => v.pokemon.name === formPokemonName);
+    return idx >= 0 ? idx + 1 : null;
+  } catch(_) { return null; }
+}
+
+// Construit le tag <img> d'un sprite Pokémon en respectant le réglage
+// Official Art / Home. En mode Home, si le fichier n'existe pas sur le NAS
+// (404), bascule automatiquement sur l'Official Art via onerror — jamais de
+// sprite cassé affiché silencieusement.
+// opts: { dexId, formIndex, officialUrl (brut PokeAPI, non transformé),
+//         cssClass, style, alt }
+function _pokeSpriteHtml(opts) {
+  const official = opts.officialUrl ? _spriteUrl(opts.officialUrl) : '';
+  const alt   = _escHtml(opts.alt || '');
+  const cls   = opts.cssClass ? ` class="${opts.cssClass}"` : '';
+  const style = opts.style ? ` style="${opts.style}"` : '';
+  if (_spriteSourceMode() === 'home') {
+    const nasUrl = _nasSpriteUrl(opts.dexId, opts.formIndex);
+    if (nasUrl) {
+      const fallback = official
+        ? ` onerror="this.onerror=null;this.src='${official}'"`
+        : ` onerror="this.style.display='none'"`;
+      return `<img src="${nasUrl}" alt="${alt}" loading="lazy"${cls}${style}${fallback}>`;
+    }
+  }
+  return official ? `<img src="${official}" alt="${alt}" loading="lazy"${cls}${style} onerror="this.style.display='none'">` : '';
+}
+
+// Variante async : ne calcule la position de la forme (formIndex) que si on
+// est effectivement en mode Home (évite un appel réseau supplémentaire en
+// mode Official Art, le cas le plus courant).
+// opts: { id (numéro de l'espèce de BASE), isForm, formPokemonName,
+//         officialUrl, cssClass, style, alt }
+async function _pokeSpriteFor(opts) {
+  let formIndex = null;
+  if (opts.isForm && _spriteSourceMode() === 'home') {
+    formIndex = await _pokeFormIndexFor(opts.id, opts.formPokemonName);
+  }
+  return _pokeSpriteHtml({
+    dexId: opts.id, formIndex, officialUrl: opts.officialUrl,
+    cssClass: opts.cssClass, style: opts.style, alt: opts.alt,
+  });
+}
+
 // ── State ──────────────────────────────────────────────────────────────────
 var _pkdx = {
   all:            [],
@@ -759,7 +838,11 @@ async function _hydrateCard(p) {
       } catch(_) {}
     }
 
-    const sprite   = _spriteUrl(poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '');
+    const spriteHtml = await _pokeSpriteFor({
+      id: displayId, isForm, formPokemonName: p.name,
+      officialUrl: poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '',
+      cssClass: 'pkdx-sprite', alt: frName,
+    });
     const types    = poke.types.map(t => t.type.name);
     // Une forme affiche son label détecté/assigné ; un Pokémon de base peut
     // aussi se voir assigner un label manuellement (sélecteur "Label" de sa
@@ -773,7 +856,7 @@ async function _hydrateCard(p) {
       <div class="pkdx-card-num">${numStr}</div>
       ${formMeta && formMeta.enabled ? `<span class="pkdx-card-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span>` : ''}
       <div class="pkdx-card-img-wrap">
-        ${sprite ? `<img src="${sprite}" alt="${frName}" loading="lazy" class="pkdx-sprite">` : '<div class="pkdx-no-sprite">?</div>'}
+        ${spriteHtml || '<div class="pkdx-no-sprite">?</div>'}
       </div>
       <div class="pkdx-card-name">${frName}</div>
       <div class="pkdx-card-types">
@@ -829,8 +912,11 @@ async function openPokedexModal(id) {
       }
     } catch(_) {}
 
-    const sprite  = _spriteUrl(poke.sprites?.other?.['official-artwork']?.front_default ||
-                    poke.sprites?.front_default || '');
+    const spriteHtml = _pokeSpriteHtml({
+      dexId: poke.id,
+      officialUrl: poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '',
+      cssClass: 'pkdx-modal-sprite', alt: frName,
+    });
     const types   = poke.types.map(t => t.type.name);
     // Un label peut être assigné manuellement à un Pokémon de base (sélecteur
     // "Label" plus bas) : il doit alors colorer le hero, afficher son badge,
@@ -873,8 +959,11 @@ async function openPokedexModal(id) {
               ${e.trigger ? `<span class="pkdx-evo-trigger">${e.trigger}</span>` : ''}
             </div>` : ''}
             <div class="pkdx-evo-item" onclick="closeModal('modal-pokedex');setTimeout(()=>openPokedexModal(${e.speciesId}),150)">
-              <img src="https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/other/official-artwork/${e.speciesId}.png"
-                   alt="${e.frName}" onerror="this.style.display='none'" style="width:64px;height:64px;object-fit:contain">
+              ${_pokeSpriteHtml({
+                dexId: e.speciesId,
+                officialUrl: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${e.speciesId}.png`,
+                style: 'width:64px;height:64px;object-fit:contain', alt: e.frName,
+              })}
               <span class="pkdx-evo-num">#${String(e.speciesId).padStart(3,'0')}</span>
               <span class="pkdx-evo-name">${e.frName}</span>
             </div>
@@ -890,11 +979,9 @@ async function openPokedexModal(id) {
     let formsHtml = '';
     const ownFormTypes = [];
     if (varieties.length > 0) {
-      const formCards = await Promise.all(varieties.map(async v => {
+      const formCards = await Promise.all(varieties.map(async (v, vIdx) => {
         try {
           const formPoke   = await _fetchPokemon(v.pokemon.name);
-          const formSprite = _spriteUrl(formPoke.sprites?.other?.['official-artwork']?.front_default ||
-                             formPoke.sprites?.front_default || '');
           const formTypes  = formPoke.types.map(t => t.type.name);
           const formColor  = TYPE_COLORS[formTypes[0]] || '#888';
           const formType   = _resolveFormType(v.pokemon.name, poke.name);
@@ -906,9 +993,15 @@ async function openPokedexModal(id) {
           let formLabel = v.pokemon.name.replace(poke.name + '-', '').replace(/-/g,' ');
           formLabel = formMeta ? formMeta.fr : _capitalize(formLabel);
 
+          const formSpriteHtml = _pokeSpriteHtml({
+            dexId: poke.id, formIndex: vIdx + 1,
+            officialUrl: formPoke.sprites?.other?.['official-artwork']?.front_default || formPoke.sprites?.front_default || '',
+            style: 'width:72px;height:72px;object-fit:contain', alt: formLabel,
+          });
+
           return `<div class="pkdx-form-card" style="--pkdx-color:${formMeta?.color || formColor}" onclick="openPokedexFormModal('${v.pokemon.name}','${frName}')">
             ${formMeta ? `<span class="pkdx-form-badge" style="background:${formMeta.color}">${formMeta.badge}</span>` : ''}
-            ${formSprite ? `<img src="${formSprite}" alt="${formLabel}" loading="lazy" style="width:72px;height:72px;object-fit:contain">` : '<div style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;color:var(--text3)">?</div>'}
+            ${formSpriteHtml || '<div style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;color:var(--text3)">?</div>'}
             <span class="pkdx-form-label">${formLabel}</span>
             <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">
               ${formTypes.map(t=>`<span class="pkdx-type" style="background:${TYPE_COLORS[t]||'#888'};font-size:.58rem;padding:1px 6px">${TYPE_FR[t]||t}</span>`).join('')}
@@ -928,7 +1021,7 @@ async function openPokedexModal(id) {
     inner.innerHTML = `
       <div class="pkdx-modal-hero" style="--pkdx-color:${color}">
         <div class="pkdx-modal-hero-bg"></div>
-        ${sprite ? `<img src="${sprite}" alt="${frName}" class="pkdx-modal-sprite">` : ''}
+        ${spriteHtml}
         <div class="pkdx-modal-hero-info">
           <div class="pkdx-modal-num">${numStr}</div>
           <h2 class="pkdx-modal-name">${frName}</h2>
@@ -1504,7 +1597,6 @@ async function openPokedexFormModal(pokeName, baseFrName) {
 
   try {
     const poke    = await _fetchPokemon(pokeName);
-    const sprite  = _spriteUrl(poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '');
     const types   = poke.types.map(t => t.type.name);
     const color   = TYPE_COLORS[types[0]] || '#888';
 
@@ -1519,6 +1611,16 @@ async function openPokedexFormModal(pokeName, baseFrName) {
       } catch(_) {}
     }
     const fullFrName = _buildFormFrName(baseFrName, formType, pokeName);
+
+    // L'id de l'espèce de BASE (pas celui, ≥10000, de cette forme précise)
+    // sert de dossier/numéro pour le sprite Home sur le NAS — voir _nasSpriteUrl.
+    const specParts0 = poke.species.url.split('/').filter(Boolean);
+    const specId0    = parseInt(specParts0[specParts0.length - 1], 10);
+    const spriteHtml = await _pokeSpriteFor({
+      id: specId0, isForm: true, formPokemonName: pokeName,
+      officialUrl: poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '',
+      cssClass: 'pkdx-modal-sprite', alt: fullFrName,
+    });
 
     const abilitiesHtml = await Promise.all(poke.abilities.map(async a => {
       const frAbility = await _fetchAbilityFr(a.ability.url);
@@ -1539,13 +1641,12 @@ async function openPokedexFormModal(pokeName, baseFrName) {
     }).join('');
 
     // Back button to base form
-    const specParts = poke.species.url.split('/').filter(Boolean);
-    const specId    = parseInt(specParts[specParts.length - 1], 10);
+    const specId = specId0;
 
     inner.innerHTML = `
       <div class="pkdx-modal-hero" style="--pkdx-color:${formMeta?.color || color}">
         <div class="pkdx-modal-hero-bg"></div>
-        ${sprite ? `<img src="${sprite}" alt="${fullFrName}" class="pkdx-modal-sprite">` : ''}
+        ${spriteHtml}
         <div class="pkdx-modal-hero-info">
           <button class="pkdx-back-btn" onclick="closeModal('modal-pokedex');setTimeout(()=>openPokedexModal(${specId}),150)">
             ← Forme de base

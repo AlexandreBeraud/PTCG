@@ -609,6 +609,7 @@ function renderVentes() {
   } else {
     const builder = mode === 'list' ? buildVenteRow : mode === 'compact' ? buildVenteCompact : buildVenteCard;
     items.forEach(v => grid.appendChild(builder(v)));
+    if (mode !== 'compact') _hydrateAllSaleSprites(items);
   }
   if (addBtn) grid.appendChild(addBtn);
   renderVentesStats();
@@ -673,6 +674,88 @@ function _goToAcheteur(acheteurId) {
   }, 60);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  SPRITE POKÉMON dans les vignettes Ventes/Achats (grille + liste)
+//  Placeholder rendu vide au premier passage (comme les cartes du Pokédex),
+//  puis hydraté après coup — évite de rendre tout _renderVentes/_renderDepenses
+//  asynchrone juste pour ça.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Cache synchrone { pokemon_key ou "name:<nom fr>" -> résolution } — évite de
+// refaire la même recherche dans _pkdx.all à chaque rendu (Ventes/Achats se
+// re-rendent souvent, ex. à chaque saveData()).
+var _saleSpriteResolveCache = {};
+
+// Retrouve { dexId (espèce de base), isForm, formPokemonName } pour un item
+// de vente/dépense :
+//  • pokemon_key (slug PokeAPI, rempli automatiquement depuis ce correctif) →
+//    résolution directe et fiable dans _pkdx.all.
+//  • sinon (ventes/achats créés avant ce champ) → repli par correspondance
+//    sur pokemon_name (nom FR affiché) dans _pkdx.all.
+// Renvoie `undefined` tant que _pkdx.all n'est pas encore chargé (le Pokédex
+// n'a jamais été ouvert dans cette session) — à charger avant de retenter.
+// Renvoie `null` si aucune correspondance n'a été trouvée (pas de sprite).
+function _saleResolvePokemon(item) {
+  const cacheKey = item.pokemon_key ? ('key:' + item.pokemon_key) : (item.pokemon_name ? ('name:' + item.pokemon_name) : null);
+  if (!cacheKey) return null;
+  if (_saleSpriteResolveCache[cacheKey] !== undefined) return _saleSpriteResolveCache[cacheKey];
+  if (!_pkdx.initialized || !_pkdx.all.length) return undefined;
+
+  let entry = null;
+  if (item.pokemon_key) entry = _pkdx.all.find(p => p.name === item.pokemon_key);
+  if (!entry && item.pokemon_name) {
+    const target = _normalizeStr(item.pokemon_name);
+    entry = _pkdx.all.find(p => _normalizeStr(p.frName || '') === target);
+  }
+  const resolved = entry ? { dexId: entry.isForm ? entry.baseId : entry.id, isForm: !!entry.isForm, formPokemonName: entry.name } : null;
+  _saleSpriteResolveCache[cacheKey] = resolved;
+  return resolved;
+}
+
+// Injecte le sprite d'UN item dans son placeholder (id `sale-sprite-{id}`) —
+// charge le Pokédex en tâche de fond si besoin (une seule fois par session,
+// comme le fait déjà le sélecteur de carte). Si rien ne correspond, retire
+// simplement le placeholder plutôt que d'afficher un faux sprite.
+async function _hydrateSaleSprite(item) {
+  const el = document.getElementById(`sale-sprite-${item.id}`);
+  if (!el) return;
+  let resolved = _saleResolvePokemon(item);
+  if (resolved === undefined) {
+    if (!_pkdx.initialized) { try { await initPokedex(); } catch(_) {} }
+    resolved = _saleResolvePokemon(item);
+  }
+  if (!resolved) { el.remove(); return; }
+  try {
+    const poke = await _fetchPokemon(resolved.isForm ? resolved.formPokemonName : resolved.dexId);
+    const spriteHtml = await _pokeSpriteFor({
+      id: resolved.dexId, isForm: resolved.isForm, formPokemonName: resolved.formPokemonName,
+      officialUrl: poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '',
+      alt: item.pokemon_name || '',
+    });
+    // L'élément peut avoir disparu entre-temps (re-rendu déclenché pendant
+    // le chargement, ex. changement de filtre) — on revérifie avant d'écrire.
+    const stillThere = document.getElementById(`sale-sprite-${item.id}`);
+    if (!stillThere) return;
+    if (spriteHtml) stillThere.innerHTML = spriteHtml; else stillThere.remove();
+  } catch(_) { el.remove(); }
+}
+
+// Hydrate tous les placeholders actuellement affichés (grille ou liste) —
+// appelé après le rendu synchrone de renderVentes()/renderDepenses(), en
+// tâche de fond (jamais attendu par le rendu lui-même).
+function _hydrateAllSaleSprites(items) {
+  items.forEach(item => { if (document.getElementById(`sale-sprite-${item.id}`)) _hydrateSaleSprite(item); });
+}
+
+// Élément cosmétique : effet holographique au survol pour les ventes/achats
+// de type "Reverse" — voir .sale-holo dans ventes-achats.css. Purement
+// visuel, ne change rien aux données. Un seul nom de classe, quel que soit
+// le mode d'affichage (grille/liste/carte à gauche) : le CSS cible ensuite
+// le bon élément (bannière/vignette) selon l'ancêtre présent.
+function _saleHoloClass(item) {
+  return (item.types || []).includes('reverse') ? ' sale-holo' : '';
+}
+
 // En-tête "bannière" d'une carte Vente/Dépense — même traitement visuel que
 // .classeur-card-top : l'image de la carte TCG sert de fond (avec dégradé
 // sombre pour la lisibilité), le nom/l'extension/le statut sont superposés.
@@ -686,6 +769,7 @@ function _saleCardTopHtml(opts) {
   return `
     <div class="sale-card-top" style="${bg}">
       ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="this.style.display='none'">` : ''}
+      ${opts.spriteId ? `<div class="sale-sprite-badge" id="sale-sprite-${opts.spriteId}"></div>` : ''}
       <div class="sale-top-info">
         <div class="sale-card-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
         <div class="sale-card-meta">${opts.extName}</div>
@@ -757,6 +841,7 @@ function _saleListRowHtml(opts) {
   const hasPerson = !!(opts.personPseudoHtml);
   return `
     <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+    ${opts.spriteId ? `<div class="sale-list-sprite" id="sale-sprite-${opts.spriteId}"></div>` : ''}
     <div class="sale-list-main">
       <div class="sale-list-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
       <div class="sale-list-meta">${opts.extName}</div>
@@ -783,7 +868,7 @@ function buildVenteCard(v) {
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = _typeChipsHtml(v.types);
   const card = document.createElement('div');
-  card.className = 'sale-card';
+  card.className = 'sale-card' + _saleHoloClass(v);
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
@@ -792,7 +877,7 @@ function buildVenteCard(v) {
       name: v.card_name || v.pokemon_name || '—',
       extName: v.set_name||'', number: v.number||'',
       statusCls: st.cls, statusLabel: st.label,
-      editFn: 'editVente', delFn: 'deleteVente', id: v.id,
+      editFn: 'editVente', delFn: 'deleteVente', id: v.id, spriteId: v.id,
     }) + `
     <div class="sale-card-body">
       <div class="sale-row"><span class="lbl">État</span><span class="val">${_etatHtml(v.etat)}</span></div>
@@ -816,7 +901,7 @@ function buildVenteRow(v) {
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = _typeChipsHtml(v.types, true);
   const row = document.createElement('div');
-  row.className = 'sale-list-row';
+  row.className = 'sale-list-row' + _saleHoloClass(v);
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
   row.innerHTML = _saleListRowHtml({
@@ -827,7 +912,7 @@ function buildVenteRow(v) {
     personFlagHtml: acheteurParts.flag, personPseudoHtml: acheteurParts.pseudo, personDateHtml: acheteurParts.date,
     personEmptyLabel: '— Non vendu —', cardmarketUrl: v.cardmarket_url,
     splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Vente" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
-    editFn: 'editVente', delFn: 'deleteVente', id: v.id,
+    editFn: 'editVente', delFn: 'deleteVente', id: v.id, spriteId: v.id,
   });
   row.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editVente(v.id); });
   return row;
@@ -840,7 +925,7 @@ function buildVenteCompact(v) {
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = _typeChipsHtml(v.types);
   const card = document.createElement('div');
-  card.className = 'sale-compact-row';
+  card.className = 'sale-compact-row' + _saleHoloClass(v);
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
@@ -1004,7 +1089,7 @@ function openAddVenteModal(prefillAcheteurId, prefillCommandeId) {
   const modal = document.getElementById('modal-vente');
   delete modal.dataset.editId;
   document.getElementById('modal-vente-title').textContent = 'Nouvelle vente';
-  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','ext-sigle','cardmarket-url'].forEach(f => {
+  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','pokemon-key','ext-sigle','cardmarket-url'].forEach(f => {
     const el = document.getElementById('vente-'+f); if (el) el.value = '';
   });
   _renderCardPreview('vente');
@@ -1045,6 +1130,8 @@ function editVente(id) {
   document.getElementById('vente-number').value = v.number||'';
   document.getElementById('vente-rarity').value = v.rarity||'';
   document.getElementById('vente-pokemon-name').value = v.pokemon_name||'';
+  const ventePokeKeyField = document.getElementById('vente-pokemon-key');
+  if (ventePokeKeyField) ventePokeKeyField.value = v.pokemon_key||'';
   document.getElementById('vente-ext-sigle').value = v.ext_sigle||'';
   const venteCmField = document.getElementById('vente-cardmarket-url');
   if (venteCmField) venteCmField.value = v.cardmarket_url||'';
@@ -1092,6 +1179,7 @@ function saveVente() {
     number:       document.getElementById('vente-number').value,
     rarity:       document.getElementById('vente-rarity').value,
     pokemon_name: document.getElementById('vente-pokemon-name').value || cardName,
+    pokemon_key:  document.getElementById('vente-pokemon-key')?.value || '',
     etat:         document.getElementById('vente-etat-select').value,
     prix:         parseFloat(document.getElementById('vente-prix-input').value) || 0,
     qty:          Math.max(1, parseInt(document.getElementById('vente-qty-input').value,10) || 1),
@@ -1160,6 +1248,7 @@ function renderDepenses() {
   } else {
     const builder = mode === 'list' ? buildDepenseRow : mode === 'compact' ? buildDepenseCompact : buildDepenseCard;
     items.forEach(d => grid.appendChild(builder(d)));
+    if (mode !== 'compact') _hydrateAllSaleSprites(items);
   }
   if (addBtn) grid.appendChild(addBtn);
   renderDepensesStats();
@@ -1212,7 +1301,7 @@ function buildDepenseCard(d) {
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = _typeChipsHtml(d.types);
   const card = document.createElement('div');
-  card.className = 'sale-card';
+  card.className = 'sale-card' + _saleHoloClass(d);
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
@@ -1221,7 +1310,7 @@ function buildDepenseCard(d) {
       name: d.card_name || d.pokemon_name || '—',
       extName: d.set_name||'', number: d.number||'',
       statusCls: '', statusLabel: '',
-      editFn: 'editDepense', delFn: 'deleteDepense', id: d.id,
+      editFn: 'editDepense', delFn: 'deleteDepense', id: d.id, spriteId: d.id,
     }) + `
     <div class="sale-card-body">
       <div class="sale-row"><span class="lbl">État</span><span class="val">${_etatHtml(d.etat)}</span></div>
@@ -1243,7 +1332,7 @@ function buildDepenseRow(d) {
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = _typeChipsHtml(d.types, true);
   const row = document.createElement('div');
-  row.className = 'sale-list-row';
+  row.className = 'sale-list-row' + _saleHoloClass(d);
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
   row.innerHTML = _saleListRowHtml({
@@ -1254,7 +1343,7 @@ function buildDepenseRow(d) {
     personFlagHtml: vendeurParts.flag, personPseudoHtml: vendeurParts.pseudo, personDateHtml: vendeurParts.date,
     personEmptyLabel: '— Aucun vendeur —', cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
-    editFn: 'editDepense', delFn: 'deleteDepense', id: d.id,
+    editFn: 'editDepense', delFn: 'deleteDepense', id: d.id, spriteId: d.id,
   });
   row.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editDepense(d.id); });
   return row;
@@ -1266,7 +1355,7 @@ function buildDepenseCompact(d) {
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = _typeChipsHtml(d.types);
   const card = document.createElement('div');
-  card.className = 'sale-compact-row';
+  card.className = 'sale-compact-row' + _saleHoloClass(d);
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
@@ -1347,7 +1436,7 @@ function openAddDepenseModal(prefillVendeurId, prefillCommandeId) {
   const modal = document.getElementById('modal-depense');
   delete modal.dataset.editId;
   document.getElementById('modal-depense-title').textContent = 'Nouvel achat';
-  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','ext-sigle','cardmarket-url'].forEach(f => {
+  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','pokemon-key','ext-sigle','cardmarket-url'].forEach(f => {
     const el = document.getElementById('depense-'+f); if (el) el.value = '';
   });
   _renderCardPreview('depense');
@@ -1387,6 +1476,8 @@ function editDepense(id) {
   document.getElementById('depense-number').value = d.number||'';
   document.getElementById('depense-rarity').value = d.rarity||'';
   document.getElementById('depense-pokemon-name').value = d.pokemon_name||'';
+  const depensePokeKeyField = document.getElementById('depense-pokemon-key');
+  if (depensePokeKeyField) depensePokeKeyField.value = d.pokemon_key||'';
   document.getElementById('depense-ext-sigle').value = d.ext_sigle||'';
   const depenseCmField = document.getElementById('depense-cardmarket-url');
   if (depenseCmField) depenseCmField.value = d.cardmarket_url||'';
@@ -1427,6 +1518,7 @@ function saveDepense() {
     number:       document.getElementById('depense-number').value,
     rarity:       document.getElementById('depense-rarity').value,
     pokemon_name: document.getElementById('depense-pokemon-name').value || cardName,
+    pokemon_key:  document.getElementById('depense-pokemon-key')?.value || '',
     etat:         document.getElementById('depense-etat-select').value,
     prix:         parseFloat(document.getElementById('depense-prix-input').value) || 0,
     qty:          Math.max(1, parseInt(document.getElementById('depense-qty-input').value,10) || 1),
@@ -2497,8 +2589,12 @@ async function _cardPickerHydratePoke(p, i) {
   try {
     const fetchId = p.isForm ? p.name : p.id;
     const poke = await _fetchPokemon(fetchId);
-    const sprite = poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '';
-    if (spriteEl) spriteEl.innerHTML = sprite ? `<img src="${sprite}" alt="" loading="lazy">` : '';
+    const spriteHtml = await _pokeSpriteFor({
+      id: p.isForm ? p.baseId : p.id, isForm: !!p.isForm, formPokemonName: p.name,
+      officialUrl: poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '',
+      alt: '',
+    });
+    if (spriteEl) spriteEl.innerHTML = spriteHtml;
     if (!p.frName) {
       const spec = await _fetchSpecies(poke.species.url);
       if (spec) {
@@ -2689,6 +2785,12 @@ function _cardPickerSelectCard(idx) {
   document.getElementById(`${p}-number`).value = c.number||'';
   document.getElementById(`${p}-rarity`).value = c.rarity||'';
   document.getElementById(`${p}-pokemon-name`).value = pokeName;
+  // Slug technique PokeAPI (ex. "charizard", "ogerpon-wellspring-mask") —
+  // uniquement quand un vrai Pokémon (pas Personnage/Objet/Lieu/Énergie) a
+  // été choisi à l'étape 1 : sert à retrouver le sprite (voir _pokeSpriteFor
+  // dans js/pokedex.js et _saleSpriteHtml dans ce fichier).
+  const pokeKeyField = document.getElementById(`${p}-pokemon-key`);
+  if (pokeKeyField) pokeKeyField.value = (_cardPickerKind === 'pokemon' && _cardPickerSelectedPoke) ? _cardPickerSelectedPoke.name : '';
   const sigleField = document.getElementById(`${p}-ext-sigle`);
   if (sigleField) sigleField.value = (c._ext && c._ext.sigle) || '';
   const cmField = document.getElementById(`${p}-cardmarket-url`);
@@ -2834,6 +2936,8 @@ async function _cardPickerSaveManual() {
   document.getElementById(`${p}-number`).value = newCard.number || '';
   document.getElementById(`${p}-rarity`).value = newCard.rarity || '';
   document.getElementById(`${p}-pokemon-name`).value = name;
+  const pokeKeyField = document.getElementById(`${p}-pokemon-key`);
+  if (pokeKeyField) pokeKeyField.value = (_cardPickerKind === 'pokemon' && _cardPickerSelectedPoke) ? _cardPickerSelectedPoke.name : '';
   const sigleField = document.getElementById(`${p}-ext-sigle`);
   if (sigleField) sigleField.value = ext.sigle || '';
   const cmField = document.getElementById(`${p}-cardmarket-url`);
