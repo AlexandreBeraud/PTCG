@@ -794,70 +794,106 @@ function _goToAcheteur(acheteurId) {
 // re-rendent souvent, ex. à chaque saveData()).
 var _saleSpriteResolveCache = {};
 
-// Retrouve { dexId (espèce de base), isForm, formPokemonName } pour un item
-// de vente/dépense :
-//  • pokemon_key (slug PokeAPI, rempli automatiquement depuis ce correctif) →
-//    résolution directe et fiable dans _pkdx.all.
-//  • sinon (ventes/achats créés avant ce champ) → repli par correspondance
-//    sur le nom de la carte ET le nom du Pokémon enregistré, en gardant la
-//    correspondance la PLUS LONGUE parmi toutes les espèces/formes connues.
-//    Nécessaire car pokemon_name, sur les anciens enregistrements, est
-//    souvent l'espèce générique (ex. "Deoxys") même quand la carte réelle
-//    est une forme précise (ex. "Deoxys Vitesse") — sans ce repli, la
-//    correspondance exacte sur "Deoxys" retombait sur la forme de base au
-//    lieu de la forme réellement représentée sur la carte.
-// Renvoie `undefined` tant que _pkdx.all (bases ET formes) n'est pas encore
-// chargé (le Pokédex n'a jamais été ouvert dans cette session) — à charger
-// avant de retenter. Renvoie `null` si aucune correspondance n'a été trouvée
-// (pas de sprite).
-function _saleResolvePokemon(item) {
-  const cacheKey = item.pokemon_key ? ('key:' + item.pokemon_key)
+// Retrouve l'entité (Pokémon OU Personnage/Objet/Lieu/Énergie) associée à un
+// item de vente/dépense, pour son sprite :
+//  • pko_key ("kind:id", pour Personnage/Objet/Lieu/Énergie) ou pokemon_key
+//    (slug PokeAPI, pour un vrai Pokémon) → résolution directe et fiable.
+//  • sinon (anciens enregistrements, avant ces champs) → repli par
+//    correspondance sur le nom de la carte ET le nom enregistré, en gardant
+//    la correspondance la PLUS LONGUE parmi TOUTES les catégories connues
+//    (Pokémon ET les 4 catégories Personnages/Objets/Lieux/Énergies).
+// Renvoie `undefined` tant que les données nécessaires (Pokédex complet ET
+// les 4 catégories) ne sont pas encore chargées — à charger avant de
+// retenter. Renvoie `null` si aucune correspondance n'a été trouvée (pas de
+// sprite). Sinon { type:'pokemon', dexId, isForm, formPokemonName } ou
+// { type:'pko', image, displayName } — pour 'pko', c'est directement l'image
+// déjà uploadée pour cette entrée dans Édition (entry.image), pas une source
+// séparée : ces catégories n'ont pas d'équivalent "Official Art"/NAS dédié.
+function _saleResolveSpriteEntity(item) {
+  const cacheKey = item.pko_key ? ('pko:' + item.pko_key)
+    : item.pokemon_key ? ('key:' + item.pokemon_key)
     : ((item.card_name || item.pokemon_name) ? ('name:' + (item.card_name||'') + '|' + (item.pokemon_name||'')) : null);
   if (!cacheKey) return null;
   if (_saleSpriteResolveCache[cacheKey] !== undefined) return _saleSpriteResolveCache[cacheKey];
-  // formsLoaded (pas juste _pkdx.initialized) : tant que les formes ne sont
-  // pas fusionnées dans _pkdx.all, toute forme (Deoxys Vitesse, Ogerpon…)
-  // est invisible à la recherche ci-dessous et ne peut que se résoudre —
-  // à tort — sur l'espèce de base.
-  if (!_pkdx.initialized || !_pkdx.formsLoaded || !_pkdx.all.length) return undefined;
 
-  let entry = null;
-  if (item.pokemon_key) entry = _pkdx.all.find(p => p.name === item.pokemon_key);
-  if (!entry) {
-    const haystack = _normalizeStr(`${item.card_name||''} ${item.pokemon_name||''}`);
-    if (haystack) {
-      let bestLen = 0;
-      for (const p of _pkdx.all) {
-        const fr = _normalizeStr(p.frName || '');
-        if (fr && haystack.includes(fr) && fr.length > bestLen) { entry = p; bestLen = fr.length; }
-      }
-    }
+  if (item.pko_key) {
+    const sep = item.pko_key.indexOf(':');
+    const kind = sep >= 0 ? item.pko_key.slice(0, sep) : '';
+    const id   = sep >= 0 ? item.pko_key.slice(sep+1) : '';
+    if (typeof PKO_KINDS === 'undefined' || !PKO_KINDS.includes(kind) || !_pko.initialized[kind]) return undefined;
+    const entry = (_pko.entries[kind]||[]).find(e => String(e.id) === id);
+    const resolved = entry ? { type:'pko', image: entry.image, displayName: entry.displayName } : null;
+    _saleSpriteResolveCache[cacheKey] = resolved;
+    return resolved;
   }
-  const resolved = entry ? { dexId: entry.isForm ? entry.baseId : entry.id, isForm: !!entry.isForm, formPokemonName: entry.name } : null;
+
+  if (item.pokemon_key) {
+    if (!_pkdx.initialized || !_pkdx.formsLoaded || !_pkdx.all.length) return undefined;
+    const entry = _pkdx.all.find(p => p.name === item.pokemon_key);
+    const resolved = entry ? { type:'pokemon', dexId: entry.isForm?entry.baseId:entry.id, isForm:!!entry.isForm, formPokemonName: entry.name } : null;
+    _saleSpriteResolveCache[cacheKey] = resolved;
+    return resolved;
+  }
+
+  const pkoReady = typeof PKO_KINDS !== 'undefined' && PKO_KINDS.every(k => _pko.initialized[k]);
+  if (!_pkdx.initialized || !_pkdx.formsLoaded || !_pkdx.all.length || !pkoReady) return undefined;
+
+  const haystack = _normalizeStr(`${item.card_name||''} ${item.pokemon_name||''}`);
+  if (!haystack) { _saleSpriteResolveCache[cacheKey] = null; return null; }
+
+  let bestLen = 0, bestEntity = null, bestType = null;
+  for (const p of _pkdx.all) {
+    const fr = _normalizeStr(p.frName || '');
+    if (fr && haystack.includes(fr) && fr.length > bestLen) { bestEntity = p; bestLen = fr.length; bestType = 'pokemon'; }
+  }
+  PKO_KINDS.forEach(k => {
+    (_pko.entries[k]||[]).forEach(e => {
+      const n = _normalizeStr(e.displayName || '');
+      if (n && haystack.includes(n) && n.length > bestLen) { bestEntity = e; bestLen = n.length; bestType = 'pko'; }
+    });
+  });
+
+  let resolved = null;
+  if (bestType === 'pokemon') resolved = { type:'pokemon', dexId: bestEntity.isForm?bestEntity.baseId:bestEntity.id, isForm:!!bestEntity.isForm, formPokemonName: bestEntity.name };
+  else if (bestType === 'pko') resolved = { type:'pko', image: bestEntity.image, displayName: bestEntity.displayName };
   _saleSpriteResolveCache[cacheKey] = resolved;
   return resolved;
 }
 
 // Injecte le sprite d'UN item dans son placeholder (id `sale-sprite-{id}`) —
-// charge le Pokédex en tâche de fond si besoin (une seule fois par session,
-// comme le fait déjà le sélecteur de carte). Si rien ne correspond, retire
-// simplement le placeholder plutôt que d'afficher un faux sprite.
+// charge le Pokédex/les 4 catégories en tâche de fond si besoin (une seule
+// fois par session). Si rien ne correspond, retire simplement le
+// placeholder plutôt que d'afficher un faux sprite.
+// IMPORTANT : `resolved` peut valoir `undefined` (données pas encore prêtes,
+// on vient de lancer leur chargement) — bien distinct de `null` (recherche
+// faite, rien trouvé). Un `!resolved` unique aurait traité les deux pareil
+// et fait disparaître le sprite pour de bon dès le premier passage un peu
+// trop rapide, avant même que _pko/_pkdx aient fini de charger.
 async function _hydrateSaleSprite(item) {
   const el = document.getElementById(`sale-sprite-${item.id}`);
   if (!el) return;
-  let resolved = _saleResolvePokemon(item);
+  let resolved = _saleResolveSpriteEntity(item);
   if (resolved === undefined) {
     if (!_pkdx.initialized || !_pkdx.formsLoaded) { try { await initPokedex(); } catch(_) {} }
-    resolved = _saleResolvePokemon(item);
+    if (typeof PKO_KINDS !== 'undefined' && !PKO_KINDS.every(k => _pko.initialized[k])) {
+      try { await Promise.all(PKO_KINDS.filter(k => !_pko.initialized[k]).map(k => _pkoInitTab(k))); } catch(_) {}
+    }
+    resolved = _saleResolveSpriteEntity(item);
   }
+  if (resolved === undefined) { return; } // toujours pas prêt : on laisse le placeholder vide plutôt que de conclure "pas de sprite"
   if (!resolved) { el.remove(); return; }
   try {
-    const poke = await _fetchPokemon(resolved.isForm ? resolved.formPokemonName : resolved.dexId);
-    const spriteHtml = await _pokeSpriteFor({
-      id: resolved.dexId, isForm: resolved.isForm, formPokemonName: resolved.formPokemonName,
-      officialUrl: poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '',
-      alt: item.pokemon_name || '',
-    });
+    let spriteHtml = '';
+    if (resolved.type === 'pokemon') {
+      const poke = await _fetchPokemon(resolved.isForm ? resolved.formPokemonName : resolved.dexId);
+      spriteHtml = await _pokeSpriteFor({
+        id: resolved.dexId, isForm: resolved.isForm, formPokemonName: resolved.formPokemonName,
+        officialUrl: poke.sprites?.other?.['official-artwork']?.front_default || poke.sprites?.front_default || '',
+        alt: item.pokemon_name || '',
+      });
+    } else if (resolved.type === 'pko' && resolved.image) {
+      spriteHtml = `<img src="${_escHtml(resolved.image)}" alt="${_escHtml(resolved.displayName||'')}" loading="lazy" onerror="this.style.display='none'">`;
+    }
     // L'élément peut avoir disparu entre-temps (re-rendu déclenché pendant
     // le chargement, ex. changement de filtre) — on revérifie avant d'écrire.
     const stillThere = document.getElementById(`sale-sprite-${item.id}`);
@@ -1215,7 +1251,7 @@ function openAddVenteModal(prefillAcheteurId, prefillCommandeId) {
   const modal = document.getElementById('modal-vente');
   delete modal.dataset.editId;
   document.getElementById('modal-vente-title').textContent = 'Nouvelle vente';
-  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','pokemon-key','ext-sigle','cardmarket-url'].forEach(f => {
+  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','pokemon-key','pko-key','ext-sigle','cardmarket-url'].forEach(f => {
     const el = document.getElementById('vente-'+f); if (el) el.value = '';
   });
   _renderCardPreview('vente');
@@ -1258,6 +1294,8 @@ function editVente(id) {
   document.getElementById('vente-pokemon-name').value = v.pokemon_name||'';
   const ventePokeKeyField = document.getElementById('vente-pokemon-key');
   if (ventePokeKeyField) ventePokeKeyField.value = v.pokemon_key||'';
+  const ventePkoKeyField = document.getElementById('vente-pko-key');
+  if (ventePkoKeyField) ventePkoKeyField.value = v.pko_key||'';
   document.getElementById('vente-ext-sigle').value = v.ext_sigle||'';
   const venteCmField = document.getElementById('vente-cardmarket-url');
   if (venteCmField) venteCmField.value = v.cardmarket_url||'';
@@ -1306,6 +1344,7 @@ function saveVente() {
     rarity:       document.getElementById('vente-rarity').value,
     pokemon_name: document.getElementById('vente-pokemon-name').value || cardName,
     pokemon_key:  document.getElementById('vente-pokemon-key')?.value || '',
+    pko_key:      document.getElementById('vente-pko-key')?.value || '',
     etat:         document.getElementById('vente-etat-select').value,
     prix:         parseFloat(document.getElementById('vente-prix-input').value) || 0,
     qty:          Math.max(1, parseInt(document.getElementById('vente-qty-input').value,10) || 1),
@@ -1570,7 +1609,7 @@ function openAddDepenseModal(prefillVendeurId, prefillCommandeId) {
   const modal = document.getElementById('modal-depense');
   delete modal.dataset.editId;
   document.getElementById('modal-depense-title').textContent = 'Nouvel achat';
-  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','pokemon-key','ext-sigle','cardmarket-url'].forEach(f => {
+  ['card-id','card-name','card-image','set-id','set-name','set-logo','number','rarity','pokemon-name','pokemon-key','pko-key','ext-sigle','cardmarket-url'].forEach(f => {
     const el = document.getElementById('depense-'+f); if (el) el.value = '';
   });
   _renderCardPreview('depense');
@@ -1612,6 +1651,8 @@ function editDepense(id) {
   document.getElementById('depense-pokemon-name').value = d.pokemon_name||'';
   const depensePokeKeyField = document.getElementById('depense-pokemon-key');
   if (depensePokeKeyField) depensePokeKeyField.value = d.pokemon_key||'';
+  const depensePkoKeyField = document.getElementById('depense-pko-key');
+  if (depensePkoKeyField) depensePkoKeyField.value = d.pko_key||'';
   document.getElementById('depense-ext-sigle').value = d.ext_sigle||'';
   const depenseCmField = document.getElementById('depense-cardmarket-url');
   if (depenseCmField) depenseCmField.value = d.cardmarket_url||'';
@@ -1653,6 +1694,7 @@ function saveDepense() {
     rarity:       document.getElementById('depense-rarity').value,
     pokemon_name: document.getElementById('depense-pokemon-name').value || cardName,
     pokemon_key:  document.getElementById('depense-pokemon-key')?.value || '',
+    pko_key:      document.getElementById('depense-pko-key')?.value || '',
     etat:         document.getElementById('depense-etat-select').value,
     prix:         parseFloat(document.getElementById('depense-prix-input').value) || 0,
     qty:          Math.max(1, parseInt(document.getElementById('depense-qty-input').value,10) || 1),
@@ -2925,6 +2967,11 @@ function _cardPickerSelectCard(idx) {
   // dans js/pokedex.js et _saleSpriteHtml dans ce fichier).
   const pokeKeyField = document.getElementById(`${p}-pokemon-key`);
   if (pokeKeyField) pokeKeyField.value = (_cardPickerKind === 'pokemon' && _cardPickerSelectedPoke) ? _cardPickerSelectedPoke.name : '';
+  // Même principe pour Personnage/Objet/Lieu/Énergie : "kind:id" (ex.
+  // "personnage:abc123") pour retrouver directement l'entrée (et son image)
+  // sans repasser par une correspondance de nom au moment de l'affichage.
+  const pkoKeyField = document.getElementById(`${p}-pko-key`);
+  if (pkoKeyField) pkoKeyField.value = (_cardPickerKind !== 'pokemon' && _cardPickerSelectedPko) ? `${_cardPickerSelectedPko.kind}:${_cardPickerSelectedPko.id}` : '';
   const sigleField = document.getElementById(`${p}-ext-sigle`);
   if (sigleField) sigleField.value = (c._ext && c._ext.sigle) || '';
   const cmField = document.getElementById(`${p}-cardmarket-url`);
@@ -3072,6 +3119,11 @@ async function _cardPickerSaveManual() {
   document.getElementById(`${p}-pokemon-name`).value = name;
   const pokeKeyField = document.getElementById(`${p}-pokemon-key`);
   if (pokeKeyField) pokeKeyField.value = (_cardPickerKind === 'pokemon' && _cardPickerSelectedPoke) ? _cardPickerSelectedPoke.name : '';
+  // Même principe pour Personnage/Objet/Lieu/Énergie : "kind:id" (ex.
+  // "personnage:abc123") pour retrouver directement l'entrée (et son image)
+  // sans repasser par une correspondance de nom au moment de l'affichage.
+  const pkoKeyField = document.getElementById(`${p}-pko-key`);
+  if (pkoKeyField) pkoKeyField.value = (_cardPickerKind !== 'pokemon' && _cardPickerSelectedPko) ? `${_cardPickerSelectedPko.kind}:${_cardPickerSelectedPko.id}` : '';
   const sigleField = document.getElementById(`${p}-ext-sigle`);
   if (sigleField) sigleField.value = ext.sigle || '';
   const cmField = document.getElementById(`${p}-cardmarket-url`);
