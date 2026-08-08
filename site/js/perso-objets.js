@@ -133,19 +133,64 @@ async function _pkoFetchAllLocalCards(forceRefresh) {
   if (_pkoAllLocalCards && !forceRefresh) return _pkoAllLocalCards;
   if (_pkoFetchAllLocalCardsPromise) return _pkoFetchAllLocalCardsPromise;
   _pkoFetchAllLocalCardsPromise = (async () => {
-    let allRows = [], offset = 0, pageSize = 1000;
-    while (true) {
-      const res = await fetch(
-        `${SB_URL}/rest/v1/cards?select=id,name&order=name.asc`,
-        { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Range-Unit': 'items', 'Range': `${offset}-${offset+pageSize-1}` } }
-      );
-      if (!res.ok) break;
+    // PERF corrigé : sur une table `cards` de plusieurs milliers de lignes,
+    // l'ancienne boucle faisait UNE requête à la fois, en attendant chaque
+    // réponse avant de lancer la suivante — des dizaines d'allers-retours
+    // séquentiels vers le Pi (via Tailscale), pour la seule étape
+    // "Chargement des cartes…" de l'écran de démarrage. On lit maintenant le
+    // total exact dès la 1ère page (Content-Range, via Prefer: count=exact),
+    // puis on lance toutes les pages restantes PAR LOTS EN PARALLÈLE
+    // (au lieu d'une par une) — concurrence plafonnée pour ne pas saturer le
+    // Pi (1 Go de RAM partagé entre Postgres/PostgREST/Caddy/etc.).
+    const requestedSize = 2000;
+    const baseUrl = `${SB_URL}/rest/v1/cards?select=id,name&order=name.asc`;
+    const fetchPage = async (offset, size) => {
+      const res = await fetch(baseUrl, {
+        headers: {
+          apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+          'Range-Unit': 'items', 'Range': `${offset}-${offset + size - 1}`,
+          'Prefer': 'count=exact',
+        },
+      });
+      if (!res.ok) return { rows: [], total: null };
       const rows = await res.json();
-      if (!rows.length) break;
-      allRows = allRows.concat(rows);
-      if (rows.length < pageSize) break;
-      offset += pageSize;
+      let total = null;
+      const cr = res.headers.get('Content-Range'); // format "0-1999/12345"
+      if (cr) { const m = cr.match(/\/(\d+)$/); if (m) total = parseInt(m[1], 10); }
+      return { rows, total };
+    };
+
+    const first = await fetchPage(0, requestedSize);
+    let allRows = first.rows.slice();
+    const total    = first.total;
+    // Taille RÉELLE renvoyée par le serveur — peut être plus petite que
+    // requestedSize si PostgREST plafonne côté serveur ; on s'aligne dessus
+    // pour que les offsets suivants ne sautent aucune ligne.
+    const pageSize = first.rows.length || requestedSize;
+
+    if (total && total > allRows.length && pageSize > 0) {
+      const offsets = [];
+      for (let o = pageSize; o < total; o += pageSize) offsets.push(o);
+      const CONCURRENCY = 6;
+      for (let i = 0; i < offsets.length; i += CONCURRENCY) {
+        const batch   = offsets.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(batch.map(o => fetchPage(o, pageSize)));
+        results.forEach(r => { allRows = allRows.concat(r.rows); });
+      }
+    } else if (!total && first.rows.length === requestedSize) {
+      // Repli séquentiel si le serveur ignore Prefer: count=exact (pas de
+      // Content-Range dans la réponse) — comportement de l'ancien code,
+      // uniquement en dernier recours.
+      let offset = requestedSize;
+      while (true) {
+        const { rows } = await fetchPage(offset, requestedSize);
+        if (!rows.length) break;
+        allRows = allRows.concat(rows);
+        if (rows.length < requestedSize) break;
+        offset += requestedSize;
+      }
     }
+
     _pkoAllLocalCards = allRows;
     return allRows;
   })();

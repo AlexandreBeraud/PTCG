@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=17">
-<link rel="stylesheet" href="css/collection.css?v=17">
-<link rel="stylesheet" href="css/pokedex.css?v=17">
-<link rel="stylesheet" href="css/ventes-achats.css?v=17">
+<link rel="stylesheet" href="css/base.css?v=18">
+<link rel="stylesheet" href="css/collection.css?v=18">
+<link rel="stylesheet" href="css/pokedex.css?v=18">
+<link rel="stylesheet" href="css/ventes-achats.css?v=18">
 </head>
 <body>
 
@@ -294,6 +294,37 @@
           </select>
         </div>
       </div>
+      <div class="sales-toolbar-row sales-filters-row">
+        <div style="position:relative;display:inline-block">
+          <button id="ventes-etat-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleMultiFilterPanel('vente','etat')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4.5L6 21l1.5-7.5L2 9h7z"/></svg>
+            <span id="ventes-etat-filter-label">Tous les états</span>
+          </button>
+          <div id="ventes-etat-panel" style="display:none" class="pkdx-ext-dropdown">
+            <div id="ventes-etat-list"></div>
+          </div>
+        </div>
+        <div style="position:relative;display:inline-block">
+          <button id="ventes-type-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleMultiFilterPanel('vente','type')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <span id="ventes-type-filter-label">Tous les types</span>
+          </button>
+          <div id="ventes-type-panel" style="display:none" class="pkdx-ext-dropdown">
+            <div id="ventes-type-list"></div>
+          </div>
+        </div>
+        <div class="sales-range-filter">
+          <input type="date" id="ventes-date-from" class="sales-sort-select" title="Du" onchange="setSaleDateFilter('vente','from',this.value)">
+          <span class="sales-range-sep">→</span>
+          <input type="date" id="ventes-date-to" class="sales-sort-select" title="Au" onchange="setSaleDateFilter('vente','to',this.value)">
+        </div>
+        <div class="sales-range-filter">
+          <input type="number" id="ventes-prix-min" class="sales-sort-select sales-range-num" placeholder="Prix min" min="0" step="0.01" oninput="setSalePrixFilter('vente','min',this.value)">
+          <span class="sales-range-sep">→</span>
+          <input type="number" id="ventes-prix-max" class="sales-sort-select sales-range-num" placeholder="Prix max" min="0" step="0.01" oninput="setSalePrixFilter('vente','max',this.value)">
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="resetSaleFilters('vente')">Réinitialiser les filtres</button>
+      </div>
       <div class="sales-grid" id="ventes-grid">
         <button class="add-new-card sale-add-card" onclick="openAddVenteModal()">
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55">
@@ -397,6 +428,37 @@
             <option value="person_asc">Acheteur / Vendeur (A→Z)</option>
           </select>
         </div>
+      </div>
+      <div class="sales-toolbar-row sales-filters-row">
+        <div style="position:relative;display:inline-block">
+          <button id="depenses-etat-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleMultiFilterPanel('depense','etat')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4.5L6 21l1.5-7.5L2 9h7z"/></svg>
+            <span id="depenses-etat-filter-label">Tous les états</span>
+          </button>
+          <div id="depenses-etat-panel" style="display:none" class="pkdx-ext-dropdown">
+            <div id="depenses-etat-list"></div>
+          </div>
+        </div>
+        <div style="position:relative;display:inline-block">
+          <button id="depenses-type-toggle" class="pkdx-forms-toggle-btn" onclick="toggleSaleMultiFilterPanel('depense','type')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <span id="depenses-type-filter-label">Tous les types</span>
+          </button>
+          <div id="depenses-type-panel" style="display:none" class="pkdx-ext-dropdown">
+            <div id="depenses-type-list"></div>
+          </div>
+        </div>
+        <div class="sales-range-filter">
+          <input type="date" id="depenses-date-from" class="sales-sort-select" title="Du" onchange="setSaleDateFilter('depense','from',this.value)">
+          <span class="sales-range-sep">→</span>
+          <input type="date" id="depenses-date-to" class="sales-sort-select" title="Au" onchange="setSaleDateFilter('depense','to',this.value)">
+        </div>
+        <div class="sales-range-filter">
+          <input type="number" id="depenses-prix-min" class="sales-sort-select sales-range-num" placeholder="Prix min" min="0" step="0.01" oninput="setSalePrixFilter('depense','min',this.value)">
+          <span class="sales-range-sep">→</span>
+          <input type="number" id="depenses-prix-max" class="sales-sort-select sales-range-num" placeholder="Prix max" min="0" step="0.01" oninput="setSalePrixFilter('depense','max',this.value)">
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="resetSaleFilters('depense')">Réinitialiser les filtres</button>
       </div>
       <div class="sales-grid" id="depenses-grid">
         <button class="add-new-card sale-add-card" onclick="openAddDepenseModal()">
@@ -786,6 +848,11 @@
               <button type="button" class="chip-toggle-btn" data-value="home" onclick="setSpriteSource('home', this)">Home</button>
             </div>
             <p class="form-hint" style="margin-top:6px">« Home » va chercher le sprite sur le NAS ; si aucun fichier ne correspond, l'Official Art est utilisé à la place.</p>
+          </div>
+          <div class="settings-field" style="margin-top:16px">
+            <label>Cache Pokédex</label>
+            <p class="form-hint" style="margin:2px 0 6px">Espèces, noms FR et formes sont gardés en local (30 jours) pour accélérer le démarrage. À vider seulement si un Pokémon manque ou semble faux.</p>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="clearPokedexCache()">Vider le cache Pokédex</button>
           </div>
         </div>
         <div class="settings-card">
@@ -1536,9 +1603,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=17"></script>
-<script src="data.js?v=17"></script>
-<script src="js/sync.js?v=17"></script>
+<script src="config.js?v=18"></script>
+<script src="data.js?v=18"></script>
+<script src="js/sync.js?v=18"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1578,14 +1645,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=17"></script>
-<script src="js/collection.js?v=17"></script>
-<script src="js/edition.js?v=17"></script>
-<script src="js/mapping.js?v=17"></script>
-<script src="js/labels.js?v=17"></script>
-<script src="js/ventes-achats.js?v=17"></script>
-<script src="js/label-categories.js?v=17"></script>
-<script src="js/pokedex.js?v=17"></script>
-<script src="js/perso-objets.js?v=17"></script>
+<script src="js/core.js?v=18"></script>
+<script src="js/collection.js?v=18"></script>
+<script src="js/edition.js?v=18"></script>
+<script src="js/mapping.js?v=18"></script>
+<script src="js/labels.js?v=18"></script>
+<script src="js/ventes-achats.js?v=18"></script>
+<script src="js/label-categories.js?v=18"></script>
+<script src="js/pokedex.js?v=18"></script>
+<script src="js/perso-objets.js?v=18"></script>
 </body>
 </html>

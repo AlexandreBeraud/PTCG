@@ -166,6 +166,31 @@ async function _fetchAbilityFr(abilityUrl) {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
+// ── Cache local (espèces + noms FR + formes) ────────────────────────────────
+// Cette liste ne change quasiment jamais d'une session à l'autre (seulement
+// quand PokéAPI ajoute de nouveaux Pokémon/formes) — la recharger en entier
+// depuis PokéAPI à CHAQUE démarrage (4 requêtes réseau + un calcul O(n²) sur
+// les formes) n'apportait rien la plupart du temps. Un cache local élimine
+// tout ça pour toutes les sessions suivant la première, dans la limite de
+// PKDX_CACHE_TTL_MS — passé ce délai (ou si le cache est absent/corrompu),
+// on retombe simplement sur le chargement réseau complet habituel.
+var PKDX_CACHE_KEY    = 'ptcg_pkdx_cache_v1';
+var PKDX_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
+function _pkdxLoadCache() {
+  try {
+    const raw = localStorage.getItem(PKDX_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.all) || !parsed.savedAt) return null;
+    if (Date.now() - parsed.savedAt > PKDX_CACHE_TTL_MS) return null;
+    return parsed.all;
+  } catch(_) { return null; }
+}
+function _pkdxSaveCache() {
+  try { localStorage.setItem(PKDX_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), all: _pkdx.all })); }
+  catch(_) { /* quota dépassé ou navigation privée : pas bloquant, juste pas de cache cette fois */ }
+}
+
 async function initPokedex() {
   if (_pkdx.initialized) return;
   _pkdx.loading = true;
@@ -173,6 +198,23 @@ async function initPokedex() {
   document.getElementById('pokedex-error').style.display   = 'none';
 
   try {
+    const cached = _pkdxLoadCache();
+    if (cached && cached.length) {
+      _pkdx.all         = cached;
+      _pkdx.filtered     = [..._pkdx.all];
+      _pkdx.initialized  = true;
+      _pkdx.loading      = false;
+      _pkdx.formsLoaded  = true;
+      _pkdx.showForms    = true;
+      document.getElementById('pokedex-loading').style.display = 'none';
+      document.getElementById('pokedex-subtitle').textContent  =
+        `${_pkdx.all.filter(p=>!p.isForm).length} Pokémon + ${_pkdx.all.filter(p=>p.isForm).length} formes — PokéAPI (cache local)`;
+      _buildGenFilters();
+      _pkdx.page = 0;
+      await renderPokedexPage();
+      return;
+    }
+
     // On interroge d'abord le nombre RÉEL d'espèces via /pokemon-species (plutôt
     // que de coder "1025" en dur) : nouvelles générations/DLC ajoutent des
     // espèces avec le temps, et un chiffre figé finit par en exclure certaines
@@ -216,6 +258,7 @@ async function initPokedex() {
     await _loadFormsList();
     document.getElementById('pokedex-subtitle').textContent =
       `${_pkdx.all.filter(p=>!p.isForm).length} Pokémon + ${_pkdx.all.filter(p=>p.isForm).length} formes — PokéAPI`;
+    _pkdxSaveCache();
     await renderPokedexPage();
   } catch(err) {
     _pkdx.loading = false;
@@ -612,6 +655,23 @@ async function _loadFormsList() {
     const bases      = _pkdx.all.filter(p => !p.isForm);
     // Fast lookup: english name → entry
     const baseByName = Object.fromEntries(bases.map(b => [b.name, b]));
+    // PERF corrigé : la recherche "plus long préfixe parmi TOUTES les bases"
+    // rescannait ~1300 bases pour CHACUNE des ~2000 entrées renvoyées par
+    // PokéAPI (jusqu'à plusieurs millions de comparaisons à chaque
+    // démarrage). Un match valide exige que le premier segment (avant le
+    // 1er tiret) du nom de la forme soit identique à celui de sa base — on
+    // peut donc pré-regrouper les bases par ce premier segment une seule
+    // fois, puis ne comparer qu'aux quelques candidates du même groupe.
+    const basesByFirstToken = new Map();
+    bases.forEach(b => {
+      const key = b.name.split('-')[0];
+      if (!basesByFirstToken.has(key)) basesByFirstToken.set(key, []);
+      basesByFirstToken.get(key).push(b);
+    });
+    // PERF corrigé : "existing = _pkdx.all.find(...)" refaisait aussi un
+    // scan linéaire de _pkdx.all (qui grossit au fil de la boucle) pour
+    // CHAQUE entrée — remplacé par une Map à jour en O(1).
+    const byName = new Map(_pkdx.all.map(e => [e.name, e]));
 
     // Known forms whose PokéAPI name doesn't start with their base's name
     const exactParent = {
@@ -631,6 +691,10 @@ async function _loadFormsList() {
     data.results.forEach(p => {
       const parts = p.url.split('/').filter(Boolean);
       const apiId = parseInt(parts[parts.length - 1], 10);
+      const formRoot = p.name.split('-')[0];
+      // Toute base candidate (préfixe OU racine d'espèce) a forcément le
+      // même 1er segment que la forme — voir basesByFirstToken plus haut.
+      const sameRootBases = basesByFirstToken.get(formRoot) || [];
 
       // Find base: exactParent first, then longest prefix match, then species-root match
       let base = null;
@@ -638,9 +702,9 @@ async function _loadFormsList() {
         base = baseByName[exactParent[p.name]] || null;
       }
       if (!base) {
-        // Try all base names as prefix — longest match wins
+        // Try same-root base names as prefix — longest match wins
         let bestLen = 0;
-        for (const b of bases) {
+        for (const b of sameRootBases) {
           const prefix = b.name + '-';
           if (p.name.startsWith(prefix) && b.name.length > bestLen) {
             base    = b;
@@ -657,8 +721,7 @@ async function _loadFormsList() {
         // own name won't start with the full base name. Fall back to matching
         // on the species root (the part before the first hyphen), but only
         // when it points to exactly one base to avoid ambiguous matches.
-        const formRoot = p.name.split('-')[0];
-        const candidates = bases.filter(b => b.name.split('-')[0] === formRoot);
+        const candidates = sameRootBases.filter(b => b.name.split('-')[0] === formRoot);
         if (candidates.length === 1) base = candidates[0];
       }
       if (!base) return;
@@ -673,7 +736,7 @@ async function _loadFormsList() {
       // reconnue que corriger une détection automatique erronée.
       const formType = _resolveFormType(p.name, base.name);
 
-      const existing = _pkdx.all.find(e => e.name === p.name);
+      const existing = byName.get(p.name);
       if (existing) {
         // Ré-appliquer un éventuel changement d'assignation manuelle sur une
         // entrée déjà chargée, sans dupliquer la ligne, et sans jamais
@@ -683,10 +746,9 @@ async function _loadFormsList() {
       }
       if (!formType) return; // toujours pas de label reconnu ni assigné manuellement
 
-      _pkdx.all.push({
-        id: apiId, baseId: base.id, name: p.name,
-        frName: '', formType, isForm: true
-      });
+      const newEntry = { id: apiId, baseId: base.id, name: p.name, frName: '', formType, isForm: true };
+      _pkdx.all.push(newEntry);
+      byName.set(p.name, newEntry);
       added++;
     });
 

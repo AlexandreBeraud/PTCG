@@ -948,3 +948,12 @@ function setSpriteSource(mode, btn){
   toast('Source des sprites mise à jour.', 'success');
 }
 
+// Vide le cache local Pokédex (voir PKDX_CACHE_KEY dans js/pokedex.js) et
+// recharge la page — la façon la plus sûre de forcer un rechargement complet
+// depuis PokéAPI (nouveau Pokémon manquant, forme mal détectée…).
+function clearPokedexCache(){
+  try { localStorage.removeItem(PKDX_CACHE_KEY); } catch(_) {}
+  toast('Cache Pokédex vidé — rechargement…', 'success');
+  setTimeout(() => location.reload(), 600);
+}
+

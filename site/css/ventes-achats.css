@@ -48,6 +48,25 @@
 }
 .sales-sort-select:focus, .sales-sort-select:hover { border-color: var(--accent); }
 
+/* Deuxième ligne de filtres (État, Type, dates, prix) — même style que
+   .sales-sort-bar, juste sur sa propre ligne pour ne pas surcharger la
+   première (statut + extension + tri) sur petit écran. */
+.sales-filters-row { justify-content: flex-start; }
+.sales-range-filter { display: flex; align-items: center; gap: 6px; }
+.sales-range-sep { color: var(--text3); font-size: .76rem; }
+.sales-range-num { width: 92px; }
+.sales-range-filter input[type="date"] { color-scheme: dark; }
+
+/* Cases à cocher des panneaux multi-sélection (État, Type) — même liste
+   déroulante que le filtre Extension (.pkdx-ext-dropdown/.pkdx-ext-filter-item),
+   juste avec une case au lieu d'un simple surlignage "actif". */
+.pkdx-ext-filter-item .sale-filter-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border: 1.5px solid var(--border); border-radius: 3px;
+  margin-right: 7px; flex-shrink: 0; font-size: .62rem; color: transparent;
+}
+.pkdx-ext-filter-item.active .sale-filter-check { background: #fff; border-color: #fff; color: var(--accent); }
+
 /* Cartes Vente / Dépense (item unique) — toute la carte est cliquable pour
    ouvrir la modification (voir le addEventListener('click', ...) dans le JS) ;
    les boutons internes stoppent la propagation pour ne pas déclencher les deux. */

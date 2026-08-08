@@ -281,6 +281,13 @@ var _venteSort = 'date_desc', _depenseSort = 'date_desc';
 var _acheteurSort = 'alpha_asc', _vendeurSort = 'alpha_asc';
 var _venteExtFilter = 'all', _depenseExtFilter = 'all';
 var _ventePersonFilter = 'all', _depensePersonFilter = 'all';
+// Nouveaux filtres : État (condition de carte, multi-sélection), Type
+// (Normale/Reverse/Holo Cosmos/1ère édition, multi-sélection), plage de
+// dates (created_at) et plage de prix (_lineTotal). Un Set vide = "tous".
+var _venteEtatFilter = new Set(), _depenseEtatFilter = new Set();
+var _venteTypeFilter = new Set(), _depenseTypeFilter = new Set();
+var _venteDateFrom = '', _venteDateTo = '', _depenseDateFrom = '', _depenseDateTo = '';
+var _ventePrixMin = '', _ventePrixMax = '', _depensePrixMin = '', _depensePrixMax = '';
 
 // Pseudo de l'acheteur (vente) ou du vendeur (dépense) lié à cette ligne, ou
 // chaîne vide si non vendue/liée — sert au tri ET au filtre par acheteur/vendeur.
@@ -494,6 +501,99 @@ function setSaleExtFilter(kind, name) {
   if (panel) panel.style.display = 'none';
 }
 
+// ── Filtres multi-sélection État / Type — Ventes & Dépenses ────────────────
+// Même principe visuel que le panneau Extensions ci-dessus, mais en MULTI-
+// sélection (case à cocher, voir .sale-filter-check) : un Set vide veut dire
+// "tous", sinon on ne garde que les lignes dont l'état/type coché correspond.
+function _saleMultiFilterState(kind, dim) {
+  if (dim === 'etat') return kind === 'vente' ? _venteEtatFilter : _depenseEtatFilter;
+  return kind === 'vente' ? _venteTypeFilter : _depenseTypeFilter;
+}
+function _saleMultiFilterPanelIds(kind, dim) {
+  const p = kind === 'vente' ? 'ventes' : 'depenses';
+  return { panel: `${p}-${dim}-panel`, list: `${p}-${dim}-list`, label: `${p}-${dim}-filter-label` };
+}
+function _saleMultiFilterOptions(dim) {
+  return dim === 'etat' ? CARD_CONDITIONS.map(e => ({ id: e, label: e })) : VENTE_TYPES.map(t => ({ id: t.id, label: t.label }));
+}
+function toggleSaleMultiFilterPanel(kind, dim) {
+  const ids = _saleMultiFilterPanelIds(kind, dim);
+  const panel = document.getElementById(ids.panel); if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  // Ferme tous les autres panneaux de filtre (extension, état, type — vente
+  // ET dépense) au passage, un seul ouvert à la fois.
+  ['vente','depense'].forEach(k => {
+    const extP = document.getElementById(_saleExtPanelIds(k).panel);
+    if (extP) extP.style.display = 'none';
+    ['etat','type'].forEach(d => {
+      const p2 = document.getElementById(_saleMultiFilterPanelIds(k, d).panel);
+      if (p2 && !(k === kind && d === dim)) p2.style.display = 'none';
+    });
+  });
+  if (isOpen) { panel.style.display = 'none'; return; }
+  _buildSaleMultiFilterList(kind, dim);
+  panel.style.display = '';
+}
+function _buildSaleMultiFilterList(kind, dim) {
+  const ids = _saleMultiFilterPanelIds(kind, dim);
+  const el = document.getElementById(ids.list); if (!el) return;
+  const state = _saleMultiFilterState(kind, dim);
+  el.innerHTML = _saleMultiFilterOptions(dim).map(o => `
+    <div class="pkdx-ext-filter-item ${state.has(o.id)?'active':''}" onclick="toggleSaleMultiFilterOption('${kind}','${dim}','${_escJs(o.id)}')">
+      <span class="sale-filter-check">✓</span><span>${_escHtml(o.label)}</span>
+    </div>`).join('');
+  _syncSaleMultiFilterLabel(kind, dim);
+}
+function toggleSaleMultiFilterOption(kind, dim, id) {
+  const state = _saleMultiFilterState(kind, dim);
+  if (state.has(id)) state.delete(id); else state.add(id);
+  _buildSaleMultiFilterList(kind, dim);
+  if (kind === 'vente') renderVentes(); else renderDepenses();
+}
+function _syncSaleMultiFilterLabel(kind, dim) {
+  const ids = _saleMultiFilterPanelIds(kind, dim);
+  const state = _saleMultiFilterState(kind, dim);
+  const labelEl = document.getElementById(ids.label);
+  if (!labelEl) return;
+  const allLabel = dim === 'etat' ? 'Tous les états' : 'Tous les types';
+  const unit      = dim === 'etat' ? 'état' : 'type';
+  labelEl.textContent = state.size ? `${state.size} ${unit}${state.size>1?'s':''} sélectionné${state.size>1?'s':''}` : allLabel;
+}
+
+// ── Filtres plage de dates / plage de prix — Ventes & Dépenses ─────────────
+function setSaleDateFilter(kind, which, value) {
+  if (kind === 'vente') { if (which === 'from') _venteDateFrom = value; else _venteDateTo = value; renderVentes(); }
+  else { if (which === 'from') _depenseDateFrom = value; else _depenseDateTo = value; renderDepenses(); }
+}
+function setSalePrixFilter(kind, which, value) {
+  if (kind === 'vente') { if (which === 'min') _ventePrixMin = value; else _ventePrixMax = value; renderVentes(); }
+  else { if (which === 'min') _depensePrixMin = value; else _depensePrixMax = value; renderDepenses(); }
+}
+
+// Remet à zéro TOUS les filtres (statut, extension, acheteur/vendeur, état,
+// type, dates, prix) d'un coup — pratique une fois qu'on a empilé plusieurs
+// filtres et qu'on ne retrouve plus rien.
+function resetSaleFilters(kind) {
+  const p = kind === 'vente' ? 'ventes' : 'depenses';
+  if (kind === 'vente') {
+    _venteFilter = 'all'; _venteExtFilter = 'all'; _ventePersonFilter = 'all';
+    _venteEtatFilter = new Set(); _venteTypeFilter = new Set();
+    _venteDateFrom = ''; _venteDateTo = ''; _ventePrixMin = ''; _ventePrixMax = '';
+  } else {
+    _depenseFilter = 'all'; _depenseExtFilter = 'all'; _depensePersonFilter = 'all';
+    _depenseEtatFilter = new Set(); _depenseTypeFilter = new Set();
+    _depenseDateFrom = ''; _depenseDateTo = ''; _depensePrixMin = ''; _depensePrixMax = '';
+  }
+  document.querySelectorAll(`#${p}-filter-bar .booster-filter-btn`).forEach((b,i)=>b.classList.toggle('active', i===0));
+  ['date-from','date-to','prix-min','prix-max'].forEach(f => { const el = document.getElementById(`${p}-${f}`); if (el) el.value = ''; });
+  const personSel = document.getElementById(kind === 'vente' ? 'ventes-acheteur-filter' : 'depenses-vendeur-filter');
+  if (personSel) personSel.value = 'all';
+  _syncSaleExtFilterLabel(kind);
+  _syncSaleMultiFilterLabel(kind, 'etat');
+  _syncSaleMultiFilterLabel(kind, 'type');
+  if (kind === 'vente') renderVentes(); else renderDepenses();
+}
+
 // Remplit le <select> acheteur/vendeur avec les personnes réellement liées
 // aux ventes/dépenses actuellement affichées (avant filtre statut/extension).
 function _populatePersonFilter(selectId, items, currentValue) {
@@ -602,10 +702,18 @@ function renderVentes() {
   if (_venteExtFilter !== 'all') items = items.filter(v => v.set_name === _venteExtFilter);
   _populatePersonFilter('ventes-acheteur-filter', items, _ventePersonFilter);
   if (_ventePersonFilter !== 'all') items = items.filter(v => _personNameFor(v) === _ventePersonFilter);
+  if (_venteEtatFilter.size) items = items.filter(v => _venteEtatFilter.has(v.etat));
+  if (_venteTypeFilter.size) items = items.filter(v => (v.types||[]).some(t => _venteTypeFilter.has(t)));
+  if (_venteDateFrom) { const ts = new Date(_venteDateFrom+'T00:00:00').getTime(); items = items.filter(v => (v.created_at||0) >= ts); }
+  if (_venteDateTo)   { const ts = new Date(_venteDateTo+'T23:59:59.999').getTime(); items = items.filter(v => (v.created_at||0) <= ts); }
+  if (_ventePrixMin !== '') { const n = parseFloat(_ventePrixMin); if (!isNaN(n)) items = items.filter(v => _lineTotal(v) >= n); }
+  if (_ventePrixMax !== '') { const n = parseFloat(_ventePrixMax); if (!isNaN(n)) items = items.filter(v => _lineTotal(v) <= n); }
   items = _applySaleSort(items, _venteSort);
 
+  const anyFilterActive = _venteQuery || _venteFilter!=='all' || _venteExtFilter!=='all' || _ventePersonFilter!=='all' ||
+    _venteEtatFilter.size || _venteTypeFilter.size || _venteDateFrom || _venteDateTo || _ventePrixMin!=='' || _ventePrixMax!=='';
   if (!items.length) {
-    grid.innerHTML = `<div class="sales-empty">Aucune vente${(_venteQuery||_venteFilter!=='all'||_venteExtFilter!=='all'||_ventePersonFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+    grid.innerHTML = `<div class="sales-empty">Aucune vente${anyFilterActive ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
   } else {
     const builder = mode === 'list' ? buildVenteRow : mode === 'compact' ? buildVenteCompact : buildVenteCard;
     items.forEach(v => grid.appendChild(builder(v)));
@@ -691,21 +799,39 @@ var _saleSpriteResolveCache = {};
 //  • pokemon_key (slug PokeAPI, rempli automatiquement depuis ce correctif) →
 //    résolution directe et fiable dans _pkdx.all.
 //  • sinon (ventes/achats créés avant ce champ) → repli par correspondance
-//    sur pokemon_name (nom FR affiché) dans _pkdx.all.
-// Renvoie `undefined` tant que _pkdx.all n'est pas encore chargé (le Pokédex
-// n'a jamais été ouvert dans cette session) — à charger avant de retenter.
-// Renvoie `null` si aucune correspondance n'a été trouvée (pas de sprite).
+//    sur le nom de la carte ET le nom du Pokémon enregistré, en gardant la
+//    correspondance la PLUS LONGUE parmi toutes les espèces/formes connues.
+//    Nécessaire car pokemon_name, sur les anciens enregistrements, est
+//    souvent l'espèce générique (ex. "Deoxys") même quand la carte réelle
+//    est une forme précise (ex. "Deoxys Vitesse") — sans ce repli, la
+//    correspondance exacte sur "Deoxys" retombait sur la forme de base au
+//    lieu de la forme réellement représentée sur la carte.
+// Renvoie `undefined` tant que _pkdx.all (bases ET formes) n'est pas encore
+// chargé (le Pokédex n'a jamais été ouvert dans cette session) — à charger
+// avant de retenter. Renvoie `null` si aucune correspondance n'a été trouvée
+// (pas de sprite).
 function _saleResolvePokemon(item) {
-  const cacheKey = item.pokemon_key ? ('key:' + item.pokemon_key) : (item.pokemon_name ? ('name:' + item.pokemon_name) : null);
+  const cacheKey = item.pokemon_key ? ('key:' + item.pokemon_key)
+    : ((item.card_name || item.pokemon_name) ? ('name:' + (item.card_name||'') + '|' + (item.pokemon_name||'')) : null);
   if (!cacheKey) return null;
   if (_saleSpriteResolveCache[cacheKey] !== undefined) return _saleSpriteResolveCache[cacheKey];
-  if (!_pkdx.initialized || !_pkdx.all.length) return undefined;
+  // formsLoaded (pas juste _pkdx.initialized) : tant que les formes ne sont
+  // pas fusionnées dans _pkdx.all, toute forme (Deoxys Vitesse, Ogerpon…)
+  // est invisible à la recherche ci-dessous et ne peut que se résoudre —
+  // à tort — sur l'espèce de base.
+  if (!_pkdx.initialized || !_pkdx.formsLoaded || !_pkdx.all.length) return undefined;
 
   let entry = null;
   if (item.pokemon_key) entry = _pkdx.all.find(p => p.name === item.pokemon_key);
-  if (!entry && item.pokemon_name) {
-    const target = _normalizeStr(item.pokemon_name);
-    entry = _pkdx.all.find(p => _normalizeStr(p.frName || '') === target);
+  if (!entry) {
+    const haystack = _normalizeStr(`${item.card_name||''} ${item.pokemon_name||''}`);
+    if (haystack) {
+      let bestLen = 0;
+      for (const p of _pkdx.all) {
+        const fr = _normalizeStr(p.frName || '');
+        if (fr && haystack.includes(fr) && fr.length > bestLen) { entry = p; bestLen = fr.length; }
+      }
+    }
   }
   const resolved = entry ? { dexId: entry.isForm ? entry.baseId : entry.id, isForm: !!entry.isForm, formPokemonName: entry.name } : null;
   _saleSpriteResolveCache[cacheKey] = resolved;
@@ -721,7 +847,7 @@ async function _hydrateSaleSprite(item) {
   if (!el) return;
   let resolved = _saleResolvePokemon(item);
   if (resolved === undefined) {
-    if (!_pkdx.initialized) { try { await initPokedex(); } catch(_) {} }
+    if (!_pkdx.initialized || !_pkdx.formsLoaded) { try { await initPokedex(); } catch(_) {} }
     resolved = _saleResolvePokemon(item);
   }
   if (!resolved) { el.remove(); return; }
@@ -1241,10 +1367,18 @@ function renderDepenses() {
   if (_depenseExtFilter !== 'all') items = items.filter(d => d.set_name === _depenseExtFilter);
   _populatePersonFilter('depenses-vendeur-filter', items, _depensePersonFilter);
   if (_depensePersonFilter !== 'all') items = items.filter(d => _personNameFor(d) === _depensePersonFilter);
+  if (_depenseEtatFilter.size) items = items.filter(d => _depenseEtatFilter.has(d.etat));
+  if (_depenseTypeFilter.size) items = items.filter(d => (d.types||[]).some(t => _depenseTypeFilter.has(t)));
+  if (_depenseDateFrom) { const ts = new Date(_depenseDateFrom+'T00:00:00').getTime(); items = items.filter(d => (d.created_at||0) >= ts); }
+  if (_depenseDateTo)   { const ts = new Date(_depenseDateTo+'T23:59:59.999').getTime(); items = items.filter(d => (d.created_at||0) <= ts); }
+  if (_depensePrixMin !== '') { const n = parseFloat(_depensePrixMin); if (!isNaN(n)) items = items.filter(d => _lineTotal(d) >= n); }
+  if (_depensePrixMax !== '') { const n = parseFloat(_depensePrixMax); if (!isNaN(n)) items = items.filter(d => _lineTotal(d) <= n); }
   items = _applySaleSort(items, _depenseSort);
 
+  const anyFilterActive = _depenseQuery || _depenseFilter!=='all' || _depenseExtFilter!=='all' || _depensePersonFilter!=='all' ||
+    _depenseEtatFilter.size || _depenseTypeFilter.size || _depenseDateFrom || _depenseDateTo || _depensePrixMin!=='' || _depensePrixMax!=='';
   if (!items.length) {
-    grid.innerHTML = `<div class="sales-empty">Aucun achat${(_depenseQuery||_depenseFilter!=='all'||_depenseExtFilter!=='all'||_depensePersonFilter!=='all') ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
+    grid.innerHTML = `<div class="sales-empty">Aucun achat${anyFilterActive ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
   } else {
     const builder = mode === 'list' ? buildDepenseRow : mode === 'compact' ? buildDepenseCompact : buildDepenseCard;
     items.forEach(d => grid.appendChild(builder(d)));
