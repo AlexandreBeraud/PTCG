@@ -315,7 +315,7 @@ function _syncEditionViewToggle(tab) {
 // Dépenses) ne peut jamais retrouver, quoi que l'utilisateur tape — le même
 // mécanisme d'ancrage (nom entier, ou suivi d'un espace/tiret) que la
 // recherche elle-même est reproduit ici pour que le diagnostic soit fiable.
-var _orphanCards = { rows: [], query: '', categoryFilter: 'all', initialized: false, loading: false, knownSet: null };
+var _orphanCards = { rows: [], query: '', categoryFilter: 'all', initialized: false, loading: false, knownSet: null, checkedIds: null };
 
 function _canonPokeName(s) {
   return _normalizeStr(s).replace(/-+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -446,10 +446,78 @@ async function initOrphanCardsView() {
     });
     _orphanCards.initialized = true;
     renderOrphanCardsList();
+    _orphanAutoDetectCategories(_orphanCards.rows); // en tâche de fond, ne bloque pas l'affichage
   } catch(e) {
     el.innerHTML = `<p style="color:var(--accent2);font-size:.82rem;padding:16px">Erreur : ${e.message}</p>`;
   }
   _orphanCards.loading = false;
+}
+
+// Mappe category/trainerType/energyType (TCGdex) vers une catégorie
+// Personnages/Objets/Lieux/Énergies de l'appli — Supporter → personnage,
+// Objet → objet, Stade → lieu, Énergie spéciale → énergie. Les autres
+// (Dresseur Pokémon/Outil, ACE SPEC, Énergie de base…) ne sont pas mappés.
+function _tcgdexCategoryToPkoKind(category, trainerType, energyType) {
+  const cat = _normalizeStr(category || '');
+  if (cat === 'trainer' || cat === 'dresseur') {
+    const tt = _normalizeStr(trainerType || '');
+    if (tt.includes('support')) return 'personnage';
+    if (tt.includes('stad')) return 'lieu';
+    if (tt.includes('objet') || tt.includes('item')) return 'objet';
+    return null;
+  }
+  if (cat === 'energy' || cat === 'energie' || cat === 'énergie') {
+    const et = _normalizeStr(energyType || '');
+    if (et.includes('special') || et.includes('spéciale')) return 'energie';
+  }
+  return null;
+}
+
+// Détection automatique de catégorie pour les cartes Dresseur/Énergie
+// spéciale (Supporter/Objet/Stade/Énergie spéciale) — ce type de carte ne
+// matche JAMAIS un nom de Pokémon ni de fiche Personnage/Objet/Lieu/Énergie
+// par son simple NOM (ex. "Juge" ne contient aucun mot lié à une fiche
+// existante), elles restent donc éternellement orphelines sans un coup de
+// pouce. Le TYPE affiché en haut de la carte donne un signal fiable pour au
+// moins les CATÉGORISER — pas les relier à une fiche précise (il faudra
+// toujours créer/renommer pour ça), juste les ranger au bon endroit pour
+// que les filtres État/Type de la liste servent à quelque chose sur elles.
+// Ne modifie jamais une catégorie déjà forcée manuellement (par toi ou un
+// passage précédent) ; ne retente jamais une carte déjà vérifiée cette
+// session, matchée ou non (_orphanCards.checkedIds), pour ne pas re-taper
+// TCGdex à chaque "Réanalyser". Lots limités à 5 requêtes en parallèle.
+async function _orphanAutoDetectCategories(rows) {
+  if (!_orphanCards.checkedIds) _orphanCards.checkedIds = new Set();
+  const targets = rows.filter(c => !_cardCategoryOverride(c.id) && !_orphanCards.checkedIds.has(String(c.id)));
+  if (!targets.length) return;
+  const CONCURRENCY = 5;
+  let anyChanged = false;
+  for (let i = 0; i < targets.length; i += CONCURRENCY) {
+    const batch = targets.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(async c => {
+      _orphanCards.checkedIds.add(String(c.id));
+      try {
+        const res = await _fetchTimeout(`https://api.tcgdex.net/v2/fr/cards/${encodeURIComponent(c.id)}`, {}, 10000);
+        if (!res.ok) return;
+        const card = await res.json();
+        const kind = _tcgdexCategoryToPkoKind(card.category, card.trainerType, card.energyType);
+        if (kind) {
+          if (!_D.card_category_overrides) _D.card_category_overrides = {};
+          _D.card_category_overrides[String(c.id)] = kind;
+          anyChanged = true;
+        }
+      } catch(_) { /* délai dépassé ou carte introuvable côté TCGdex : reste "Sans catégorie" */ }
+    }));
+    // Reflet progressif pendant le traitement des lots suivants — appelle
+    // directement renderOrphanCardsList (pas refreshOrphanCardsList, qui
+    // relancerait un rechargement complet du catalogue pour chaque lot).
+    if (anyChanged && _editionTab === 'orphans') renderOrphanCardsList();
+  }
+  if (anyChanged) {
+    saveData();
+    PKO_KINDS.forEach(k => { if (_pko.initialized[k]) _pkoRebuildEntries(k); });
+    if (_editionTab === 'orphans') renderOrphanCardsList();
+  }
 }
 
 function refreshOrphanCardsList() {
