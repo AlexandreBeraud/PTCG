@@ -881,7 +881,12 @@ async function _hydrateSaleSprite(item) {
     resolved = _saleResolveSpriteEntity(item);
   }
   if (resolved === undefined) { return; } // toujours pas prêt : on laisse le placeholder vide plutôt que de conclure "pas de sprite"
-  if (!resolved) { el.remove(); return; }
+  // Pas de correspondance trouvée : on laisse le placeholder VIDE (déjà de
+  // taille fixe via CSS) plutôt que de le retirer du DOM — sinon la colonne
+  // qu'il occupe disparaît et décale tout ce qui suit sur la ligne (visible
+  // en mode liste : les lignes sans sprite trouvé n'étaient plus alignées
+  // avec celles qui en ont un).
+  if (!resolved) { return; }
   try {
     let spriteHtml = '';
     if (resolved.type === 'pokemon') {
@@ -892,21 +897,33 @@ async function _hydrateSaleSprite(item) {
         alt: item.pokemon_name || '',
       });
     } else if (resolved.type === 'pko' && resolved.image) {
-      spriteHtml = `<img src="${_escHtml(resolved.image)}" alt="${_escHtml(resolved.displayName||'')}" loading="lazy" onerror="this.style.display='none'">`;
+      spriteHtml = `<img src="${_escHtml(resolved.image)}" alt="${_escHtml(resolved.displayName||'')}" loading="lazy" onerror="_spriteOnError(this,'')">`;
     }
     // L'élément peut avoir disparu entre-temps (re-rendu déclenché pendant
     // le chargement, ex. changement de filtre) — on revérifie avant d'écrire.
     const stillThere = document.getElementById(`sale-sprite-${item.id}`);
     if (!stillThere) return;
-    if (spriteHtml) stillThere.innerHTML = spriteHtml; else stillThere.remove();
-  } catch(_) { el.remove(); }
+    // Idem : on ne retire jamais le placeholder, juste son contenu — voir le
+    // commentaire plus haut sur le décalage de colonnes.
+    stillThere.innerHTML = spriteHtml || '';
+  } catch(_) { /* placeholder laissé vide, pas retiré — voir plus haut */ }
 }
 
 // Hydrate tous les placeholders actuellement affichés (grille ou liste) —
 // appelé après le rendu synchrone de renderVentes()/renderDepenses(), en
-// tâche de fond (jamais attendu par le rendu lui-même).
-function _hydrateAllSaleSprites(items) {
-  items.forEach(item => { if (document.getElementById(`sale-sprite-${item.id}`)) _hydrateSaleSprite(item); });
+// tâche de fond (jamais attendu par le rendu lui-même). Par PETITS LOTS
+// (au lieu de tout lancer d'un coup) : sur une liste sans pagination, une
+// vue avec beaucoup de lignes peut demander des centaines de sprites au NAS
+// quasi simultanément — le Pi (ressources limitées) en perd la moitié en
+// route. Un lot limité laisse chaque image le temps de charger avant
+// d'attaquer les suivantes.
+async function _hydrateAllSaleSprites(items) {
+  const targets = items.filter(item => document.getElementById(`sale-sprite-${item.id}`));
+  const CONCURRENCY = 5;
+  for (let i = 0; i < targets.length; i += CONCURRENCY) {
+    const batch = targets.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(item => _hydrateSaleSprite(item)));
+  }
 }
 
 // Élément cosmétique : effet holographique au survol pour les ventes/achats

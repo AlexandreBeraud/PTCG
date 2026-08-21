@@ -57,10 +57,35 @@ async function _pokeFormIndexFor(baseId, formPokemonName) {
   } catch(_) { return null; }
 }
 
+// Petit système de "nouvel essai" générique pour les <img> chargées depuis
+// le NAS (sprites Pokémon "Home" ET Personnages/Objets/Lieux/Énergies) : en
+// cas d'échec, on retente une fois après un court délai (avec un paramètre
+// anti-cache) avant d'abandonner. Le NAS tourne sur un Raspberry Pi aux
+// ressources limitées et peut ponctuellement traîner ou échouer quand
+// beaucoup d'images sont demandées d'un coup (ex. en arrivant sur une longue
+// liste de ventes) — un simple nouvel essai un peu plus tard suffit la
+// plupart du temps, plutôt que de basculer/abandonner immédiatement.
+// fallbackSrc : URL de repli (Official Art) après le 2e échec — vide pour
+// simplement retirer l'image (cas Personnages/Objets/Lieux/Énergies, sans
+// repli possible).
+function _spriteOnError(img, fallbackSrc) {
+  const tries = parseInt(img.dataset.spriteTries || '0', 10);
+  if (tries < 1) {
+    img.dataset.spriteTries = '1';
+    const base = img.src.split('&_r=')[0].split('?_r=')[0];
+    const sep  = base.includes('?') ? '&' : '?';
+    setTimeout(() => { img.src = `${base}${sep}_r=${Date.now()}`; }, 900 + Math.random() * 700);
+    return;
+  }
+  if (fallbackSrc) { img.onerror = null; img.src = fallbackSrc; }
+  else { img.remove(); } // le conteneur (taille fixe) reste — voir _hydrateSaleSprite
+}
+
 // Construit le tag <img> d'un sprite Pokémon en respectant le réglage
 // Official Art / Home. En mode Home, si le fichier n'existe pas sur le NAS
-// (404), bascule automatiquement sur l'Official Art via onerror — jamais de
-// sprite cassé affiché silencieusement.
+// (404) ou échoue à charger, un nouvel essai est tenté puis, en dernier
+// recours, bascule sur l'Official Art via onerror — jamais de sprite cassé
+// affiché silencieusement.
 // opts: { dexId, formIndex, officialUrl (brut PokeAPI, non transformé),
 //         cssClass, style, alt }
 function _pokeSpriteHtml(opts) {
@@ -71,10 +96,8 @@ function _pokeSpriteHtml(opts) {
   if (_spriteSourceMode() === 'home') {
     const nasUrl = _nasSpriteUrl(opts.dexId, opts.formIndex);
     if (nasUrl) {
-      const fallback = official
-        ? ` onerror="this.onerror=null;this.src='${official}'"`
-        : ` onerror="this.style.display='none'"`;
-      return `<img src="${nasUrl}" alt="${alt}" loading="lazy"${cls}${style}${fallback}>`;
+      const fallbackArg = official ? official.replace(/'/g, "\\'") : '';
+      return `<img src="${nasUrl}" alt="${alt}" loading="lazy"${cls}${style} onerror="_spriteOnError(this,'${fallbackArg}')">`;
     }
   }
   return official ? `<img src="${official}" alt="${alt}" loading="lazy"${cls}${style} onerror="this.style.display='none'">` : '';
@@ -94,6 +117,30 @@ async function _pokeSpriteFor(opts) {
     dexId: opts.id, formIndex, officialUrl: opts.officialUrl,
     cssClass: opts.cssClass, style: opts.style, alt: opts.alt,
   });
+}
+
+// Sprite Personnage/Objet/Lieu/Énergie — TOUJOURS le NAS (voir
+// window.__PC_NAS_SPRITES__.pkoBase/pkoFolders dans config.js), quel que
+// soit le réglage Official Art/Home : ces catégories n'ont pas d'équivalent
+// PokeAPI, donc pas de source alternative possible. Si le fichier n'existe
+// pas sur le NAS (404), l'élément est simplement retiré (onerror) plutôt que
+// de laisser une image cassée — pas de "sprite de repli" ici, contrairement
+// aux Pokémon.
+// kind: 'personnage' | 'objet' | 'lieu' | 'energie' — name: nom affiché de
+// l'entrée (correspond au nom de fichier attendu sur le NAS).
+function _pkoSpriteUrl(kind, name) {
+  const cfg = window.__PC_NAS_SPRITES__;
+  const folder = cfg && cfg.pkoFolders && cfg.pkoFolders[kind];
+  if (!cfg || !cfg.pkoBase || !folder || !name) return null;
+  return `${cfg.pkoBase}/${folder}/${encodeURIComponent(name)}.png?inline=true&key=${cfg.key}`;
+}
+function _pkoSpriteHtml(kind, name, cssClass, style, alt) {
+  const url = _pkoSpriteUrl(kind, name);
+  if (!url) return '';
+  const cls   = cssClass ? ` class="${cssClass}"` : '';
+  const sty   = style ? ` style="${style}"` : '';
+  const altT  = _escHtml(alt || name || '');
+  return `<img src="${url}" alt="${altT}" loading="lazy"${cls}${sty} onerror="this.remove()">`;
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -174,7 +221,7 @@ async function _fetchAbilityFr(abilityUrl) {
 // tout ça pour toutes les sessions suivant la première, dans la limite de
 // PKDX_CACHE_TTL_MS — passé ce délai (ou si le cache est absent/corrompu),
 // on retombe simplement sur le chargement réseau complet habituel.
-var PKDX_CACHE_KEY    = 'ptcg_pkdx_cache_v1';
+var PKDX_CACHE_KEY    = 'ptcg_pkdx_cache_v2'; // v2 : _buildFormFrName corrigé (formes type Deoxys Vitesse)
 var PKDX_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 function _pkdxLoadCache() {
   try {
@@ -221,12 +268,12 @@ async function initPokedex() {
     // de la recherche (ex. Pokémon les plus récents introuvables).
     let speciesCount = 1025;
     try {
-      const countRes  = await fetch(`${POKEAPI}/pokemon-species?limit=1`);
+      const countRes  = await _fetchTimeout(`${POKEAPI}/pokemon-species?limit=1`);
       const countData = await countRes.json();
       if (countData.count) speciesCount = countData.count;
-    } catch(_) { /* on retombe sur 1025 si l'appel échoue */ }
+    } catch(_) { /* on retombe sur 1025 si l'appel échoue (ou dépasse le délai) */ }
 
-    const res  = await fetch(`${POKEAPI}/pokemon?limit=${speciesCount}&offset=0`);
+    const res  = await _fetchTimeout(`${POKEAPI}/pokemon?limit=${speciesCount}&offset=0`);
     const data = await res.json();
 
     _pkdx.all = data.results.map(p => {
@@ -282,7 +329,7 @@ async function _bulkLoadFrNames() {
         pokemon_v2_pokemonspeciesnames(where: {language_id: {_eq: 5}}) { name }
       }
     }`;
-    const res = await fetch('https://beta.pokeapi.co/graphql/v1beta2', {
+    const res = await _fetchTimeout('https://beta.pokeapi.co/graphql/v1beta2', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query }),
@@ -648,7 +695,7 @@ async function _loadFormsList() {
     // Fetch ALL Pokémon entries (base + forms) from PokéAPI
     // Must use limit=20000 — form pokemon have IDs like 10001, 10168 etc.
     // limit=2000 only gets IDs 1-2000 and misses most alternate forms
-    const res  = await fetch(`${POKEAPI}/pokemon?limit=20000&offset=0`);
+    const res  = await _fetchTimeout(`${POKEAPI}/pokemon?limit=20000&offset=0`);
     const data = await res.json();
 
     // Base Pokémon already loaded (PokéAPI English names)
@@ -853,7 +900,19 @@ function _buildFormFrName(baseFr, formType, pokeName) {
       if (en.includes('-mega-y')) return 'Méga-' + baseFr + ' Y';
       if (en.includes('-mega-z')) return 'Méga-' + baseFr + ' Z';
       return 'Méga-' + baseFr;
-    default: return baseFr;
+    default:
+      // BUG corrigé : tout formType SANS grammaire spéciale ci-dessus
+      // (Deoxys Vitesse/Attaque/Défense, les Rotom, Kyurem Noir/Blanc… — la
+      // grande majorité des types déclarés dans _detectFormType) retombait
+      // ici sur le nom de l'espèce de BASE tel quel, sans le moindre
+      // suffixe : la forme devenait donc indiscernable de sa base pour
+      // toute recherche par nom (sprite Ventes/Achats, matching de carte…).
+      // On utilise maintenant le libellé FR déjà configuré pour ce label
+      // (Édition › Labels, getFormLabelConfig) comme suffixe — seule
+      // source de vérité pour ces libellés, au lieu de les redupliquer ici.
+      var cfg   = getFormLabelConfig(formType);
+      var label = cfg && cfg.fr && cfg.fr !== formType ? cfg.fr : null;
+      return label ? (baseFr + ' ' + label) : baseFr;
   }
 }
 

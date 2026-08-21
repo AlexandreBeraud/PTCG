@@ -145,19 +145,21 @@ async function _pkoFetchAllLocalCards(forceRefresh) {
     const requestedSize = 2000;
     const baseUrl = `${SB_URL}/rest/v1/cards?select=id,name&order=name.asc`;
     const fetchPage = async (offset, size) => {
-      const res = await fetch(baseUrl, {
-        headers: {
-          apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
-          'Range-Unit': 'items', 'Range': `${offset}-${offset + size - 1}`,
-          'Prefer': 'count=exact',
-        },
-      });
-      if (!res.ok) return { rows: [], total: null };
-      const rows = await res.json();
-      let total = null;
-      const cr = res.headers.get('Content-Range'); // format "0-1999/12345"
-      if (cr) { const m = cr.match(/\/(\d+)$/); if (m) total = parseInt(m[1], 10); }
-      return { rows, total };
+      try {
+        const res = await _fetchTimeout(baseUrl, {
+          headers: {
+            apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+            'Range-Unit': 'items', 'Range': `${offset}-${offset + size - 1}`,
+            'Prefer': 'count=exact',
+          },
+        });
+        if (!res.ok) return { rows: [], total: null };
+        const rows = await res.json();
+        let total = null;
+        const cr = res.headers.get('Content-Range'); // format "0-1999/12345"
+        if (cr) { const m = cr.match(/\/(\d+)$/); if (m) total = parseInt(m[1], 10); }
+        return { rows, total };
+      } catch(_) { return { rows: [], total: null }; } // délai dépassé ou coupure réseau : cette page reste vide plutôt que de bloquer tout le catalogue
     };
 
     const first = await fetchPage(0, requestedSize);

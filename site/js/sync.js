@@ -64,6 +64,25 @@ function _sbHeaders(extra) {
   return h;
 }
 
+// Timeout générique pour les fetch() critiques du démarrage — sans ça, une
+// requête qui ne répond JAMAIS (Wi-Fi/4G qui bloque le VPN Tailscale, Pi en
+// veille, coupure réseau en cours de route…) laisse le await correspondant
+// bloqué pour toujours, ce qui fige l'écran de chargement indéfiniment sans
+// aucun message d'erreur — exactement le symptôme observé sur mobile
+// ("arrive à 100% comme s'il n'y avait aucun accès"). Passé le délai, la
+// requête est annulée et rejette avec une erreur claire à la place.
+function _fetchTimeout(url, options, timeoutMs) {
+  var ctrl = new AbortController();
+  var ms   = timeoutMs || 15000;
+  var t    = setTimeout(function () { ctrl.abort(); }, ms);
+  return fetch(url, Object.assign({}, options || {}, { signal: ctrl.signal }))
+    .catch(function (e) {
+      if (e && e.name === 'AbortError') throw new Error('délai dépassé (' + Math.round(ms / 1000) + 's)');
+      throw e;
+    })
+    .finally(function () { clearTimeout(t); });
+}
+
 // ── Log de statut dans l'écran de chargement (debug temps réel) ───────────
 // Chaque étape de la récupération cloud initiale (connexion, puis une ligne
 // par table) vient y ajouter/mettre à jour une ligne, pour voir en direct —
@@ -481,7 +500,7 @@ var _SYNC_DOMAINS = [
           ven_user_id: _cloudUserId(), ven_id: v.id, ven_card_id: v.card_id || '', ven_card_name: v.card_name || '',
           ven_card_image: v.card_image || '', ven_set_id: v.set_id || '', ven_set_name: v.set_name || '', ven_set_logo: v.set_logo || '',
           ven_ext_sigle: v.ext_sigle || '', ven_crop: v.crop || 'center', ven_number: v.number || '', ven_rarity: v.rarity || '',
-          ven_pokemon_name: v.pokemon_name || '', ven_pokemon_key: v.pokemon_key || '', ven_etat: v.etat || 'Near Mint', ven_prix: v.prix || 0, ven_qty: v.qty || 1,
+          ven_pokemon_name: v.pokemon_name || '', ven_pokemon_key: v.pokemon_key || '', ven_pko_key: v.pko_key || '', ven_etat: v.etat || 'Near Mint', ven_prix: v.prix || 0, ven_qty: v.qty || 1,
           ven_types: v.types || [], ven_langue: v.langue || 'Français', ven_statut: v.statut || 'a_mettre',
           ven_commande_id: v.commande_id || null, ven_cardmarket_url: v.cardmarket_url || '',
           ven_created_at: new Date(v.created_at || Date.now()).toISOString(), ven_updated_at: _isoNow(),
@@ -494,7 +513,7 @@ var _SYNC_DOMAINS = [
           id: r.ven_id, card_id: r.ven_card_id || '', card_name: r.ven_card_name || '', card_image: r.ven_card_image || '',
           set_id: r.ven_set_id || '', set_name: r.ven_set_name || '', set_logo: r.ven_set_logo || '', ext_sigle: r.ven_ext_sigle || '',
           crop: r.ven_crop || 'center', number: r.ven_number || '', rarity: r.ven_rarity || '', pokemon_name: r.ven_pokemon_name || '',
-          pokemon_key: r.ven_pokemon_key || '',
+          pokemon_key: r.ven_pokemon_key || '', pko_key: r.ven_pko_key || '',
           etat: r.ven_etat || 'Near Mint', prix: r.ven_prix || 0, qty: r.ven_qty || 1, types: r.ven_types || [], langue: r.ven_langue || 'Français',
           statut: r.ven_statut || 'a_mettre', commande_id: r.ven_commande_id || null, cardmarket_url: r.ven_cardmarket_url || '',
           created_at: r.ven_created_at ? new Date(r.ven_created_at).getTime() : Date.now(),
@@ -512,7 +531,7 @@ var _SYNC_DOMAINS = [
           dep_user_id: _cloudUserId(), dep_id: d.id, dep_card_id: d.card_id || '', dep_card_name: d.card_name || '',
           dep_card_image: d.card_image || '', dep_set_id: d.set_id || '', dep_set_name: d.set_name || '', dep_set_logo: d.set_logo || '',
           dep_ext_sigle: d.ext_sigle || '', dep_crop: d.crop || 'center', dep_number: d.number || '', dep_rarity: d.rarity || '',
-          dep_pokemon_name: d.pokemon_name || '', dep_pokemon_key: d.pokemon_key || '', dep_etat: d.etat || 'Near Mint', dep_prix: d.prix || 0, dep_qty: d.qty || 1,
+          dep_pokemon_name: d.pokemon_name || '', dep_pokemon_key: d.pokemon_key || '', dep_pko_key: d.pko_key || '', dep_etat: d.etat || 'Near Mint', dep_prix: d.prix || 0, dep_qty: d.qty || 1,
           dep_types: d.types || [], dep_langue: d.langue || 'Français', dep_commande_id: d.commande_id || null,
           dep_cardmarket_url: d.cardmarket_url || '',
           dep_created_at: new Date(d.created_at || Date.now()).toISOString(), dep_updated_at: _isoNow(),
@@ -525,7 +544,7 @@ var _SYNC_DOMAINS = [
           id: r.dep_id, card_id: r.dep_card_id || '', card_name: r.dep_card_name || '', card_image: r.dep_card_image || '',
           set_id: r.dep_set_id || '', set_name: r.dep_set_name || '', set_logo: r.dep_set_logo || '', ext_sigle: r.dep_ext_sigle || '',
           crop: r.dep_crop || 'center', number: r.dep_number || '', rarity: r.dep_rarity || '', pokemon_name: r.dep_pokemon_name || '',
-          pokemon_key: r.dep_pokemon_key || '',
+          pokemon_key: r.dep_pokemon_key || '', pko_key: r.dep_pko_key || '',
           etat: r.dep_etat || 'Near Mint', prix: r.dep_prix || 0, qty: r.dep_qty || 1, types: r.dep_types || [], langue: r.dep_langue || 'Français',
           commande_id: r.dep_commande_id || null, cardmarket_url: r.dep_cardmarket_url || '',
           created_at: r.dep_created_at ? new Date(r.dep_created_at).getTime() : Date.now(),
@@ -972,7 +991,7 @@ async function _cloudPullAll(force) {
   _loadingTitle('Connexion à Supabase…');
   _loadingLog('_conn', '⏳', 'Connexion à Supabase', '', undefined);
   try {
-    var res = await fetch(SB_URL + '/rest/v1/settings?set_user_id=eq.' + encodeURIComponent(_cloudUserId()), { headers: _sbHeaders() });
+    var res = await _fetchTimeout(SB_URL + '/rest/v1/settings?set_user_id=eq.' + encodeURIComponent(_cloudUserId()), { headers: _sbHeaders() });
     if (!res.ok) {
       _loadingTitle('Erreur de connexion');
       _loadingLog('_conn', '✗', 'Connexion à Supabase', 'HTTP ' + res.status, 'err');
@@ -1015,7 +1034,7 @@ async function _cloudPullAll(force) {
     var fetched = await Promise.all(_SYNC_DOMAINS.map(async function (d) {
       var url = SB_URL + '/rest/v1/' + d.table + '?' + d.userCol + '=eq.' + encodeURIComponent(_cloudUserId()) + (d.orderBy ? '&order=' + d.orderBy : '');
       try {
-        var r = await fetch(url, { headers: _sbHeaders() });
+        var r = await _fetchTimeout(url, { headers: _sbHeaders() });
         if (!r.ok) {
           _loadingLog(d.table, '✗', d.table, 'HTTP ' + r.status, 'err');
           _loadingProgressTick();
