@@ -315,7 +315,7 @@ function _syncEditionViewToggle(tab) {
 // Dépenses) ne peut jamais retrouver, quoi que l'utilisateur tape — le même
 // mécanisme d'ancrage (nom entier, ou suivi d'un espace/tiret) que la
 // recherche elle-même est reproduit ici pour que le diagnostic soit fiable.
-var _orphanCards = { rows: [], query: '', initialized: false, loading: false, knownSet: null };
+var _orphanCards = { rows: [], query: '', categoryFilter: 'all', initialized: false, loading: false, knownSet: null };
 
 function _canonPokeName(s) {
   return _normalizeStr(s).replace(/-+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -462,6 +462,20 @@ function filterOrphanCardsList(q) {
   renderOrphanCardsList();
 }
 
+// Filtre la liste par catégorie FORCÉE (voir _cardCategoryOverride,
+// perso-objets.js) — 'none' = aucune catégorie forcée, 'all' = tout affiché.
+// Une carte peut rester orpheline même après avoir reçu une catégorie
+// forcée si aucune fiche de cette catégorie ne matche encore son nom (voir
+// initOrphanCardsView) : ce filtre sert surtout à repérer d'un coup d'œil,
+// par exemple, toutes les cartes déjà taguées "Personnage" qui attendent
+// encore la création de leur fiche.
+function setOrphanCategoryFilter(cat, btn) {
+  _orphanCards.categoryFilter = cat;
+  document.querySelectorAll('#orphans-category-filter-bar .booster-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderOrphanCardsList();
+}
+
 // Même affichage qu'une fiche Pokédex (_renderTcgCardGroupsHtml, dans
 // pokedex.js) : une extension par ligne, triées par bloc puis extension,
 // cartes triées par numéro à l'intérieur (_groupCardsByExtension gère les
@@ -472,6 +486,12 @@ function renderOrphanCardsList() {
   const el = document.getElementById('orphan-cards-list'); if (!el) return;
   const counter = document.getElementById('orphans-counter');
   let rows = _orphanCards.rows;
+  if (_orphanCards.categoryFilter && _orphanCards.categoryFilter !== 'all' && typeof _cardCategoryOverride === 'function') {
+    rows = rows.filter(c => {
+      const forced = _cardCategoryOverride(c.id) || '';
+      return _orphanCards.categoryFilter === 'none' ? !forced : forced === _orphanCards.categoryFilter;
+    });
+  }
   if (_orphanCards.query) {
     const q = _normalizeStr(_orphanCards.query);
     rows = rows.filter(c => _normalizeStr(c.name||'').includes(q));

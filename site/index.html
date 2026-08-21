@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=21">
-<link rel="stylesheet" href="css/collection.css?v=21">
-<link rel="stylesheet" href="css/pokedex.css?v=21">
-<link rel="stylesheet" href="css/ventes-achats.css?v=21">
+<link rel="stylesheet" href="css/base.css?v=22">
+<link rel="stylesheet" href="css/collection.css?v=22">
+<link rel="stylesheet" href="css/pokedex.css?v=22">
+<link rel="stylesheet" href="css/ventes-achats.css?v=22">
 </head>
 <body>
 
@@ -733,6 +733,15 @@
           </div>
           <button class="btn btn-secondary btn-sm" onclick="refreshOrphanCardsList()">↻ Réanalyser</button>
           <span id="orphans-counter" style="font-size:.78rem;color:var(--text2)"></span>
+        </div>
+        <div class="booster-filter-bar" id="orphans-category-filter-bar" style="margin-top:10px">
+          <button class="booster-filter-btn active" onclick="setOrphanCategoryFilter('all', this)">Toutes</button>
+          <button class="booster-filter-btn" onclick="setOrphanCategoryFilter('none', this)">Sans catégorie</button>
+          <button class="booster-filter-btn" onclick="setOrphanCategoryFilter('pokemon', this)">Pokémon</button>
+          <button class="booster-filter-btn" onclick="setOrphanCategoryFilter('personnage', this)">Personnages</button>
+          <button class="booster-filter-btn" onclick="setOrphanCategoryFilter('objet', this)">Objets</button>
+          <button class="booster-filter-btn" onclick="setOrphanCategoryFilter('lieu', this)">Lieux</button>
+          <button class="booster-filter-btn" onclick="setOrphanCategoryFilter('energie', this)">Énergies</button>
         </div>
         <div id="orphan-cards-list" class="pkdx-tcg-groups"></div>
       </div>
@@ -1601,9 +1610,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=21"></script>
-<script src="data.js?v=21"></script>
-<script src="js/sync.js?v=21"></script>
+<script src="config.js?v=22"></script>
+<script src="data.js?v=22"></script>
+<script src="js/sync.js?v=22"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1643,14 +1652,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=21"></script>
-<script src="js/collection.js?v=21"></script>
-<script src="js/edition.js?v=21"></script>
-<script src="js/mapping.js?v=21"></script>
-<script src="js/labels.js?v=21"></script>
-<script src="js/ventes-achats.js?v=21"></script>
-<script src="js/label-categories.js?v=21"></script>
-<script src="js/pokedex.js?v=21"></script>
-<script src="js/perso-objets.js?v=21"></script>
+<script src="js/core.js?v=22"></script>
+<script src="js/collection.js?v=22"></script>
+<script src="js/edition.js?v=22"></script>
+<script src="js/mapping.js?v=22"></script>
+<script src="js/labels.js?v=22"></script>
+<script src="js/ventes-achats.js?v=22"></script>
+<script src="js/label-categories.js?v=22"></script>
+<script src="js/pokedex.js?v=22"></script>
+<script src="js/perso-objets.js?v=22"></script>
 </body>
 </html>
