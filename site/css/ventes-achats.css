@@ -371,7 +371,7 @@
 /* Graphiques Bilan (Chart.js — voir js/ventes-achats.js) : même approche que
    le budget de référence (bascule camembert/barres, wrapper à hauteur fixe
    pour que Chart.js calcule un canvas responsive correctement). */
-.bilan-period-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.bilan-period-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .bilan-charts-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
 .bilan-chart-card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);

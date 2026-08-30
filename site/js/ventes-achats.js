@@ -1321,6 +1321,54 @@ function _onVenteAcheteurSelectChange() {
   populateVenteCommandeSelect(acheteurId, null);
 }
 
+// Noms déjà utilisés dans "Pour le compte de" (toutes ventes confondues,
+// pas seulement celles actuellement filtrées à l'écran — voir
+// _populateOwnerFilter dans ventes-achats.js pour la variante filtre, qui
+// elle se limite volontairement aux ventes affichées).
+function _distinctPourCompteDeNames() {
+  return [...new Set((_D.ventes||[]).map(v => v.pour_compte_de).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
+}
+
+// Même principe que populateAcheteurSelect/populateVenteCommandeSelect :
+// un select préremplit avec les noms déjà utilisés, + "+ Nouveau…" qui
+// révèle un champ texte libre pour en saisir un — pas de nouvelle table
+// dédiée, juste un rappel des chaînes déjà tapées (voir _lineTotal/
+// _saleOwnerBadgeHtml, qui ne dépendent que de la chaîne pour_compte_de).
+function populatePourCompteDeSelect(selected) {
+  const sel = document.getElementById('vente-pour-compte-de-select'); if (!sel) return;
+  const newField = document.getElementById('vente-pour-compte-de-new');
+  const names = _distinctPourCompteDeNames();
+  sel.innerHTML = '<option value="">— Pour toi —</option>' +
+    names.map(n => `<option value="${_escHtml(n)}">${_escHtml(n)}</option>`).join('') +
+    '<option value="__new__">+ Nouveau…</option>';
+  if (selected && !names.includes(selected)) {
+    // Valeur déjà en place mais absente de la liste (rare : donnée importée,
+    // ou nom depuis retiré d'une autre vente) — on la garde visible via "+
+    // Nouveau…" plutôt que de la perdre silencieusement.
+    sel.value = '__new__';
+    if (newField) { newField.style.display = ''; newField.value = selected; }
+  } else {
+    sel.value = selected || '';
+    if (newField) { newField.style.display = 'none'; newField.value = ''; }
+  }
+}
+function _onVentePourCompteDeSelectChange() {
+  const sel = document.getElementById('vente-pour-compte-de-select');
+  const newField = document.getElementById('vente-pour-compte-de-new');
+  if (!sel || !newField) return;
+  if (sel.value === '__new__') { newField.style.display = ''; newField.focus(); }
+  else { newField.style.display = 'none'; newField.value = ''; }
+}
+// Valeur effective à enregistrer — voir saveVente. '' = vente pour soi.
+function _currentPourCompteDeValue() {
+  const sel = document.getElementById('vente-pour-compte-de-select'); if (!sel) return '';
+  if (sel.value === '__new__') {
+    const newField = document.getElementById('vente-pour-compte-de-new');
+    return (newField ? newField.value : '').trim();
+  }
+  return sel.value;
+}
+
 function _onVenteCommandeSelectChange() {
   const sel = document.getElementById('vente-commande-select');
   if (sel.value === '__new__') {
@@ -1432,8 +1480,7 @@ function openAddVenteModal(prefillAcheteurId, prefillCommandeId) {
   document.getElementById('vente-langue-select').value = 'Français';
   _setChipGroup('vente-type-chips', ['normale']);
   setCropInput('vente', 16);
-  const ventePourCompteDeField = document.getElementById('vente-pour-compte-de-input');
-  if (ventePourCompteDeField) ventePourCompteDeField.value = '';
+  populatePourCompteDeSelect('');
   // À défaut de pré-remplissage explicite (venant d'une commande existante),
   // on repart sur le dernier acheteur/commande effectivement utilisé.
   const defaultAcheteurId = prefillAcheteurId || (_D.settings && _D.settings.last_acheteur_id) || '';
@@ -1479,8 +1526,7 @@ function editVente(id) {
   document.getElementById('vente-langue-select').value = v.langue||'Français';
   _setChipGroup('vente-type-chips', v.types||[]);
   setCropInput('vente', v.crop !== undefined && v.crop !== null && v.crop !== '' ? v.crop : 'center');
-  const ventePourCompteDeField = document.getElementById('vente-pour-compte-de-input');
-  if (ventePourCompteDeField) ventePourCompteDeField.value = v.pour_compte_de||'';
+  populatePourCompteDeSelect(v.pour_compte_de||'');
   const existingCommande = v.commande_id ? (_D.acheteur_commandes||[]).find(c=>c.id===v.commande_id) : null;
   populateAcheteurSelect(existingCommande ? existingCommande.acheteur_id : '');
   populateVenteCommandeSelect(existingCommande ? existingCommande.acheteur_id : '', v.commande_id || null);
@@ -1532,7 +1578,7 @@ function saveVente() {
     // compte d'un tiers (ex. une amie) — voir _saleOwnerBadgeHtml, le filtre
     // Propriétaire et la section "Bilan tiers" de l'onglet Bilan, qui
     // exclut ces ventes du bilan personnel.
-    pour_compte_de: (document.getElementById('vente-pour-compte-de-input')?.value || '').trim(),
+    pour_compte_de: _currentPourCompteDeValue(),
   };
   // Le lien CardMarket vit sur la carte elle-même (table Supabase "cards"),
   // pas seulement sur cette vente — éditable ici ET depuis la fiche carte du
@@ -2539,66 +2585,55 @@ function _depenseIsArrivee(d) {
 
 // Une vente marquée "Pour le compte de" (voir le formulaire Ventes) n'est
 // pas ton argent — elle ne doit jamais compter dans TON bilan personnel
-// (chiffre "Total ventes", graphiques, tableau mensuel). Elle reste
-// suivable séparément dans la section "Bilan tiers" plus bas.
+// (chiffre "Total ventes", graphiques, tableau mensuel) par défaut. Elle
+// reste consultable dans la même page Bilan, en changeant le sélecteur de
+// périmètre (_bilanOwnerScope) sur cette personne — voir renderBilan.
 function _venteIsForSelf(v) { return !v.pour_compte_de; }
 
-// Section "Bilan tiers" (voir le champ "Pour le compte de" du formulaire
-// Ventes) : regroupe par personne TOUTES ses ventes, peu importe le statut
-// — contrairement au bilan personnel ci-dessus, le but ici n'est pas de
-// reconnaître un revenu (ce n'est pas ton argent) mais juste de pouvoir
-// tout retrouver d'un coup d'œil pour savoir quoi lui reverser. Retourne ''
-// s'il n'y a aucune vente pour un tiers, pour ne rien afficher du tout.
-function _bilanTiersHtml() {
-  const tiersVentes = (_D.ventes||[]).filter(v => v.pour_compte_de);
-  if (!tiersVentes.length) return '';
-  const parMap = {};
-  tiersVentes.forEach(v => {
-    const nom = v.pour_compte_de;
-    if (!parMap[nom]) parMap[nom] = { total: 0, count: 0 };
-    parMap[nom].total += _lineTotal(v);
-    parMap[nom].count += (parseInt(v.qty,10)||1);
-  });
-  const noms = Object.keys(parMap).sort((a,b)=>a.localeCompare(b,'fr'));
-  const totalTiers = noms.reduce((s,n)=>s+parMap[n].total,0);
-  return `
-    <div class="bilan-table" style="margin-top:20px">
-      <div class="bilan-row bilan-header-row bilan-row-tiers">
-        <div class="bilan-month">Bilan tiers <span class="form-hint" style="margin:0">— ventes pour le compte d'un tiers, hors bilan perso</span></div>
-        <div class="bilan-ventes">Cartes</div>
-        <div class="bilan-solde">Total</div>
-      </div>
-      ${noms.map(n => `<div class="bilan-row bilan-row-tiers">
-        <div class="bilan-month">👤 ${_escHtml(n)}</div>
-        <div class="bilan-ventes">${parMap[n].count}</div>
-        <div class="bilan-solde">${parMap[n].total.toFixed(2)} €</div>
-      </div>`).join('')}
-      <div class="bilan-row bilan-row-tiers">
-        <div class="bilan-month form-hint" style="margin:0">Total tiers (hors ton bilan)</div>
-        <div class="bilan-ventes"></div>
-        <div class="bilan-solde">${totalTiers.toFixed(2)} €</div>
-      </div>
-    </div>`;
-}
+// Périmètre actuellement affiché dans l'onglet Bilan : 'moi' (par défaut)
+// ou le nom exact d'un tiers (voir le champ "Pour le compte de"). Change ce
+// que renderBilan calcule et affiche — même page, mêmes graphiques, juste
+// un sous-ensemble de ventes différent.
+var _bilanOwnerScope = 'moi';
+function _setBilanOwnerScope(scope) { _bilanOwnerScope = scope; renderBilan(); }
 
 function renderBilan() {
   const statsEl = document.getElementById('bilan-stats');
   const el      = document.getElementById('bilan-content');
   if (!statsEl || !el) return;
 
+  const isSelf = _bilanOwnerScope === 'moi';
+  // Sélecteur de périmètre : toujours reconstruit (les noms de tiers
+  // peuvent changer), même sans vente tiers — l'option "Moi" seule suffit.
+  const tiersNames = _distinctPourCompteDeNames();
+  const scopeSelectHtml = `
+    <select id="bilan-owner-select" class="sales-sort-select" onchange="_setBilanOwnerScope(this.value)">
+      <option value="moi" ${isSelf?'selected':''}>Mon bilan</option>
+      ${tiersNames.map(n => `<option value="${_escHtml(n)}" ${_bilanOwnerScope===n?'selected':''}>Bilan de ${_escHtml(n)}</option>`).join('')}
+    </select>`;
+  // Le tiers sélectionné a pu disparaître entre-temps (plus aucune vente
+  // pour lui) — retombe silencieusement sur "Moi" plutôt que de planter.
+  if (!isSelf && !tiersNames.includes(_bilanOwnerScope)) { _bilanOwnerScope = 'moi'; return renderBilan(); }
+
   const ventesByMonth = {}, ventesCountByMonth = {};
-  (_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v) && _venteIsForSelf(v)).forEach(v => {
+  (_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v) && (isSelf ? _venteIsForSelf(v) : v.pour_compte_de === _bilanOwnerScope)).forEach(v => {
     const key = _venteMonthKey(v); if (!key) return;
     ventesByMonth[key] = (ventesByMonth[key]||0) + _lineTotal(v);
     ventesCountByMonth[key] = (ventesCountByMonth[key]||0) + (parseInt(v.qty,10)||1);
   });
 
+  // Un tiers n'a pas de "dépenses" (le champ n'existe que sur les ventes) —
+  // pas de sens à lui attribuer les tiennes. On les laisse à {} dans ce cas,
+  // ce qui simplifie tout le reste du calcul (solde = ventes, tableau à 2
+  // colonnes plus bas) sans dupliquer la logique.
   const depensesByMonth = {}, depensesCountByMonth = {};
-  (_D.depenses||[]).filter(d => _depenseIsArrivee(d)).forEach(d => {
-    const key = _depenseMonthKey(d); if (!key) return;
-    depensesByMonth[key] = (depensesByMonth[key]||0) + _lineTotal(d);
-    depensesCountByMonth[key] = (depensesCountByMonth[key]||0) + (parseInt(d.qty,10)||1);
-  });
+  if (isSelf) {
+    (_D.depenses||[]).filter(d => _depenseIsArrivee(d)).forEach(d => {
+      const key = _depenseMonthKey(d); if (!key) return;
+      depensesByMonth[key] = (depensesByMonth[key]||0) + _lineTotal(d);
+      depensesCountByMonth[key] = (depensesCountByMonth[key]||0) + (parseInt(d.qty,10)||1);
+    });
+  }
 
   const allMonths = [...new Set([...Object.keys(ventesByMonth), ...Object.keys(depensesByMonth)])].sort().reverse();
 
@@ -2606,22 +2641,22 @@ function renderBilan() {
   const totalDepenses = Object.values(depensesByMonth).reduce((a,b)=>a+b,0);
   const solde = totalVentes - totalDepenses;
 
-  statsEl.innerHTML = `
+  statsEl.innerHTML = isSelf ? `
     <div class="stat-card stat-card-money" style="--accent-color:var(--green)"><div class="val">${totalVentes.toFixed(2)} €</div><div class="lbl">Total ventes</div></div>
     <div class="stat-card stat-card-money" style="--accent-color:var(--accent2)"><div class="val">${totalDepenses.toFixed(2)} €</div><div class="lbl">Total dépenses</div></div>
-    <div class="stat-card stat-card-money" style="--accent-color:${solde>=0?'var(--green)':'var(--accent2)'}"><div class="val">${solde>=0?'+':''}${solde.toFixed(2)} €</div><div class="lbl">Solde net</div></div>`;
+    <div class="stat-card stat-card-money" style="--accent-color:${solde>=0?'var(--green)':'var(--accent2)'}"><div class="val">${solde>=0?'+':''}${solde.toFixed(2)} €</div><div class="lbl">Solde net</div></div>` : `
+    <div class="stat-card stat-card-money" style="--accent-color:var(--green)"><div class="val">${totalVentes.toFixed(2)} €</div><div class="lbl">Total pour ${_escHtml(_bilanOwnerScope)}</div></div>
+    <div class="stat-card stat-card-money" style="--accent-color:var(--gold)"><div class="val">${Object.values(ventesCountByMonth).reduce((a,b)=>a+b,0)}</div><div class="lbl">Cartes vendues</div></div>`;
 
   if (!allMonths.length) {
-    const tiersHtml = _bilanTiersHtml();
-    el.innerHTML = tiersHtml
-      ? '<div class="sales-empty">Aucune vente vendue ni dépense enregistrée pour le moment (hors ventes pour un tiers, voir plus bas).</div>' + tiersHtml
-      : '<div class="sales-empty">Aucune vente vendue ni dépense enregistrée pour le moment.</div>';
+    el.innerHTML = scopeSelectHtml + `<div class="sales-empty" style="margin-top:12px">${isSelf ? 'Aucune vente vendue ni dépense enregistrée pour le moment.' : `Aucune vente vendue et arrivée pour ${_escHtml(_bilanOwnerScope)} pour le moment.`}</div>`;
     return;
   }
 
   el.innerHTML = `
     <div class="bilan-period-row">
-      <span class="form-hint" style="margin:0">Répartition dépenses/revenus calculée sur :</span>
+      ${scopeSelectHtml}
+      <span class="form-hint" style="margin:0">Répartition ${isSelf?'dépenses/revenus':'revenus'} calculée sur :</span>
       <select id="bilan-period-select" class="sales-sort-select" onchange="_setBilanPeriod(this.value)">
         <option value="total" ${_bilanPeriod==='total'?'selected':''}>Total (tout l'historique)</option>
         <option value="year" ${_bilanPeriod==='year'?'selected':''}>Année en cours</option>
@@ -2629,6 +2664,7 @@ function renderBilan() {
       </select>
     </div>
     <div class="bilan-charts-row">
+      ${isSelf ? `
       <div class="bilan-chart-card">
         <div class="bilan-card-head">
           <h3>Répartition des dépenses <span class="form-hint" style="margin:0">par extension</span></h3>
@@ -2638,7 +2674,7 @@ function renderBilan() {
           </div>
         </div>
         <div class="bilan-chart-wrapper" id="bilan-dep-wrapper"><canvas id="bilan-dep-canvas"></canvas></div>
-      </div>
+      </div>` : ''}
       <div class="bilan-chart-card">
         <div class="bilan-card-head">
           <h3>Répartition des revenus <span class="form-hint" style="margin:0">par extension</span></h3>
@@ -2651,27 +2687,26 @@ function renderBilan() {
       </div>
     </div>
     <div class="bilan-chart-card">
-      <div class="bilan-card-head"><h3>Évolution <span class="form-hint" style="margin:0">ventes vendues vs dépenses, par mois</span></h3></div>
+      <div class="bilan-card-head"><h3>Évolution <span class="form-hint" style="margin:0">${isSelf?'ventes vendues vs dépenses':'ventes vendues'}, par mois</span></h3></div>
       <div class="bilan-chart-wrapper bilan-chart-wrapper-tall"><canvas id="bilan-evo-canvas"></canvas></div>
     </div>
     <div class="bilan-table">
-      <div class="bilan-row bilan-header-row">
+      <div class="bilan-row bilan-header-row ${isSelf?'':'bilan-row-tiers'}">
         <div class="bilan-month">Mois</div>
         <div class="bilan-ventes">Ventes</div>
-        <div class="bilan-depenses">Dépenses</div>
-        <div class="bilan-solde">Solde</div>
+        ${isSelf ? '<div class="bilan-depenses">Dépenses</div><div class="bilan-solde">Solde</div>' : ''}
       </div>
       ${allMonths.map(key => {
         const v = ventesByMonth[key]||0, d = depensesByMonth[key]||0, s = v-d;
         const nv = ventesCountByMonth[key]||0, nd = depensesCountByMonth[key]||0;
-        return `<div class="bilan-row">
+        return `<div class="bilan-row ${isSelf?'':'bilan-row-tiers'}">
           <div class="bilan-month">${_monthLabel(key)}</div>
           <div class="bilan-ventes">${v.toFixed(2)} €<span class="bilan-sub">${nv} carte${nv>1?'s':''}</span></div>
-          <div class="bilan-depenses">${d.toFixed(2)} €<span class="bilan-sub">${nd} carte${nd>1?'s':''}</span></div>
-          <div class="bilan-solde ${s>=0?'positive':'negative'}">${s>=0?'+':''}${s.toFixed(2)} €</div>
+          ${isSelf ? `<div class="bilan-depenses">${d.toFixed(2)} €<span class="bilan-sub">${nd} carte${nd>1?'s':''}</span></div>
+          <div class="bilan-solde ${s>=0?'positive':'negative'}">${s>=0?'+':''}${s.toFixed(2)} €</div>` : ''}
         </div>`;
       }).join('')}
-    </div>${_bilanTiersHtml()}`;
+    </div>`;
 
   // Chart.js est chargé via CDN (voir index.html, comme dans le budget de
   // référence) — si jamais il n'a pas pu se charger (offline, CDN
@@ -2684,11 +2719,11 @@ function renderBilan() {
     return;
   }
 
-  const depensesByExt = _groupByExtension(_filterByBilanPeriod((_D.depenses||[]).filter(_depenseIsArrivee), _depenseMonthKey));
-  const ventesByExt   = _groupByExtension(_filterByBilanPeriod((_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v) && _venteIsForSelf(v)), _venteMonthKey));
+  const depensesByExt = isSelf ? _groupByExtension(_filterByBilanPeriod((_D.depenses||[]).filter(_depenseIsArrivee), _depenseMonthKey)) : [];
+  const ventesByExt   = _groupByExtension(_filterByBilanPeriod((_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v) && (isSelf ? _venteIsForSelf(v) : v.pour_compte_de === _bilanOwnerScope)), _venteMonthKey));
   const chronoMonths  = [...allMonths].reverse(); // plus ancien → plus récent, pour lire l'évolution dans le bon sens
 
-  _bilanDepChart = _renderBilanCatChart('bilan-dep-canvas', depensesByExt, _bilanDepMode, _bilanDepChart, 'bilan-dep-wrapper');
+  if (isSelf) _bilanDepChart = _renderBilanCatChart('bilan-dep-canvas', depensesByExt, _bilanDepMode, _bilanDepChart, 'bilan-dep-wrapper');
   _bilanRevChart = _renderBilanCatChart('bilan-rev-canvas', ventesByExt,   _bilanRevMode, _bilanRevChart, 'bilan-rev-wrapper');
   _bilanEvoChart = _renderBilanEvolutionChart('bilan-evo-canvas', chronoMonths, ventesByMonth, depensesByMonth, _bilanEvoChart);
 }
