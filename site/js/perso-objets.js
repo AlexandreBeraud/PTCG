@@ -1,13 +1,20 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  PTCG Collection — js/perso-objets.js
-//  Personnages / Objets / Lieux / Énergies — SIMPLIFIÉ : plus aucune entrée
-//  n'est créée automatiquement depuis un catalogue TCGdex. L'utilisateur
-//  crée une entrée (nom + image, dans Édition), et l'appli lui rattache
-//  automatiquement toute carte POSSÉDÉE dont le nom contient ce nom
-//  (n'importe où dans le titre, ex. créer "Cynthia" récupère "Ordres de
-//  Cynthia", "Carte Cynthia"…). C'est tout : pas de catalogue à charger, pas
-//  de regroupement automatique par "nom canonique", pas de file d'attente
-//  TCGdex à throttler — ce fichier n'appelle plus jamais TCGdex.
+//  Édition › Encyclopédies : Personnages / Objets / Lieux / Énergies —
+//  SIMPLIFIÉ : plus aucune entrée n'est créée automatiquement depuis un
+//  catalogue TCGdex. L'utilisateur crée une entrée (nom + image, dans
+//  Édition), et l'appli lui rattache automatiquement toute carte POSSÉDÉE
+//  dont le nom contient ce nom (n'importe où dans le titre, ex. créer
+//  "Cynthia" récupère "Ordres de Cynthia", "Carte Cynthia"…). C'est tout :
+//  pas de catalogue à charger, pas de regroupement automatique par "nom
+//  canonique", pas de file d'attente TCGdex à throttler — ce fichier
+//  n'appelle plus jamais TCGdex.
+//
+//  Ce fichier gère aussi Accessoires (voir PKO_EXTRA_KINDS ci-dessous) :
+//  même formulaire nom + image, même stockage (_D.perso_objets), mais AUCUN
+//  rattachement de carte — l'entrée est directement sélectionnable comme
+//  article dans les modales Ventes/Achats (sleeves, classeurs, pages,
+//  réductions…), voir js/ventes-achats.js (_cardPickerSelectAccessoireEntry).
 //
 //  Ce fichier doit être chargé APRÈS pokedex.js, edition.js et
 //  label-categories.js : il réutilise leurs briques (_pkdxTcgSectionHtml,
@@ -44,18 +51,37 @@ function _tokensContainSeq(haystack, needle) {
 }
 
 // ── État & catégories ───────────────────────────────────────────────────
+// PKO_KINDS = catégories qui RATTACHENT automatiquement des cartes possédées
+// par correspondance de nom (Pokédex, cartes orphelines, compteur "cartes
+// possédées", exclusion croisée…) — voir _pkoComputeOwnedCounts plus bas.
 var PKO_KINDS = ['personnage', 'objet', 'lieu', 'energie'];
-var PKO_ICON = { personnage: '🧑', objet: '🎒', lieu: '📍', energie: '⚡' };
+// PKO_EXTRA_KINDS = catégories qui vivent dans la même table _D.perso_objets
+// et le même formulaire d'édition (nom + image) que ci-dessus, mais qui ne
+// sont PAS des cartes à retrouver : "accessoire" couvre les autres types
+// d'achats/ventes (sleeves, classeurs, pages, réductions…), sélectionnables
+// tels quels (nom + image de la fiche) dans les modales Ventes/Achats — pas
+// de rattachement de carte, pas de compteur "cartes possédées". Tenue à
+// l'écart de PKO_KINDS pour ne jamais entrer dans la logique de
+// rattachement/orphelines, qui n'a aucun sens pour ce genre d'article.
+var PKO_EXTRA_KINDS = ['accessoire'];
+// PKO_EDIT_KINDS = tout ce qui apparaît dans Édition › Encyclopédies (les 4
+// catégories "cartes" + les catégories "articles").
+var PKO_EDIT_KINDS = PKO_KINDS.concat(PKO_EXTRA_KINDS);
+var PKO_ICON = { personnage: '🧑', objet: '🎒', lieu: '📍', energie: '⚡', accessoire: '📦' };
 
 const PKO_LABELS = {
   personnage: { title: 'Personnages', singular: 'personnage', color: '#6c5ce7', grid: 'personnages-grid', loadMore: 'personnages-load-more' },
   objet:      { title: 'Objets',      singular: 'objet',      color: '#00b894', grid: 'objets-grid',      loadMore: 'objets-load-more' },
   lieu:       { title: 'Lieux',       singular: 'lieu',       color: '#e17055', grid: 'lieux-grid',       loadMore: 'lieux-load-more' },
   energie:    { title: 'Énergies',    singular: 'énergie',    color: '#fdcb6e', grid: 'energies-grid',    loadMore: 'energies-load-more' },
+  // Pas de grid/loadMore : "Accessoires" n'a pas de vue "Pokédex" dédiée
+  // dans la sidebar, seulement la liste de gestion dans Édition et le
+  // sélecteur de carte Ventes/Achats (voir ventes-achats.js).
+  accessoire: { title: 'Accessoires', singular: 'accessoire', color: '#00cec9' },
 };
 
 var _pko = { entries: {}, filtered: {}, query: {}, page: {}, initialized: {}, pageSize: 45 };
-PKO_KINDS.forEach(k => {
+PKO_EDIT_KINDS.forEach(k => {
   _pko.entries[k] = []; _pko.filtered[k] = []; _pko.query[k] = ''; _pko.page[k] = 0; _pko.initialized[k] = false;
 });
 
@@ -80,6 +106,11 @@ async function _pkoInitTab(kind) {
   _pko.filtered[kind] = _pko.entries[kind];
   _pko.initialized[kind] = true;
   _pko.page[kind] = 0;
+  // "Accessoires" (voir PKO_EXTRA_KINDS) n'a ni grille "Pokédex" dédiée ni
+  // notion de "cartes possédées" : les entrées existent uniquement pour
+  // Édition et le sélecteur Ventes/Achats, tous deux lus directement depuis
+  // _pko.entries — rien à rendre ni calculer ici pour ces catégories.
+  if (!PKO_KINDS.includes(kind)) return;
   _pkoRenderPage(kind, true);
   // Nombre de cartes possédées par fiche (asynchrone, pas bloquant pour
   // l'affichage initial de la grille — voir _pkoComputeOwnedCounts) :
@@ -93,8 +124,17 @@ function _pkoRebuildEntries(kind) {
   _pko.entries[kind] = _pkoBuildEntries(kind);
   const q = _pko.query[kind];
   _pko.filtered[kind] = q ? _pko.entries[kind].filter(e => _normalizeStr(e.displayName).includes(q)) : _pko.entries[kind];
-  _pkoRenderPage(kind, true);
-  _pkoScheduleOwnedCountsRecompute();
+  if (PKO_KINDS.includes(kind)) {
+    _pkoRenderPage(kind, true);
+    _pkoScheduleOwnedCountsRecompute();
+  }
+  // BUG corrigé au passage : la liste d'Édition (#pko-edit-list) ne se
+  // rafraîchissait jamais toute seule après Enregistrer/Dupliquer/Supprimer
+  // (elle ne lisait que via switchPkoEditKind/initPkoEditionView) — on la
+  // met à jour ici quand c'est bien la catégorie actuellement affichée dans
+  // le formulaire d'Édition, pour toutes les catégories (y compris
+  // Accessoires, qui n'a pas d'autre vue).
+  if (_pkoEdit.kind === kind) _pkoRenderEditionList();
 }
 
 // Le recalcul des cartes possédées (_pkoComputeOwnedCounts) reste le plus
@@ -517,7 +557,8 @@ function setCardCategoryOverride(cardId, category, opts) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Édition › Perso., Objets, Lieux & Énergies — création/correction manuelle
+//  Édition › Encyclopédies (Personnages/Objets/Lieux/Énergies/Accessoires)
+//  — création/correction manuelle
 // ═══════════════════════════════════════════════════════════════════════════
 var _pkoEdit = { kind: 'personnage', query: '', editingId: null };
 
@@ -535,7 +576,7 @@ function filterPkoEditionList(q) {
 }
 
 async function initPkoEditionView() {
-  await Promise.all(PKO_KINDS.map(k => _pko.initialized[k] ? null : _pkoInitTab(k)));
+  await Promise.all(PKO_EDIT_KINDS.map(k => _pko.initialized[k] ? null : _pkoInitTab(k)));
   _pkoRenderEditionList();
 }
 
@@ -577,6 +618,9 @@ function _pkoRenderEditionList() {
 }
 
 function _pkoEntryRowHtml(kind, entry) {
+  // "Accessoires" (voir PKO_EXTRA_KINDS) n'a pas de notion de "cartes
+  // possédées" — pas de rattachement de carte, donc rien à compter.
+  const isCardKind = PKO_KINDS.includes(kind);
   const nbCards = entry._ownedCount != null ? entry._ownedCount : '…';
   return `
     <div class="edition-ext-row" id="pko-row-${_escJs(entry.id)}">
@@ -585,7 +629,7 @@ function _pkoEntryRowHtml(kind, entry) {
       </div>
       <div class="edition-ext-info">
         <div class="edition-ext-name">${_escHtml(entry.displayName)}</div>
-        <div class="edition-ext-meta">${nbCards} carte${nbCards === 1 ? '' : 's'} possédée${nbCards === 1 ? '' : 's'}</div>
+        ${isCardKind ? `<div class="edition-ext-meta">${nbCards} carte${nbCards === 1 ? '' : 's'} possédée${nbCards === 1 ? '' : 's'}</div>` : ''}
       </div>
       <div class="edition-ext-actions">
         <button class="btn btn-icon btn-sm" title="Corriger" onclick="pkoEditEntryOpen('${_escJs(kind)}','${_escJs(entry.id)}')">✎</button>
@@ -601,6 +645,9 @@ function _pkoEntryRowHtml(kind, entry) {
 
 function _pkoEntryCardHtml(kind, entry) {
   const color = PKO_LABELS[kind].color;
+  // "Accessoires" (voir PKO_EXTRA_KINDS) n'a pas de notion de "cartes
+  // possédées" — pas de rattachement de carte, donc rien à compter.
+  const isCardKind = PKO_KINDS.includes(kind);
   const nbCards = entry._ownedCount != null ? entry._ownedCount : '…';
   return `
     <div class="edition-item-card" id="pko-card-${_escJs(entry.id)}" style="cursor:pointer" onclick="pkoEditEntryOpen('${_escJs(kind)}','${_escJs(entry.id)}')">
@@ -609,7 +656,7 @@ function _pkoEntryCardHtml(kind, entry) {
       </div>
       <div class="edition-card-body">
         <div class="edition-card-name">${_escHtml(entry.displayName)}</div>
-        <div class="edition-card-meta">${nbCards} carte${nbCards === 1 ? '' : 's'} possédée${nbCards === 1 ? '' : 's'}</div>
+        ${isCardKind ? `<div class="edition-card-meta">${nbCards} carte${nbCards === 1 ? '' : 's'} possédée${nbCards === 1 ? '' : 's'}</div>` : ''}
       </div>
       <div class="edition-card-actions">
         <button class="btn btn-icon btn-sm" title="Dupliquer" onclick="event.stopPropagation();pkoDuplicateEntry('${_escJs(kind)}','${_escJs(entry.id)}')">⧉</button>
@@ -677,7 +724,10 @@ function pkoSaveEntry() {
   _pkoRebuildEntries(kind);
   _pkoInvalidateOrphanCache();
   pkoCancelForm();
-  toast(isNew ? 'Entrée créée ! Ses cartes possédées apparaissent automatiquement.' : 'Entrée mise à jour.', 'success');
+  const createdMsg = PKO_KINDS.includes(kind)
+    ? 'Entrée créée ! Ses cartes possédées apparaissent automatiquement.'
+    : 'Entrée créée ! Elle est maintenant sélectionnable dans Ventes/Achats.';
+  toast(isNew ? createdMsg : 'Entrée mise à jour.', 'success');
 }
 
 // Duplique une entrée (nom + image) pour en créer rapidement une variante
@@ -699,7 +749,10 @@ function pkoDuplicateEntry(kind, entryId) {
 }
 
 function pkoDeleteEntry(kind, entryId) {
-  if (!confirm('Supprimer cette entrée ? (ses cartes redeviennent orphelines si aucune autre entrée ne les couvre)')) return;
+  const warn = PKO_KINDS.includes(kind)
+    ? 'Supprimer cette entrée ? (ses cartes redeviennent orphelines si aucune autre entrée ne les couvre)'
+    : 'Supprimer cette entrée ? (elle ne sera plus sélectionnable dans Ventes/Achats — les ventes/achats déjà enregistrés avec ne sont pas modifiés)';
+  if (!confirm(warn)) return;
   _D.perso_objets = (_D.perso_objets || []).filter(o => !(o.id === entryId && o.kind === kind));
   if (_pkoEdit.editingId === entryId) pkoCancelForm();
   saveData();

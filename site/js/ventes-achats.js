@@ -820,7 +820,17 @@ function _saleResolveSpriteEntity(item) {
     const sep = item.pko_key.indexOf(':');
     const kind = sep >= 0 ? item.pko_key.slice(0, sep) : '';
     const id   = sep >= 0 ? item.pko_key.slice(sep+1) : '';
-    if (typeof PKO_KINDS === 'undefined' || !PKO_KINDS.includes(kind) || !_pko.initialized[kind]) return undefined;
+    // "Accessoires" (voir PKO_EXTRA_KINDS) n'a pas de badge sprite dédié —
+    // son image tient déjà toute la bannière via card_image, un petit badge
+    // rond redondant n'apporterait rien. On distingue bien "cette catégorie
+    // n'aura jamais de badge" (null, définitif) de "pas encore chargé"
+    // (undefined, à réessayer) pour ne pas relancer un chargement inutile à
+    // chaque rendu.
+    if (typeof PKO_KINDS === 'undefined' || !PKO_KINDS.includes(kind)) {
+      _saleSpriteResolveCache[cacheKey] = null;
+      return null;
+    }
+    if (!_pko.initialized[kind]) return undefined;
     const entry = (_pko.entries[kind]||[]).find(e => String(e.id) === id);
     const resolved = entry ? { type:'pko', image: entry.image, displayName: entry.displayName } : null;
     _saleSpriteResolveCache[cacheKey] = resolved;
@@ -2650,7 +2660,7 @@ var CARD_PICKER_MAX_RESULTS = 200;
 // Édition, voir perso-objets.js) — mêmes étapes 2/3 ensuite (les deux
 // alimentent en bout de course les mêmes champs génériques card_name/
 // pokemon_name/set_name… de la vente/dépense, voir saveVente/saveDepense).
-var _cardPickerKind = 'pokemon';    // 'pokemon' | 'personnage' | 'objet' | 'lieu' | 'energie'
+var _cardPickerKind = 'pokemon';    // 'pokemon' | 'personnage' | 'objet' | 'lieu' | 'energie' | 'accessoire'
 var _cardPickerPkoList = [];        // sous-ensemble courant de _pko.entries[kind]
 var _cardPickerSelectedPko = null;  // entrée _pko choisie à l'étape 1 (kind ≠ 'pokemon')
 
@@ -2660,6 +2670,10 @@ var CARD_PICKER_KIND_LABELS = {
   objet:      { tab: 'Objets',      search: 'Rechercher un objet',      placeholder: 'Rechercher un objet…' },
   lieu:       { tab: 'Lieux',       search: 'Rechercher un lieu',       placeholder: 'Rechercher un lieu…' },
   energie:    { tab: 'Énergies',    search: 'Rechercher une énergie',   placeholder: 'Rechercher une énergie…' },
+  // "Accessoires" (voir PKO_EXTRA_KINDS dans perso-objets.js) : pas une
+  // carte à retrouver, l'entrée choisie ici EST directement l'article
+  // vendu/acheté — voir _cardPickerSelectAccessoireEntry.
+  accessoire: { tab: 'Accessoires', search: 'Rechercher un accessoire', placeholder: 'Rechercher un accessoire…' },
 };
 
 var CARD_PICKER_KIND_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h8M14 12h8M12 2v4M12 18v4"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>';
@@ -2667,7 +2681,7 @@ var CARD_PICKER_KIND_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24"
 function _renderCardPickerKindTabs() {
   const el = document.getElementById('cardpicker-kind-tabs');
   if (!el) return;
-  const kinds = ['pokemon', ...PKO_KINDS];
+  const kinds = ['pokemon', ...PKO_EDIT_KINDS];
   el.innerHTML = kinds.map(k => {
     const active = k === _cardPickerKind ? ' active' : '';
     const icon = k === 'pokemon' ? CARD_PICKER_KIND_ICON_SVG : PKO_ICON[k];
@@ -2867,17 +2881,55 @@ function _cardPickerRenderPkoList(query) {
   _cardPickerPkoList = list;
 
   if (!list.length) {
-    el.innerHTML = `<div class="sales-empty">${all.length ? 'Aucun résultat.' : `Aucune entrée — crée-en une dans Édition › ${PKO_LABELS[kind].title}.`}</div>`;
+    el.innerHTML = `<div class="sales-empty">${all.length ? 'Aucun résultat.' : `Aucune entrée — crée-en une dans Édition › Encyclopédies › ${PKO_LABELS[kind].title}.`}</div>`;
     return;
   }
   const color = PKO_LABELS[kind].color;
+  // "Accessoires" n'a pas d'étape 2 (pas de carte à choisir derrière) :
+  // cliquer sur l'entrée la sélectionne directement — voir
+  // _cardPickerSelectAccessoireEntry. Les autres catégories passent par
+  // _cardPickerSelectPkoEntry, qui affiche les cartes possédées rattachées.
+  const selectFn = PKO_EXTRA_KINDS.includes(kind) ? '_cardPickerSelectAccessoireEntry' : '_cardPickerSelectPkoEntry';
   el.innerHTML = list.map((e, i) => `
-    <div class="cardpicker-poke-item" onclick="_cardPickerSelectPkoEntry(${i})">
+    <div class="cardpicker-poke-item" onclick="${selectFn}(${i})">
       <div class="cardpicker-poke-sprite" style="background:${color}22">
         ${e.image ? `<img src="${_escHtml(e.image)}" alt="" loading="lazy">` : `<span style="color:${color};font-size:1.1rem">${PKO_ICON[kind]}</span>`}
       </div>
       <div class="cardpicker-poke-name">${_escHtml(e.displayName)}</div>
     </div>`).join('');
+}
+
+// Sélection directe d'un Accessoire (voir PKO_EXTRA_KINDS dans
+// perso-objets.js) : contrairement à Personnage/Objet/Lieu/Énergie, il n'y a
+// pas de carte TCG derrière à choisir — l'entrée EST l'article vendu/acheté.
+// Remplit les mêmes champs génériques que _cardPickerSelectCard (card_name,
+// card_image…) directement depuis la fiche, sans passer par l'étape 2.
+function _cardPickerSelectAccessoireEntry(i) {
+  const entry = _cardPickerPkoList[i]; if (!entry) return;
+  const p = _cardPickerTarget; if (!p) return;
+  const kind = _cardPickerKind;
+  document.getElementById(`${p}-card-id`).value = '';
+  document.getElementById(`${p}-card-name`).value = entry.displayName || '';
+  document.getElementById(`${p}-card-image`).value = entry.image || '';
+  document.getElementById(`${p}-set-id`).value = '';
+  document.getElementById(`${p}-set-name`).value = '';
+  document.getElementById(`${p}-set-logo`).value = '';
+  document.getElementById(`${p}-number`).value = '';
+  document.getElementById(`${p}-rarity`).value = '';
+  document.getElementById(`${p}-pokemon-name`).value = entry.displayName || '';
+  const pokeKeyField = document.getElementById(`${p}-pokemon-key`);
+  if (pokeKeyField) pokeKeyField.value = '';
+  // Même format "kind:id" que Personnage/Objet/Lieu/Énergie (voir
+  // _cardPickerSelectCard) — permet de retrouver l'entrée (et son image) si
+  // elle est renommée/mise à jour plus tard, exactement comme les autres.
+  const pkoKeyField = document.getElementById(`${p}-pko-key`);
+  if (pkoKeyField) pkoKeyField.value = `${kind}:${entry.id}`;
+  const sigleField = document.getElementById(`${p}-ext-sigle`);
+  if (sigleField) sigleField.value = '';
+  const cmField = document.getElementById(`${p}-cardmarket-url`);
+  if (cmField) cmField.value = '';
+  _renderCardPreview(p);
+  closeModal('modal-card-picker');
 }
 
 // Étape 1 → 2, pour Personnages/Objets/Lieux/Énergies : charge les cartes

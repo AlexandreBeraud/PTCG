@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=23">
-<link rel="stylesheet" href="css/collection.css?v=23">
-<link rel="stylesheet" href="css/pokedex.css?v=23">
-<link rel="stylesheet" href="css/ventes-achats.css?v=23">
+<link rel="stylesheet" href="css/base.css?v=24">
+<link rel="stylesheet" href="css/collection.css?v=24">
+<link rel="stylesheet" href="css/pokedex.css?v=24">
+<link rel="stylesheet" href="css/ventes-achats.css?v=24">
 </head>
 <body>
 
@@ -630,7 +630,7 @@
         <button class="edition-tab" data-tab="mapping" onclick="switchEditionTab('mapping')">Mapping TCG</button>
         <button class="edition-tab" data-tab="labels" onclick="switchEditionTab('labels')">Labels</button>
         <button class="edition-tab" data-tab="orphans" onclick="switchEditionTab('orphans')">Cartes orphelines</button>
-        <button class="edition-tab" data-tab="persoobjets" onclick="switchEditionTab('persoobjets')">Perso., Objets, Lieux &amp; Énergies</button>
+        <button class="edition-tab" data-tab="persoobjets" onclick="switchEditionTab('persoobjets')">Encyclopédies</button>
       </div>
       <div class="edition-layout" id="edition-layout-main">
         <div>
@@ -746,8 +746,11 @@
         <div id="orphan-cards-list" class="pkdx-tcg-groups"></div>
       </div>
       <div id="edition-persoobjets-panel" style="display:none">
-        <p class="form-hint" style="margin-bottom:14px">
+        <p class="form-hint" style="margin-bottom:4px">
           Personnages, Objets, Lieux et Énergies sont créés à la main ici (un nom, éventuellement une image) — l'appli leur rattache automatiquement toute carte possédée dont le nom contient ce nom, n'importe où dans le titre (ex. créer "Cynthia" récupère "Ordres de Cynthia", "Carte Cynthia"…). En cas d'ambiguïté avec une autre catégorie, force la catégorie depuis la fiche de la carte concernée.
+        </p>
+        <p class="form-hint" style="margin-bottom:14px">
+          <strong>Accessoires</strong> fonctionne différemment : ce ne sont pas des cartes à retrouver mais des articles à part entière (sleeves, classeurs, pages, réductions…) — l'entrée créée ici (nom + image) est directement sélectionnable telle quelle dans le sélecteur de carte des Ventes/Achats, sans notion de "cartes possédées".
         </p>
         <div class="mapping-header">
           <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -755,6 +758,7 @@
             <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="objet" onclick="switchPkoEditKind('objet')">Objets</button>
             <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="lieu" onclick="switchPkoEditKind('lieu')">Lieux</button>
             <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="energie" onclick="switchPkoEditKind('energie')">Énergies</button>
+            <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="accessoire" onclick="switchPkoEditKind('accessoire')">Accessoires</button>
           </div>
           <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 10px;display:flex;align-items:center;gap:6px;width:220px">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -1610,9 +1614,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=23"></script>
-<script src="data.js?v=23"></script>
-<script src="js/sync.js?v=23"></script>
+<script src="config.js?v=24"></script>
+<script src="data.js?v=24"></script>
+<script src="js/sync.js?v=24"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1652,14 +1656,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=23"></script>
-<script src="js/collection.js?v=23"></script>
-<script src="js/edition.js?v=23"></script>
-<script src="js/mapping.js?v=23"></script>
-<script src="js/labels.js?v=23"></script>
-<script src="js/ventes-achats.js?v=23"></script>
-<script src="js/label-categories.js?v=23"></script>
-<script src="js/pokedex.js?v=23"></script>
-<script src="js/perso-objets.js?v=23"></script>
+<script src="js/core.js?v=24"></script>
+<script src="js/collection.js?v=24"></script>
+<script src="js/edition.js?v=24"></script>
+<script src="js/mapping.js?v=24"></script>
+<script src="js/labels.js?v=24"></script>
+<script src="js/ventes-achats.js?v=24"></script>
+<script src="js/label-categories.js?v=24"></script>
+<script src="js/pokedex.js?v=24"></script>
+<script src="js/perso-objets.js?v=24"></script>
 </body>
 </html>
