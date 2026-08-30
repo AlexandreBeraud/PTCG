@@ -2744,7 +2744,7 @@ var CARD_PICKER_MAX_RESULTS = 200;
 // Édition, voir perso-objets.js) — mêmes étapes 2/3 ensuite (les deux
 // alimentent en bout de course les mêmes champs génériques card_name/
 // pokemon_name/set_name… de la vente/dépense, voir saveVente/saveDepense).
-var _cardPickerKind = 'pokemon';    // 'pokemon' | 'personnage' | 'objet' | 'lieu' | 'energie' | 'accessoire' | 'lot'
+var _cardPickerKind = 'pokemon';    // 'pokemon' | 'personnage' | 'objet' | 'lieu' | 'energie' | 'accessoire'
 var _cardPickerPkoList = [];        // sous-ensemble courant de _pko.entries[kind]
 var _cardPickerSelectedPko = null;  // entrée _pko choisie à l'étape 1 (kind ≠ 'pokemon')
 
@@ -2754,14 +2754,23 @@ var CARD_PICKER_KIND_LABELS = {
   objet:      { tab: 'Objets',      search: 'Rechercher un objet',      placeholder: 'Rechercher un objet…' },
   lieu:       { tab: 'Lieux',       search: 'Rechercher un lieu',       placeholder: 'Rechercher un lieu…' },
   energie:    { tab: 'Énergies',    search: 'Rechercher une énergie',   placeholder: 'Rechercher une énergie…' },
-  // "Accessoires" et "Lot de cartes" (voir PKO_EXTRA_KINDS dans
-  // perso-objets.js) : pas une carte à retrouver, l'entrée choisie ici EST
-  // directement l'article vendu/acheté — voir
-  // _cardPickerSelectDirectEntry. "Lot de cartes" a en plus un prix TOTAL
-  // (pas unitaire) une fois sélectionné — voir _isLotItem/_lineTotal.
+  // "Accessoires" (voir PKO_EXTRA_KINDS dans perso-objets.js) : pas une
+  // carte à retrouver, l'entrée choisie ici EST directement l'article
+  // vendu/acheté — voir _cardPickerSelectDirectEntry.
   accessoire: { tab: 'Accessoires', search: 'Rechercher un accessoire', placeholder: 'Rechercher un accessoire…' },
-  lot:        { tab: 'Lots de cartes', search: 'Rechercher un lot',     placeholder: 'Rechercher un lot…' },
 };
+
+// "Lot de cartes" n'est volontairement PAS une catégorie de l'encyclopédie
+// (contrairement à Accessoires) : rien à créer dans Édition, chaque lot
+// étant différent à chaque fois, le cataloguer n'aurait aucun intérêt.
+// Cliquer sur cet onglet remplit directement le formulaire avec un nom et
+// une image génériques (voir window.__PC_LOT_IMAGE__ dans config.js) et
+// referme le sélecteur — tout le reste (prix total, nombre de cartes…) se
+// saisit ensuite à la main dans le formulaire vente/achat normal, comme
+// n'importe quel autre article. Voir _cardPickerSelectLotDirect ci-dessous
+// et _isLotItem/_lineTotal pour le calcul du prix qui en découle.
+var LOT_PKO_KEY = 'lot:generique';
+var LOT_GENERIC_NAME = 'Lot de cartes';
 
 var CARD_PICKER_KIND_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h8M14 12h8M12 2v4M12 18v4"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>';
 
@@ -2769,11 +2778,16 @@ function _renderCardPickerKindTabs() {
   const el = document.getElementById('cardpicker-kind-tabs');
   if (!el) return;
   const kinds = ['pokemon', ...PKO_EDIT_KINDS];
-  el.innerHTML = kinds.map(k => {
+  let html = kinds.map(k => {
     const active = k === _cardPickerKind ? ' active' : '';
     const icon = k === 'pokemon' ? CARD_PICKER_KIND_ICON_SVG : PKO_ICON[k];
     return `<button type="button" class="cardpicker-kind-btn${active}" onclick="setCardPickerKind('${k}')"><span class="cpk-icon">${icon}</span>${CARD_PICKER_KIND_LABELS[k].tab}</button>`;
   }).join('');
+  // Onglet "Lot de cartes" à part (voir commentaire plus haut) : PAS de
+  // setCardPickerKind (qui ouvrirait une liste à parcourir) — remplit et
+  // ferme direct.
+  html += `<button type="button" class="cardpicker-kind-btn" onclick="_cardPickerSelectLotDirect()"><span class="cpk-icon">🎴</span>Lots de cartes</button>`;
+  el.innerHTML = html;
 }
 
 // Change de catégorie recherchée à l'étape 1, sans fermer/rouvrir la modale.
@@ -3010,10 +3024,39 @@ function _cardPickerSelectDirectEntry(i) {
   // Même format "kind:id" que Personnage/Objet/Lieu/Énergie (voir
   // _cardPickerSelectCard) — permet de retrouver l'entrée (et son image) si
   // elle est renommée/mise à jour plus tard, exactement comme les autres.
-  // C'est aussi CE champ qui permet à _isLotItem (plus bas) de reconnaître
-  // un Lot de cartes et d'adapter le calcul du total en conséquence.
   const pkoKeyField = document.getElementById(`${p}-pko-key`);
   if (pkoKeyField) pkoKeyField.value = `${kind}:${entry.id}`;
+  const sigleField = document.getElementById(`${p}-ext-sigle`);
+  if (sigleField) sigleField.value = '';
+  const cmField = document.getElementById(`${p}-cardmarket-url`);
+  if (cmField) cmField.value = '';
+  _renderCardPreview(p);
+  closeModal('modal-card-picker');
+}
+
+// Onglet "Lot de cartes" du sélecteur (voir commentaire près de
+// LOT_PKO_KEY plus haut) : pas de liste à parcourir, pas d'entrée à choisir
+// — remplit directement le formulaire avec un nom et une image génériques
+// et referme le sélecteur. Le pko_key fixe ("lot:generique") est ce qui
+// permet à _isLotItem/_lineTotal de reconnaître la ligne ensuite et de ne
+// jamais multiplier le prix (déjà total) par la quantité (nombre de cartes,
+// purement indicatif) — voir aussi _syncPrixQtyLabels pour le changement de
+// libellé "Prix total du lot (€)" / "Nombre de cartes" dans le formulaire.
+function _cardPickerSelectLotDirect() {
+  const p = _cardPickerTarget; if (!p) return;
+  document.getElementById(`${p}-card-id`).value = '';
+  document.getElementById(`${p}-card-name`).value = LOT_GENERIC_NAME;
+  document.getElementById(`${p}-card-image`).value = window.__PC_LOT_IMAGE__ || '';
+  document.getElementById(`${p}-set-id`).value = '';
+  document.getElementById(`${p}-set-name`).value = '';
+  document.getElementById(`${p}-set-logo`).value = '';
+  document.getElementById(`${p}-number`).value = '';
+  document.getElementById(`${p}-rarity`).value = '';
+  document.getElementById(`${p}-pokemon-name`).value = LOT_GENERIC_NAME;
+  const pokeKeyField = document.getElementById(`${p}-pokemon-key`);
+  if (pokeKeyField) pokeKeyField.value = '';
+  const pkoKeyField = document.getElementById(`${p}-pko-key`);
+  if (pkoKeyField) pkoKeyField.value = LOT_PKO_KEY;
   const sigleField = document.getElementById(`${p}-ext-sigle`);
   if (sigleField) sigleField.value = '';
   const cmField = document.getElementById(`${p}-cardmarket-url`);

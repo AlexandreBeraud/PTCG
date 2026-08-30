@@ -22,6 +22,17 @@ window.__PC_NAS_SPRITES__ = {
   key: '1756562554000',
 };
 
+// ─── Image générique "Lot de cartes" (Ventes/Achats) ────────────────────────
+// Affichée pour TOUT lot vendu/acheté (voir onglet "Lots de cartes" du
+// sélecteur de carte, js/ventes-achats.js — LOT_PKO_KEY /
+// _cardPickerSelectLotDirect) : contrairement à Accessoires, un lot n'a pas
+// de fiche dédiée dans Édition, donc pas d'image par entrée — une seule
+// image pour tous, à définir ici une bonne fois. Lien FileBrowser (comme les
+// sprites ci-dessus) : héberge l'image sur le NAS puis colle son lien de
+// partage "Aperçu" ici. Laisser vide ('') tant qu'aucune image n'est choisie
+// — le lot s'affichera alors sans image (🎴), sans erreur.
+window.__PC_LOT_IMAGE__ = '';
+
 // ─── Ancienne config Supabase (rollback) ─────────────────────
 // window.__PC_CLOUD_CONFIG__ = {
 //   url: 'https://kfyphcestbcgtkzurvas.supabase.co',

@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=26">
-<link rel="stylesheet" href="css/collection.css?v=26">
-<link rel="stylesheet" href="css/pokedex.css?v=26">
-<link rel="stylesheet" href="css/ventes-achats.css?v=26">
+<link rel="stylesheet" href="css/base.css?v=27">
+<link rel="stylesheet" href="css/collection.css?v=27">
+<link rel="stylesheet" href="css/pokedex.css?v=27">
+<link rel="stylesheet" href="css/ventes-achats.css?v=27">
 </head>
 <body>
 
@@ -752,9 +752,6 @@
         <p class="form-hint" style="margin-bottom:14px">
           <strong>Accessoires</strong> fonctionne différemment : ce ne sont pas des cartes à retrouver mais des articles à part entière (sleeves, classeurs, pages, réductions…) — l'entrée créée ici (nom + image) est directement sélectionnable telle quelle dans le sélecteur de carte des Ventes/Achats, sans notion de "cartes possédées".
         </p>
-        <p class="form-hint" style="margin-bottom:4px">
-          <strong>Lot de cartes</strong> fonctionne comme Accessoires (article direct, sans rattachement de carte), mais avec une différence : le prix saisi dans Ventes/Achats est le <strong>prix total du lot</strong>, pas un prix unitaire — la quantité (nombre de cartes du lot) reste purement informative et n'est jamais multipliée au prix.
-        </p>
         <div class="mapping-header">
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="btn btn-sm btn-secondary pko-kind-btn active" data-kind="personnage" onclick="switchPkoEditKind('personnage')">Personnages</button>
@@ -762,7 +759,6 @@
             <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="lieu" onclick="switchPkoEditKind('lieu')">Lieux</button>
             <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="energie" onclick="switchPkoEditKind('energie')">Énergies</button>
             <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="accessoire" onclick="switchPkoEditKind('accessoire')">Accessoires</button>
-            <button class="btn btn-sm btn-secondary pko-kind-btn" data-kind="lot" onclick="switchPkoEditKind('lot')">Lots de cartes</button>
           </div>
           <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 10px;display:flex;align-items:center;gap:6px;width:220px">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -1618,9 +1614,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=26"></script>
-<script src="data.js?v=26"></script>
-<script src="js/sync.js?v=26"></script>
+<script src="config.js?v=27"></script>
+<script src="data.js?v=27"></script>
+<script src="js/sync.js?v=27"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1660,14 +1656,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=26"></script>
-<script src="js/collection.js?v=26"></script>
-<script src="js/edition.js?v=26"></script>
-<script src="js/mapping.js?v=26"></script>
-<script src="js/labels.js?v=26"></script>
-<script src="js/ventes-achats.js?v=26"></script>
-<script src="js/label-categories.js?v=26"></script>
-<script src="js/pokedex.js?v=26"></script>
-<script src="js/perso-objets.js?v=26"></script>
+<script src="js/core.js?v=27"></script>
+<script src="js/collection.js?v=27"></script>
+<script src="js/edition.js?v=27"></script>
+<script src="js/mapping.js?v=27"></script>
+<script src="js/labels.js?v=27"></script>
+<script src="js/ventes-achats.js?v=27"></script>
+<script src="js/label-categories.js?v=27"></script>
+<script src="js/pokedex.js?v=27"></script>
+<script src="js/perso-objets.js?v=27"></script>
 </body>
 </html>
