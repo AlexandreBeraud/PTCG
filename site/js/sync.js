@@ -503,6 +503,7 @@ var _SYNC_DOMAINS = [
           ven_pokemon_name: v.pokemon_name || '', ven_pokemon_key: v.pokemon_key || '', ven_pko_key: v.pko_key || '', ven_etat: v.etat || 'Near Mint', ven_prix: v.prix || 0, ven_qty: v.qty || 1,
           ven_types: v.types || [], ven_langue: v.langue || 'Français', ven_statut: v.statut || 'a_mettre',
           ven_commande_id: v.commande_id || null, ven_cardmarket_url: v.cardmarket_url || '',
+          ven_pour_compte_de: v.pour_compte_de || '',
           ven_created_at: new Date(v.created_at || Date.now()).toISOString(), ven_updated_at: _isoNow(),
         };
       });
@@ -516,6 +517,7 @@ var _SYNC_DOMAINS = [
           pokemon_key: r.ven_pokemon_key || '', pko_key: r.ven_pko_key || '',
           etat: r.ven_etat || 'Near Mint', prix: r.ven_prix || 0, qty: r.ven_qty || 1, types: r.ven_types || [], langue: r.ven_langue || 'Français',
           statut: r.ven_statut || 'a_mettre', commande_id: r.ven_commande_id || null, cardmarket_url: r.ven_cardmarket_url || '',
+          pour_compte_de: r.ven_pour_compte_de || '',
           created_at: r.ven_created_at ? new Date(r.ven_created_at).getTime() : Date.now(),
           updated_at: r.ven_updated_at ? new Date(r.ven_updated_at).getTime() : Date.now(),
         };

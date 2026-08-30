@@ -319,6 +319,17 @@ function _saleNameQtyBadgeHtml(opts) {
   return '';
 }
 
+// Badge "Pour X" à côté du nom — Ventes uniquement (voir le champ "Pour le
+// compte de" du formulaire, saveVente/editVente). Violet pour ne pas se
+// confondre avec les autres badges (vert=statut, bleu=type, ambre=lot) —
+// signale d'un coup d'œil que l'argent n'est pas pour soi, avant même
+// d'ouvrir la vente. Ces ventes sont exclues du Bilan personnel (voir
+// _venteIsForSelf / renderBilan) et retrouvables via le filtre Propriétaire.
+function _saleOwnerBadgeHtml(pourCompteDe) {
+  if (!pourCompteDe) return '';
+  return ` <span class="qty-badge owner-badge" title="Vente pour le compte de ${_escHtml(pourCompteDe)}">👤 ${_escHtml(pourCompteDe)}</span>`;
+}
+
 // ── Acheteur → commandes → ventes ───────────────────────────────────────
 function acheteurCommandes(acheteurId) {
   return (_D.acheteur_commandes||[]).filter(c => c.acheteur_id === acheteurId)
@@ -352,6 +363,9 @@ var _venteSort = 'date_desc', _depenseSort = 'date_desc';
 var _acheteurSort = 'alpha_asc', _vendeurSort = 'alpha_asc';
 var _venteExtFilter = 'all', _depenseExtFilter = 'all';
 var _ventePersonFilter = 'all', _depensePersonFilter = 'all';
+// Filtre Propriétaire (Ventes uniquement) : 'all' = tout, 'moi' = ventes
+// pour soi (pour_compte_de vide), ou le nom exact d'un tiers.
+var _venteOwnerFilter = 'all';
 // Nouveaux filtres : État (condition de carte, multi-sélection), Type
 // (Normale/Reverse/Holo Cosmos/1ère édition, multi-sélection), plage de
 // dates (date de la commande liée — voir _saleSortDateValue, PAS created_at)
@@ -665,7 +679,7 @@ function setSalePrixFilter(kind, which, value) {
 function resetSaleFilters(kind) {
   const p = kind === 'vente' ? 'ventes' : 'depenses';
   if (kind === 'vente') {
-    _venteFilter = 'all'; _venteExtFilter = 'all'; _ventePersonFilter = 'all';
+    _venteFilter = 'all'; _venteExtFilter = 'all'; _ventePersonFilter = 'all'; _venteOwnerFilter = 'all';
     _venteEtatFilter = new Set(); _venteTypeFilter = new Set();
     _venteDateFrom = ''; _venteDateTo = ''; _ventePrixMin = ''; _ventePrixMax = '';
   } else {
@@ -677,6 +691,7 @@ function resetSaleFilters(kind) {
   ['date-from','date-to','prix-min','prix-max'].forEach(f => { const el = document.getElementById(`${p}-${f}`); if (el) el.value = ''; });
   const personSel = document.getElementById(kind === 'vente' ? 'ventes-acheteur-filter' : 'depenses-vendeur-filter');
   if (personSel) personSel.value = 'all';
+  if (kind === 'vente') { const ownerSel = document.getElementById('ventes-owner-filter'); if (ownerSel) ownerSel.value = 'all'; }
   _syncSaleExtFilterLabel(kind);
   _syncSaleMultiFilterLabel(kind, 'etat');
   _syncSaleMultiFilterLabel(kind, 'type');
@@ -693,6 +708,18 @@ function _populatePersonFilter(selectId, items, currentValue) {
 }
 function setVentePersonFilter(name) { _ventePersonFilter = name; renderVentes(); }
 function setDepensePersonFilter(name) { _depensePersonFilter = name; renderDepenses(); }
+
+// Remplit le <select> Propriétaire avec les tiers réellement présents dans
+// les ventes actuellement affichées — "Tous" et "Moi" sont fixes (voir
+// index.html), seules les options tiers sont reconstruites ici.
+function _populateOwnerFilter(items, currentValue) {
+  const sel = document.getElementById('ventes-owner-filter'); if (!sel) return;
+  const names = [...new Set(items.map(v => v.pour_compte_de).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
+  sel.innerHTML = '<option value="all">Tous (propriétaire)</option><option value="moi">Moi</option>' +
+    names.map(n => `<option value="${_escHtml(n)}">${_escHtml(n)}</option>`).join('');
+  sel.value = (currentValue === 'all' || currentValue === 'moi' || names.includes(currentValue)) ? currentValue : 'all';
+}
+function setVenteOwnerFilter(value) { _venteOwnerFilter = value; renderVentes(); }
 
 function setVenteSort(sortId) {
   _venteSort = sortId;
@@ -757,7 +784,7 @@ function _orderItemRowHtml(item, kind) {
   return `<div class="order-item-row">
     <div class="order-item-thumb">${item.card_image ? `<img src="${item.card_image}" alt="" onerror="_nasImgRetry(this,_cardImgGiveUp)">` : '🎴'}</div>
     <div class="order-item-info">
-      <div class="order-item-name">${item.card_name || item.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
+      <div class="order-item-name">${item.card_name || item.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}${kind==='vente'?_saleOwnerBadgeHtml(item.pour_compte_de):''}</div>
       <div class="order-item-meta">${item.set_name||''}${item.number?' · N°'+item.number:''} · ${item.etat||''}</div>
       ${typesHtml ? `<div class="order-item-types">${typesHtml}</div>` : ''}
     </div>
@@ -791,6 +818,9 @@ function renderVentes() {
   if (_venteExtFilter !== 'all') items = items.filter(v => v.set_name === _venteExtFilter);
   _populatePersonFilter('ventes-acheteur-filter', items, _ventePersonFilter);
   if (_ventePersonFilter !== 'all') items = items.filter(v => _personNameFor(v) === _ventePersonFilter);
+  _populateOwnerFilter(items, _venteOwnerFilter);
+  if (_venteOwnerFilter === 'moi') items = items.filter(v => !v.pour_compte_de);
+  else if (_venteOwnerFilter !== 'all') items = items.filter(v => v.pour_compte_de === _venteOwnerFilter);
   if (_venteEtatFilter.size) items = items.filter(v => _venteEtatFilter.has(v.etat));
   if (_venteTypeFilter.size) items = items.filter(v => (v.types||[]).some(t => _venteTypeFilter.has(t)));
   if (_venteDateFrom) { const ts = new Date(_venteDateFrom+'T00:00:00').getTime(); items = items.filter(v => _saleSortDateValue(v) >= ts); }
@@ -799,7 +829,7 @@ function renderVentes() {
   if (_ventePrixMax !== '') { const n = parseFloat(_ventePrixMax); if (!isNaN(n)) items = items.filter(v => _lineTotal(v) <= n); }
   items = _applySaleSort(items, _venteSort);
 
-  const anyFilterActive = _venteQuery || _venteFilter!=='all' || _venteExtFilter!=='all' || _ventePersonFilter!=='all' ||
+  const anyFilterActive = _venteQuery || _venteFilter!=='all' || _venteExtFilter!=='all' || _ventePersonFilter!=='all' || _venteOwnerFilter!=='all' ||
     _venteEtatFilter.size || _venteTypeFilter.size || _venteDateFrom || _venteDateTo || _ventePrixMin!=='' || _ventePrixMax!=='';
   if (!items.length) {
     grid.innerHTML = `<div class="sales-empty">Aucune vente${anyFilterActive ? ' ne correspond aux filtres' : ' pour le moment'}.</div>`;
@@ -1054,7 +1084,7 @@ function _saleCardTopHtml(opts) {
       ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="_nasImgRetry(this)">` : ''}
       ${opts.spriteId ? `<div class="sale-sprite-badge" id="sale-sprite-${opts.spriteId}"></div>` : ''}
       <div class="sale-top-info">
-        <div class="sale-card-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}</div>
+        <div class="sale-card-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}${_saleOwnerBadgeHtml(opts.pourCompteDe)}</div>
         <div class="sale-card-meta">${opts.extName}</div>
         ${opts.number ? `<div class="sale-card-number">N°${_escHtml(opts.number)}</div>` : ''}
         ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : ''}
@@ -1101,7 +1131,7 @@ function _saleCompactCardHtml(opts) {
     <div class="sale-compact-body">
       <div class="sale-compact-head">
         <div class="sale-compact-head-text">
-          <div class="sale-compact-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}</div>
+          <div class="sale-compact-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}${_saleOwnerBadgeHtml(opts.pourCompteDe)}</div>
           <div class="sale-compact-meta">${opts.extName}</div>
           ${opts.number ? `<div class="sale-compact-number">N°${_escHtml(opts.number)}</div>` : ''}
         </div>
@@ -1140,7 +1170,7 @@ function _saleListRowHtml(opts) {
     <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="_nasImgRetry(this,_cardImgGiveUp)">` : '🎴'}</div>
     ${opts.spriteId ? `<div class="sale-list-sprite" id="sale-sprite-${opts.spriteId}"></div>` : ''}
     <div class="sale-list-main">
-      <div class="sale-list-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}</div>
+      <div class="sale-list-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}${_saleOwnerBadgeHtml(opts.pourCompteDe)}</div>
       <div class="sale-list-meta">${opts.extName}</div>
       ${opts.number ? `<div class="sale-list-number">N°${_escHtml(opts.number)}</div>` : ''}
     </div>
@@ -1170,7 +1200,7 @@ function buildVenteCard(v) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
     _saleCardTopHtml({
-      image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v),
+      image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v), pourCompteDe: v.pour_compte_de,
       name: v.card_name || v.pokemon_name || '—',
       extName: v.set_name||'', number: v.number||'',
       statusCls: st.cls, statusLabel: st.label,
@@ -1202,7 +1232,7 @@ function buildVenteRow(v) {
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
   row.innerHTML = _saleListRowHtml({
-    image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—', isLot: _isLotItem(v),
+    image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—', isLot: _isLotItem(v), pourCompteDe: v.pour_compte_de,
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
     priceHtml: _salePriceHtml(v, qty),
@@ -1226,7 +1256,7 @@ function buildVenteCompact(v) {
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
-    image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v),
+    image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v), pourCompteDe: v.pour_compte_de,
     name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
@@ -1402,6 +1432,8 @@ function openAddVenteModal(prefillAcheteurId, prefillCommandeId) {
   document.getElementById('vente-langue-select').value = 'Français';
   _setChipGroup('vente-type-chips', ['normale']);
   setCropInput('vente', 16);
+  const ventePourCompteDeField = document.getElementById('vente-pour-compte-de-input');
+  if (ventePourCompteDeField) ventePourCompteDeField.value = '';
   // À défaut de pré-remplissage explicite (venant d'une commande existante),
   // on repart sur le dernier acheteur/commande effectivement utilisé.
   const defaultAcheteurId = prefillAcheteurId || (_D.settings && _D.settings.last_acheteur_id) || '';
@@ -1447,6 +1479,8 @@ function editVente(id) {
   document.getElementById('vente-langue-select').value = v.langue||'Français';
   _setChipGroup('vente-type-chips', v.types||[]);
   setCropInput('vente', v.crop !== undefined && v.crop !== null && v.crop !== '' ? v.crop : 'center');
+  const ventePourCompteDeField = document.getElementById('vente-pour-compte-de-input');
+  if (ventePourCompteDeField) ventePourCompteDeField.value = v.pour_compte_de||'';
   const existingCommande = v.commande_id ? (_D.acheteur_commandes||[]).find(c=>c.id===v.commande_id) : null;
   populateAcheteurSelect(existingCommande ? existingCommande.acheteur_id : '');
   populateVenteCommandeSelect(existingCommande ? existingCommande.acheteur_id : '', v.commande_id || null);
@@ -1494,6 +1528,11 @@ function saveVente() {
     cardmarket_url: (document.getElementById('vente-cardmarket-url')?.value || '').trim(),
     statut,
     commande_id:  commandeId,
+    // Vide = vente pour soi (cas normal). Renseigné = vente faite pour le
+    // compte d'un tiers (ex. une amie) — voir _saleOwnerBadgeHtml, le filtre
+    // Propriétaire et la section "Bilan tiers" de l'onglet Bilan, qui
+    // exclut ces ventes du bilan personnel.
+    pour_compte_de: (document.getElementById('vente-pour-compte-de-input')?.value || '').trim(),
   };
   // Le lien CardMarket vit sur la carte elle-même (table Supabase "cards"),
   // pas seulement sur cette vente — éditable ici ET depuis la fiche carte du
@@ -2498,13 +2537,57 @@ function _depenseIsArrivee(d) {
   return !!c && (c.etat||'a_payer') === 'arrive';
 }
 
+// Une vente marquée "Pour le compte de" (voir le formulaire Ventes) n'est
+// pas ton argent — elle ne doit jamais compter dans TON bilan personnel
+// (chiffre "Total ventes", graphiques, tableau mensuel). Elle reste
+// suivable séparément dans la section "Bilan tiers" plus bas.
+function _venteIsForSelf(v) { return !v.pour_compte_de; }
+
+// Section "Bilan tiers" (voir le champ "Pour le compte de" du formulaire
+// Ventes) : regroupe par personne TOUTES ses ventes, peu importe le statut
+// — contrairement au bilan personnel ci-dessus, le but ici n'est pas de
+// reconnaître un revenu (ce n'est pas ton argent) mais juste de pouvoir
+// tout retrouver d'un coup d'œil pour savoir quoi lui reverser. Retourne ''
+// s'il n'y a aucune vente pour un tiers, pour ne rien afficher du tout.
+function _bilanTiersHtml() {
+  const tiersVentes = (_D.ventes||[]).filter(v => v.pour_compte_de);
+  if (!tiersVentes.length) return '';
+  const parMap = {};
+  tiersVentes.forEach(v => {
+    const nom = v.pour_compte_de;
+    if (!parMap[nom]) parMap[nom] = { total: 0, count: 0 };
+    parMap[nom].total += _lineTotal(v);
+    parMap[nom].count += (parseInt(v.qty,10)||1);
+  });
+  const noms = Object.keys(parMap).sort((a,b)=>a.localeCompare(b,'fr'));
+  const totalTiers = noms.reduce((s,n)=>s+parMap[n].total,0);
+  return `
+    <div class="bilan-table" style="margin-top:20px">
+      <div class="bilan-row bilan-header-row bilan-row-tiers">
+        <div class="bilan-month">Bilan tiers <span class="form-hint" style="margin:0">— ventes pour le compte d'un tiers, hors bilan perso</span></div>
+        <div class="bilan-ventes">Cartes</div>
+        <div class="bilan-solde">Total</div>
+      </div>
+      ${noms.map(n => `<div class="bilan-row bilan-row-tiers">
+        <div class="bilan-month">👤 ${_escHtml(n)}</div>
+        <div class="bilan-ventes">${parMap[n].count}</div>
+        <div class="bilan-solde">${parMap[n].total.toFixed(2)} €</div>
+      </div>`).join('')}
+      <div class="bilan-row bilan-row-tiers">
+        <div class="bilan-month form-hint" style="margin:0">Total tiers (hors ton bilan)</div>
+        <div class="bilan-ventes"></div>
+        <div class="bilan-solde">${totalTiers.toFixed(2)} €</div>
+      </div>
+    </div>`;
+}
+
 function renderBilan() {
   const statsEl = document.getElementById('bilan-stats');
   const el      = document.getElementById('bilan-content');
   if (!statsEl || !el) return;
 
   const ventesByMonth = {}, ventesCountByMonth = {};
-  (_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v)).forEach(v => {
+  (_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v) && _venteIsForSelf(v)).forEach(v => {
     const key = _venteMonthKey(v); if (!key) return;
     ventesByMonth[key] = (ventesByMonth[key]||0) + _lineTotal(v);
     ventesCountByMonth[key] = (ventesCountByMonth[key]||0) + (parseInt(v.qty,10)||1);
@@ -2529,7 +2612,10 @@ function renderBilan() {
     <div class="stat-card stat-card-money" style="--accent-color:${solde>=0?'var(--green)':'var(--accent2)'}"><div class="val">${solde>=0?'+':''}${solde.toFixed(2)} €</div><div class="lbl">Solde net</div></div>`;
 
   if (!allMonths.length) {
-    el.innerHTML = '<div class="sales-empty">Aucune vente vendue ni dépense enregistrée pour le moment.</div>';
+    const tiersHtml = _bilanTiersHtml();
+    el.innerHTML = tiersHtml
+      ? '<div class="sales-empty">Aucune vente vendue ni dépense enregistrée pour le moment (hors ventes pour un tiers, voir plus bas).</div>' + tiersHtml
+      : '<div class="sales-empty">Aucune vente vendue ni dépense enregistrée pour le moment.</div>';
     return;
   }
 
@@ -2585,7 +2671,7 @@ function renderBilan() {
           <div class="bilan-solde ${s>=0?'positive':'negative'}">${s>=0?'+':''}${s.toFixed(2)} €</div>
         </div>`;
       }).join('')}
-    </div>`;
+    </div>${_bilanTiersHtml()}`;
 
   // Chart.js est chargé via CDN (voir index.html, comme dans le budget de
   // référence) — si jamais il n'a pas pu se charger (offline, CDN
@@ -2599,7 +2685,7 @@ function renderBilan() {
   }
 
   const depensesByExt = _groupByExtension(_filterByBilanPeriod((_D.depenses||[]).filter(_depenseIsArrivee), _depenseMonthKey));
-  const ventesByExt   = _groupByExtension(_filterByBilanPeriod((_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v)), _venteMonthKey));
+  const ventesByExt   = _groupByExtension(_filterByBilanPeriod((_D.ventes||[]).filter(v => venteStatusInfo(v).id === 'vendue' && _venteIsArrivee(v) && _venteIsForSelf(v)), _venteMonthKey));
   const chronoMonths  = [...allMonths].reverse(); // plus ancien → plus récent, pour lire l'évolution dans le bon sens
 
   _bilanDepChart = _renderBilanCatChart('bilan-dep-canvas', depensesByExt, _bilanDepMode, _bilanDepChart, 'bilan-dep-wrapper');

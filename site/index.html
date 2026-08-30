@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=28">
-<link rel="stylesheet" href="css/collection.css?v=28">
-<link rel="stylesheet" href="css/pokedex.css?v=28">
-<link rel="stylesheet" href="css/ventes-achats.css?v=28">
+<link rel="stylesheet" href="css/base.css?v=29">
+<link rel="stylesheet" href="css/collection.css?v=29">
+<link rel="stylesheet" href="css/pokedex.css?v=29">
+<link rel="stylesheet" href="css/ventes-achats.css?v=29">
 </head>
 <body>
 
@@ -306,6 +306,10 @@
           </div>
           <select id="ventes-acheteur-filter" class="sales-sort-select" onchange="setVentePersonFilter(this.value)">
             <option value="all">Tous (acheteurs)</option>
+          </select>
+          <select id="ventes-owner-filter" class="sales-sort-select" onchange="setVenteOwnerFilter(this.value)">
+            <option value="all">Tous (propriétaire)</option>
+            <option value="moi">Moi</option>
           </select>
           <select id="ventes-sort-select" class="sales-sort-select" onchange="setVenteSort(this.value)">
             <option value="date_desc">Date (récent d'abord)</option>
@@ -1334,6 +1338,9 @@
       </div>
       <input type="hidden" id="vente-statut-input" value="a_mettre">
     </div>
+    <div class="settings-field"><label>Pour le compte de <span class="form-hint" style="margin:0">(optionnel)</span></label>
+      <input type="text" id="vente-pour-compte-de-input" placeholder="Laisse vide si c'est pour toi — ex : Marie">
+    </div>
     <div id="vente-vendue-section" style="display:none">
       <div class="settings-field"><label>Acheteur</label>
         <div style="display:flex;gap:6px">
@@ -1614,9 +1621,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=28"></script>
-<script src="data.js?v=28"></script>
-<script src="js/sync.js?v=28"></script>
+<script src="config.js?v=29"></script>
+<script src="data.js?v=29"></script>
+<script src="js/sync.js?v=29"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1656,14 +1663,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=28"></script>
-<script src="js/collection.js?v=28"></script>
-<script src="js/edition.js?v=28"></script>
-<script src="js/mapping.js?v=28"></script>
-<script src="js/labels.js?v=28"></script>
-<script src="js/ventes-achats.js?v=28"></script>
-<script src="js/label-categories.js?v=28"></script>
-<script src="js/pokedex.js?v=28"></script>
-<script src="js/perso-objets.js?v=28"></script>
+<script src="js/core.js?v=29"></script>
+<script src="js/collection.js?v=29"></script>
+<script src="js/edition.js?v=29"></script>
+<script src="js/mapping.js?v=29"></script>
+<script src="js/labels.js?v=29"></script>
+<script src="js/ventes-achats.js?v=29"></script>
+<script src="js/label-categories.js?v=29"></script>
+<script src="js/pokedex.js?v=29"></script>
+<script src="js/perso-objets.js?v=29"></script>
 </body>
 </html>
