@@ -1432,14 +1432,31 @@ async function _loadTcgCardsInModal(frName, formType, ownFormTypes) {
 // (_cardPickerRenderCardGroups). `cardClickAttr(card)` fournit le contenu de
 // l'attribut onclick de chaque tuile (comportement différent : ouvrir la
 // fiche détaillée dans le Pokédex, sélectionner la carte dans le picker).
+// Callback de repli pour une vignette de carte TCG (groupes par extension,
+// voir _renderTcgCardGroupsHtml) qui a définitivement échoué à charger
+// après les tentatives de _nasImgRetry (core.js) — reproduit le même
+// placeholder texte que l'état "pas d'image_url" (else ci-dessous).
+function _tcgCardImgGiveUp(img) {
+  const name = img.dataset.fallbackName || '';
+  img.outerHTML = '<div class="pkdx-tcg-placeholder">' + _escHtml(name) + '</div>';
+}
+
+// Même chose pour la grande image zoomée d'une carte (fiche détail carte,
+// voir openCardDetailModal) — même style de placeholder que l'absence
+// d'image_url, en conservant les proportions d'une carte (63/88).
+function _tcgCardZoomImgGiveUp(img) {
+  const name = img.dataset.fallbackName || '';
+  img.outerHTML = '<div class="pkdx-tcg-placeholder" style="width:100%;aspect-ratio:63/88;border-radius:12px;background:var(--bg3)">' + _escHtml(name) + '</div>';
+}
+
 function _renderTcgCardGroupsHtml(groups, cardClickAttr) {
   let html = '';
   groups.forEach(group => {
     const ext = group.ext;
     html += '<div class="pkdx-tcg-ext-group">'
       + '<div class="pkdx-tcg-ext-header">'
-      + (ext.logo  ? '<img src="' + ext.logo  + '" alt="" class="pkdx-tcg-ext-logo"  onerror="this.style.display=\'none\'">' : '')
-      + (ext.sigle ? '<img src="' + ext.sigle + '" alt="" class="pkdx-tcg-ext-sigle" onerror="this.style.display=\'none\'">' : '')
+      + (ext.logo  ? '<img src="' + ext.logo  + '" alt="" class="pkdx-tcg-ext-logo"  onerror="_nasImgRetry(this)">' : '')
+      + (ext.sigle ? '<img src="' + ext.sigle + '" alt="" class="pkdx-tcg-ext-sigle" onerror="_nasImgRetry(this)">' : '')
       + '<span class="pkdx-tcg-ext-name">' + _escHtml(ext.name) + '</span>'
       + (ext.code  ? '<span class="pkdx-tcg-ext-code">' + _escHtml(ext.code) + '</span>' : '')
       + '<span class="pkdx-tcg-ext-badge">' + group.cards.length + '</span>'
@@ -1453,7 +1470,7 @@ function _renderTcgCardGroupsHtml(groups, cardClickAttr) {
       html += '<div class="pkdx-tcg-card" onclick="' + cardClickAttr(c) + '" title="'
         + _escHtml((c.set_name||'') + ' — ' + (c.number||'') + ' — ' + (c.rarity||'')) + '">';
       if (c.image_url) {
-        html += '<img src="' + c.image_url + '" alt="' + _escHtml(c.name) + '" loading="lazy">';
+        html += '<img src="' + c.image_url + '" alt="' + _escHtml(c.name) + '" loading="lazy" data-fallback-name="' + _escHtml(c.name) + '" onerror="_nasImgRetry(this,_tcgCardImgGiveUp)">';
       } else {
         html += '<div class="pkdx-tcg-placeholder">' + _escHtml(c.name) + '</div>';
       }
@@ -1553,7 +1570,7 @@ function _buildModalExtFilterList() {
   html += items.map(ext => {
     const active = filter && filter.has(ext.extId) ? 'active' : '';
     return `<div class="pkdx-ext-filter-item ${active}" onclick="_toggleModalExtFilterItem('${_escJs(ext.extId)}')">
-      ${ext.sigle ? `<img src="${ext.sigle}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(ext.code||'')}</span>`}
+      ${ext.sigle ? `<img src="${ext.sigle}" alt="" class="pkdx-ext-filter-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : `<span class="pkdx-ext-filter-code">${_escHtml(ext.code||'')}</span>`}
       <span>${_escHtml(ext.name)}</span>
     </div>`;
   }).join('');
@@ -1594,13 +1611,13 @@ function openCardDetailModal(cardId) {
     <div class="pkdx-card-modal-layout">
       <div class="pkdx-card-modal-zoom">
         ${card.image_url
-          ? `<img src="${card.image_url}" alt="${_escHtml(card.name)}" id="pkdx-card-zoom-img">`
+          ? `<img src="${card.image_url}" alt="${_escHtml(card.name)}" id="pkdx-card-zoom-img" data-fallback-name="${_escHtml(card.name)}" onerror="_nasImgRetry(this,_tcgCardZoomImgGiveUp)">`
           : `<div class="pkdx-tcg-placeholder" style="width:100%;aspect-ratio:63/88;border-radius:12px;background:var(--bg3)">${_escHtml(card.name)}</div>`}
       </div>
       <div class="pkdx-card-modal-info">
         <h3>${_escHtml(card.name)}</h3>
         <div class="pkdx-card-modal-meta">
-          ${ext.sigle ? `<img src="${ext.sigle}" alt="" class="pkdx-card-modal-ext-sigle">` : ''}
+          ${ext.sigle ? `<img src="${ext.sigle}" alt="" class="pkdx-card-modal-ext-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : ''}
           <span>${_escHtml(ext.name || card.set_name || '')}</span>
           ${ext.code ? `<span class="pkdx-tcg-ext-code">${_escHtml(ext.code)}</span>` : ''}
         </div>

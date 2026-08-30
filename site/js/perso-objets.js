@@ -362,6 +362,14 @@ async function _pkoComputeOwnedCounts() {
   }
 }
 
+// Callback de repli pour une image d'entrée (Personnages/Objets/Lieux/
+// Énergies/Accessoires) qui a définitivement échoué à charger après les
+// tentatives de _nasImgRetry (core.js) — revient au même placeholder "?"
+// que l'état "pas d'image" plutôt que de laisser un vide.
+function _pkoImgGiveUp(img) {
+  img.parentElement.innerHTML = '<div class="pkdx-no-sprite">?</div>';
+}
+
 function _pkoRenderPage(kind, reset) {
   const L = PKO_LABELS[kind];
   const grid = document.getElementById(L.grid);
@@ -387,7 +395,7 @@ function _pkoRenderPage(kind, reset) {
     const nbCards = entry._ownedCount != null ? entry._ownedCount : '…';
     card.innerHTML = `
       <div class="pkdx-card-img-wrap">
-        ${entry.image ? `<img src="${entry.image}" alt="${_escHtml(entry.displayName)}" loading="lazy" class="pkdx-sprite">` : '<div class="pkdx-no-sprite">?</div>'}
+        ${entry.image ? `<img src="${entry.image}" alt="${_escHtml(entry.displayName)}" loading="lazy" class="pkdx-sprite" onerror="_nasImgRetry(this,_pkoImgGiveUp)">` : '<div class="pkdx-no-sprite">?</div>'}
       </div>
       <div class="pkdx-card-name">${_escHtml(entry.displayName)}</div>
       <div class="pkdx-card-types"><span class="pkdx-type" style="background:${L.color}">${nbCards} carte${nbCards === 1 ? '' : 's'}</span></div>
@@ -428,7 +436,7 @@ async function openPkoModal(kind, entryId) {
   inner.innerHTML = `
     <div class="pkdx-modal-hero" style="--pkdx-color:${L.color}">
       <div class="pkdx-modal-hero-bg"></div>
-      ${entry.image ? `<img src="${_escHtml(entry.image)}" alt="${_escHtml(entry.displayName)}" class="pkdx-modal-sprite">` : ''}
+      ${entry.image ? `<img src="${_escHtml(entry.image)}" alt="${_escHtml(entry.displayName)}" class="pkdx-modal-sprite" onerror="_nasImgRetry(this)">` : ''}
       <div class="pkdx-modal-hero-info">
         <div class="pkdx-modal-num">${L.singular.charAt(0).toUpperCase() + L.singular.slice(1)}</div>
         <h2 class="pkdx-modal-name">${_escHtml(entry.displayName)}</h2>
@@ -625,7 +633,7 @@ function _pkoEntryRowHtml(kind, entry) {
   return `
     <div class="edition-ext-row" id="pko-row-${_escJs(entry.id)}">
       <div class="edition-ext-thumb" style="background:${PKO_LABELS[kind].color}22;border:1px solid ${PKO_LABELS[kind].color}44">
-        ${entry.image ? `<img src="${_escHtml(entry.image)}" alt="" onerror="this.style.display='none'">` : ''}
+        ${entry.image ? `<img src="${_escHtml(entry.image)}" alt="" onerror="_nasImgRetry(this)">` : ''}
       </div>
       <div class="edition-ext-info">
         <div class="edition-ext-name">${_escHtml(entry.displayName)}</div>
@@ -643,6 +651,14 @@ function _pkoEntryRowHtml(kind, entry) {
     </div>`;
 }
 
+// Callback de repli pour la vignette Édition en mode grille — revient à
+// l'icône colorée de la catégorie (même état que "pas d'image") après
+// échec définitif de _nasImgRetry.
+function _pkoCardImgGiveUp(img, kind) {
+  const color = PKO_LABELS[kind].color;
+  img.outerHTML = `<span style="color:${color};font-size:1.4rem">${PKO_ICON[kind]}</span>`;
+}
+
 function _pkoEntryCardHtml(kind, entry) {
   const color = PKO_LABELS[kind].color;
   // "Accessoires" (voir PKO_EXTRA_KINDS) n'a pas de notion de "cartes
@@ -652,7 +668,7 @@ function _pkoEntryCardHtml(kind, entry) {
   return `
     <div class="edition-item-card" id="pko-card-${_escJs(entry.id)}" style="cursor:pointer" onclick="pkoEditEntryOpen('${_escJs(kind)}','${_escJs(entry.id)}')">
       <div class="edition-card-thumb" style="border-bottom:3px solid ${color};background:${color}22">
-        ${entry.image ? `<img src="${_escHtml(entry.image)}" alt="" onerror="this.style.display='none'">` : `<span style="color:${color};font-size:1.4rem">${PKO_ICON[kind]}</span>`}
+        ${entry.image ? `<img src="${_escHtml(entry.image)}" alt="" onerror="_nasImgRetry(this,img=>_pkoCardImgGiveUp(img,'${_escJs(kind)}'))">` : `<span style="color:${color};font-size:1.4rem">${PKO_ICON[kind]}</span>`}
       </div>
       <div class="edition-card-body">
         <div class="edition-card-name">${_escHtml(entry.displayName)}</div>

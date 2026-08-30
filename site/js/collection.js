@@ -58,7 +58,7 @@ function renderExtensions() {
     const section = document.createElement('div');
     section.className = 'bloc-section';
     const blocLogoHtml = bloc.logo
-      ? `<img src="${bloc.logo}" class="bloc-logo" alt="${bloc.short}" onerror="this.style.display='none'">`
+      ? `<img src="${bloc.logo}" class="bloc-logo" alt="${bloc.short}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`
       : '';
     section.innerHTML = `
       <div class="bloc-header">
@@ -108,7 +108,7 @@ function buildExtCard(ext, bloc) {
 
   el.innerHTML = `
     <div class="ext-card-thumb">
-      ${logoSrc ? `<img src="${logoSrc}" alt="${ext.nom}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+      ${logoSrc ? `<img src="${logoSrc}" alt="${ext.nom}" onerror="_nasImgRetry(this,img=>{img.style.display='none';img.nextElementSibling.style.display='flex'})">` : ''}
       <div class="ext-card-thumb-placeholder" style="${logoSrc?'display:none':''}">
         <div class="ext-pcode" style="color:${accentColor}">${ext.code}</div>
       </div>
@@ -142,7 +142,7 @@ function buildExtRow(ext, bloc) {
   el.innerHTML = `
     <div class="ext-row-color" style="background:${accentColor}"></div>
     <div class="ext-row-thumb">
-      ${ext.logo||bloc.logo ? `<img src="${ext.logo||bloc.logo}" alt="${ext.nom}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+      ${ext.logo||bloc.logo ? `<img src="${ext.logo||bloc.logo}" alt="${ext.nom}" onerror="_nasImgRetry(this,img=>{img.style.display='none';img.nextElementSibling.style.display='flex'})">` : ''}
       <div class="ext-row-thumb-code" style="color:${accentColor};${ext.logo||bloc.logo?'display:none':''}">${ext.code}</div>
     </div>
     <div class="ext-row-info">
@@ -238,10 +238,10 @@ function openDetail(ext, bloc) {
     logoArea.innerHTML = `
       <div class="detail-logo-banner" style="border-color:${color}">
         ${logoSrc
-          ? `<img class="detail-logo-img" src="${logoSrc}" alt="${ext.code}" onerror="this.style.display='none'">`
+          ? `<img class="detail-logo-img" src="${logoSrc}" alt="${ext.code}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`
           : `<div class="detail-logo-placeholder" style="color:${color}">${ext.code}</div>`}
         ${sigleSrcDetail
-          ? `<div class="detail-sigle-badge"><img src="${sigleSrcDetail}" alt="sigle" onerror="this.style.display='none'"></div>`
+          ? `<div class="detail-sigle-badge"><img src="${sigleSrcDetail}" alt="sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')"></div>`
           : ''}
       </div>`;
   }
@@ -260,7 +260,7 @@ function openDetail(ext, bloc) {
   document.getElementById('d-manual-total').textContent = `/ ${total}`;
 
   const sigleSrc2 = ext.sigle||bloc.sigle||'';
-  const sigleDisplayHtml = sigleSrc2 ? `<strong><img src="${sigleSrc2}" class="detail-info-sigle" onerror="this.style.display='none'"></strong>` : '<strong>—</strong>';
+  const sigleDisplayHtml = sigleSrc2 ? `<strong><img src="${sigleSrc2}" class="detail-info-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')"></strong>` : '<strong>—</strong>';
   document.getElementById('d-infos').innerHTML = `
     <div class="detail-info-row"><span>Code</span><strong>${ext.code}</strong></div>
     <div class="detail-info-row"><span>Sigle</span>${sigleDisplayHtml}</div>
@@ -359,7 +359,7 @@ function renderClasseurs() {
     const palette  = ['#e63946','#4a9eff','#06d6a0','#ffd166','#a855f7','#f97316','#ec4899'];
     const dotColor = bloc ? bloc.couleur : palette[groups.indexOf(key) % palette.length];
     const blocLogoHtml = bloc?.logo
-      ? `<img src="${bloc.logo}" class="bloc-logo" alt="${bloc.short}" onerror="this.style.display='none'">`
+      ? `<img src="${bloc.logo}" class="bloc-logo" alt="${bloc.short}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`
       : '';
     const blocName  = bloc ? bloc.nom  : 'Sans série';
     const blocShort = bloc ? bloc.short : '—';
@@ -955,7 +955,7 @@ function _buildAddExtClasseurList() {
     html += sortExts(exts).map(e => {
       const sigleSrc = e.sigle || bloc.sigle || '';
       return `<div class="pkdx-ext-filter-item" onclick="selectAddExtClasseurItem('${e.id}')">
-        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${e.code||''}</span>`}
+        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : `<span class="pkdx-ext-filter-code">${e.code||''}</span>`}
         <span>${e.nom}</span>
       </div>`;
     }).join('');
@@ -1045,10 +1045,10 @@ function _renderIllusDetailPanel(panelId, ext, bloc, illus, addFn, addLabel) {
   const logoZoneHtml = `
     <div class="bpd-logo-zone" style="border-color:${color}">
       ${logoSrc
-        ? `<img class="bpd-logo-main" src="${logoSrc}" alt="${ext.code}" onerror="this.style.display='none'">`
+        ? `<img class="bpd-logo-main" src="${logoSrc}" alt="${ext.code}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`
         : `<div class="bpd-logo-placeholder" style="color:${color}">${ext.code}</div>`}
       ${sigleSrc
-        ? `<div class="bpd-sigle-badge"><img src="${sigleSrc}" alt="sigle" onerror="this.style.display='none'"></div>`
+        ? `<div class="bpd-sigle-badge"><img src="${sigleSrc}" alt="sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')"></div>`
         : ''}
     </div>`;
 
@@ -1196,7 +1196,7 @@ function _renderIllusTab(opts) {
     const blocUid = opts.uidPrefix + '_bloc_' + bloc.id;
     const section=document.createElement('div');
     section.className='booster-bloc';
-    const blocLogoHtml=bloc.logo?`<img src="${bloc.logo}" class="bloc-logo-sm" alt="${bloc.short}" onerror="this.style.display='none'">`:'';
+    const blocLogoHtml=bloc.logo?`<img src="${bloc.logo}" class="bloc-logo-sm" alt="${bloc.short}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`:'';
     section.innerHTML=`
       <div class="booster-bloc-header" onclick="toggleAccordion('${blocUid}')" style="cursor:pointer">
         ${blocLogoHtml}
@@ -1233,7 +1233,7 @@ function _renderIllusTab(opts) {
         card.innerHTML=`
           <div class="bea-hcard-left" onclick="${opts.detailFn}(this,'${ext.id}')" style="cursor:pointer">
             <div class="bea-hcard-thumb">
-              ${logoSrc?`<img src="${logoSrc}" alt="${ext.nom}" onerror="this.style.display='none'">`:
+              ${logoSrc?`<img src="${logoSrc}" alt="${ext.nom}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`:
                 `<div class="bea-hcard-code" style="color:${accentColor}">${ext.code}</div>`}
             </div>
             <div class="bea-hcard-info">
@@ -1346,7 +1346,7 @@ function buildIllusCard(il,extId) {
       openIllusDetail(il, extId);
     }
   });
-  const imgHtml=il.img?`<img src="${il.img}" alt="${il.desc||''}" onerror="this.style.display='none'">`:''
+  const imgHtml=il.img?`<img src="${il.img}" alt="${il.desc||''}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`:''
   const ph=!il.img?`<div class="illus-card-placeholder">${il.desc||'—'}</div>`:''
   card.innerHTML=`
     ${imgHtml}${ph}
@@ -1388,7 +1388,7 @@ function openIllusDetail(il, extId) {
   panel.innerHTML = `
     <div class="bpd-illus-header">
       ${il.img
-        ? `<div class="bpd-illus-img-wrap"><img src="${il.img}" alt="${il.desc||''}"></div>`
+        ? `<div class="bpd-illus-img-wrap"><img src="${il.img}" alt="${il.desc||''}" data-fallback-text="${_escHtml(il.desc||'—')}" onerror="_nasImgRetry(this,_illusDetailImgGiveUp)"></div>`
         : `<div class="bpd-illus-noimg">${il.desc||'—'}</div>`}
     </div>
     <div class="bpd-illus-meta">
@@ -1413,9 +1413,9 @@ function openIllusDetail(il, extId) {
       <div class="bpd-header" style="padding:12px 16px;border-top:1px solid var(--border);cursor:pointer"
            onclick="${backFn}(null,'${extId}')">
         <div class="panel-logo-zone bpd-ext-logo" style="border-color:${color};width:48px;height:48px">
-          ${logoSrc?`<img class="panel-logo-main" src="${logoSrc}" alt="${ext.code}" onerror="this.style.display='none'">`:
+          ${logoSrc?`<img class="panel-logo-main" src="${logoSrc}" alt="${ext.code}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`:
             `<div class="panel-logo-placeholder" style="color:${color};font-size:.8rem">${ext.code}</div>`}
-          ${sigleSrc?`<div class="panel-sigle-badge"><img src="${sigleSrc}" alt="sigle" onerror="this.style.display='none'"></div>`:''}
+          ${sigleSrc?`<div class="panel-sigle-badge"><img src="${sigleSrc}" alt="sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')"></div>`:''}
         </div>
         <div class="bpd-info" style="margin-left:8px">
           <div class="bpd-code" style="color:${color}">${ext.code}</div>
@@ -1428,6 +1428,28 @@ function openIllusDetail(il, extId) {
   panel.classList.add('open');
 }
 
+// Callback de repli pour la vignette d'illustration (mode liste, voir
+// buildIllusRow) qui a définitivement échoué à charger après les tentatives
+// de _nasImgRetry (core.js) — reproduit le même placeholder (première
+// lettre de la description) que l'état "pas d'image", lu depuis l'attribut
+// data- posé au rendu plutôt que reconstruit ici (évite d'imbriquer du HTML
+// échappé dans l'attribut onerror lui-même).
+function _illusImgGiveUp(img) {
+  const letter = img.dataset.fallbackLetter || '?';
+  img.outerHTML = `<div class="illus-row-noimg">${_escHtml(letter)}</div>`;
+}
+
+// Même principe pour le grand panneau détail d'une illustration
+// (openIllusDetail) — remplace le wrapper entier par le même placeholder
+// "pas d'image" (texte complet de la description, pas juste sa 1re lettre,
+// puisque ce panneau a plus de place).
+function _illusDetailImgGiveUp(img) {
+  const text = img.dataset.fallbackText || '—';
+  const wrap = img.closest('.bpd-illus-img-wrap');
+  const target = wrap || img;
+  target.outerHTML = `<div class="bpd-illus-noimg">${_escHtml(text)}</div>`;
+}
+
 function buildIllusRow(il,extId) {
   const obtained=il.obtained!==false;
   const row=document.createElement('div');
@@ -1438,7 +1460,7 @@ function buildIllusRow(il,extId) {
   row.style.cursor='pointer';
   row.innerHTML=`
     <div class="illus-row-thumb">
-      ${il.img?`<img src="${il.img}" alt="">`:
+      ${il.img?`<img src="${il.img}" alt="" data-fallback-letter="${_escHtml(il.desc?il.desc[0]:'?')}" onerror="_nasImgRetry(this,_illusImgGiveUp)">`:
         `<div class="illus-row-noimg">${il.desc?il.desc[0]:'?'}</div>`}
     </div>
     <div class="illus-row-info">

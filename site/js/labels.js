@@ -400,7 +400,7 @@ function _buildExtFilterList() {
       const active   = _pkdxExtFilter && _pkdxExtFilter.has(e.id) ? 'active' : '';
       const sigleSrc = e.sigle || bloc.sigle || '';
       return `<div class="pkdx-ext-filter-item ${active}" onclick="togglePokedexExtFilterItem('${_escJs(e.id)}','${_escJs(setId)}','${_escJs(name)}')">
-        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
+        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
         <span>${_escHtml(name)}</span>
       </div>`;
     }).join('');

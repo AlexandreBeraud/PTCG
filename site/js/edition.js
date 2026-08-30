@@ -60,7 +60,7 @@ function renderEditionList() {
     const uid = 'edext_' + bloc.id;
     const section = document.createElement('div');
     section.className = 'edition-bloc-section';
-    const logoHtml = bloc.logo ? `<img src="${bloc.logo}" class="bloc-logo" alt="${bloc.short}" onerror="this.style.display='none'">` : '';
+    const logoHtml = bloc.logo ? `<img src="${bloc.logo}" class="bloc-logo" alt="${bloc.short}" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : '';
     section.innerHTML = `
       <div class="edition-bloc-header collapsible" onclick="toggleAccordion('${uid}')">
         ${logoHtml}
@@ -88,7 +88,7 @@ function buildEditionBlocCard(b) {
   const _bid=b.id, _bcustom=!!b._custom_bloc;
   el.innerHTML=`
     <div class="edition-card-thumb" style="background:${b.couleur}22;border-bottom:3px solid ${b.couleur}">
-      ${logoSrc?`<img src="${logoSrc}" alt="${b.short}" onerror="this.style.display='none'">`:
+      ${logoSrc?`<img src="${logoSrc}" alt="${b.short}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`:
         `<span style="color:${b.couleur};font-size:1.1rem;font-weight:900">${b.short}</span>`}
     </div>
     <div class="edition-card-body">
@@ -116,7 +116,7 @@ function buildEditionBlocRow(b) {
   const _bid=b.id, _bcustom=!!b._custom_bloc;
   el.innerHTML=`
     <div class="edition-ext-thumb" style="background:${b.couleur}22;border:1px solid ${b.couleur}44">
-      ${logoSrc?`<img src="${logoSrc}" alt="${b.short}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:``}
+      ${logoSrc?`<img src="${logoSrc}" alt="${b.short}" onerror="_nasImgRetry(this,img=>{img.style.display='none';img.nextElementSibling.style.display='flex'})">`:``}
       <div class="edition-ext-thumb-code" style="color:${b.couleur};${logoSrc?'display:none':''}">${b.short}</div>
     </div>
     <div class="edition-ext-info">
@@ -146,7 +146,7 @@ function buildEditionExtCard(e) {
   const _eid=e.id, _ecustom=!!e._custom;
   el.innerHTML=`
     <div class="edition-card-thumb" style="border-bottom:3px solid ${color}">
-      ${logoSrc?`<img src="${logoSrc}" alt="${e.code}" onerror="this.style.display='none'">`:
+      ${logoSrc?`<img src="${logoSrc}" alt="${e.code}" onerror="_nasImgRetry(this,img=>img.style.display='none')">`:
         `<span style="color:${color};font-size:.9rem;font-weight:900">${e.code}</span>`}
     </div>
     <div class="edition-card-body">
@@ -174,7 +174,7 @@ function buildEditionExtRow(e) {
   const _eid=e.id, _ecustom=!!e._custom;
   el.innerHTML=`
     <div class="edition-ext-thumb" style="border:1px solid ${color}33">
-      ${logoSrc?`<img src="${logoSrc}" alt="${e.nom}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:``}
+      ${logoSrc?`<img src="${logoSrc}" alt="${e.nom}" onerror="_nasImgRetry(this,img=>{img.style.display='none';img.nextElementSibling.style.display='flex'})">`:``}
       <div class="edition-ext-thumb-code" style="color:${color};${logoSrc?'display:none':''}">${e.code}</div>
     </div>
     <div class="edition-ext-info">
@@ -773,7 +773,7 @@ function resetEditionForm(){
 
 function previewEditionImg(url){
   const p=document.getElementById('edition-preview');if(!p)return;
-  p.innerHTML=url?`<img src="${url}" onerror="this.parentNode.innerHTML='<span>Image non accessible</span>'">`:'<span>Aperçu</span>';
+  p.innerHTML=url?`<img src="${url}" onerror="_nasImgRetry(this,img=>img.parentNode.innerHTML='<span>Image non accessible</span>')">`:'<span>Aperçu</span>';
 }
 
 function populateBlocSelect(){

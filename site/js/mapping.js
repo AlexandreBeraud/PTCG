@@ -89,7 +89,7 @@ function renderMappingList() {
       }
       totalFiltered++;
       const safeId = e.id.replace(/'/g,"\\'");
-      const sigleHtml = sigleSrc ? `<img src="${sigleSrc}" alt="" class="mrow-sigle-img" onerror="this.style.display='none'">` : `<div class="mrow-sigle-ph">${code.slice(0,5)||'?'}</div>`;
+      const sigleHtml = sigleSrc ? `<img src="${sigleSrc}" alt="" class="mrow-sigle-img" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : `<div class="mrow-sigle-ph">${code.slice(0,5)||'?'}</div>`;
       const statusHtml = mapped
         ? `<span class="mbadge mbadge-ok">✓</span><button class="mbadge-clear" onclick="clearMapping('${safeId}')" title="Supprimer">×</button>`
         : `<span class="mbadge mbadge-no">—</span>`;
@@ -105,7 +105,7 @@ function renderMappingList() {
       if (mode === 'list') {
         return `<div class="mrow" id="mrow-${e.id}">
           <div class="mrow-ext">
-            ${logoSrc ? `<img src="${logoSrc}" alt="" class="mrow-logo" onerror="this.style.display='none'">` : ''}
+            ${logoSrc ? `<img src="${logoSrc}" alt="" class="mrow-logo" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : ''}
             ${sigleHtml}
             <div class="mrow-names">
               <span class="mrow-name">${name}</span>
@@ -133,8 +133,8 @@ function renderMappingList() {
     const isOpen = !sessionStorage.getItem('mbloc_closed_' + bloc.id);
     html += `<div class="mbloc">
       <div class="mbloc-header collapsible" onclick="toggleMappingBloc('${bloc.id}')">
-        ${bloc.logo  ? `<img src="${bloc.logo}"  alt="" class="mbloc-logo"  onerror="this.style.display='none'">` : ''}
-        ${bloc.sigle ? `<img src="${bloc.sigle}" alt="" class="mbloc-sigle" onerror="this.style.display='none'">` : ''}
+        ${bloc.logo  ? `<img src="${bloc.logo}"  alt="" class="mbloc-logo"  onerror="_nasImgRetry(this,img=>img.style.display='none')">` : ''}
+        ${bloc.sigle ? `<img src="${bloc.sigle}" alt="" class="mbloc-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : ''}
         <span class="mbloc-name">${bloc.nom||bloc.id}</span>
         <span class="mbloc-count">${allExts.length} ext.</span>
         <div class="cer-chevron ${isOpen?'open':''}" id="mchev-${bloc.id}" style="margin-left:auto">▼</div>
@@ -171,7 +171,7 @@ function showMappingDropdown(extId, query) {
   drop.innerHTML = matches.map(s => {
     const sn = s.name.replace(/'/g,"\\'");
     return `<div class="mrow-drop-item" onmousedown="selectMapping('${extId}','${s.id}','${sn}')">
-      ${s.logo ? `<img src="${s.logo}" alt="" style="height:14px;object-fit:contain;margin-right:6px" onerror="this.style.display='none'">` : ''}
+      ${s.logo ? `<img src="${s.logo}" alt="" style="height:14px;object-fit:contain;margin-right:6px" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : ''}
       <span>${s.name}</span><span style="color:var(--text3);font-size:.7rem;margin-left:6px">${s.id}</span>
     </div>`;
   }).join('');

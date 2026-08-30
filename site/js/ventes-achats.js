@@ -209,6 +209,33 @@ function _personInfoListParts(info, goToFn) {
 
 function _jsEscape(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
+// Callback de repli partagé pour toute vignette de carte (🎴) qui a
+// définitivement échoué à charger après les tentatives de _nasImgRetry
+// (core.js) — même icône que l'état "pas d'image" déjà utilisé partout
+// ailleurs dans ce fichier.
+function _cardImgGiveUp(img) { img.parentElement.innerHTML = '🎴'; }
+
+// Bascule le fond de .sale-compact-thumb (mode "carte à gauche") vers la
+// vraie image une fois que la sonde (voir _saleCompactCardHtml) a confirmé
+// qu'elle charge bien — même principe que _saleTopImgLoaded : lit
+// directement img.src, jamais de rebâti de chaîne CSS depuis un attribut.
+function _saleCompactImgLoaded(img) {
+  const container = img.parentElement;
+  if (!container) return;
+  const pos = container.dataset.cropPos || 'center';
+  container.style.backgroundImage = `url('${img.src}')`;
+  container.style.backgroundPosition = pos;
+  img.remove(); // la sonde a fait son travail, plus besoin d'elle dans le DOM
+}
+// Repli si la sonde échoue définitivement (après tentatives) : même icône 🎴
+// que l'état "pas d'image" — insère juste à côté (jamais un innerHTML sur le
+// conteneur, qui effacerait aussi le sigle d'extension éventuellement déjà
+// affiché à côté).
+function _saleCompactImgGiveUp(img) {
+  img.insertAdjacentText('afterend', '🎴');
+  img.remove();
+}
+
 // ── Nombre de cartes par ligne (Paramètres › Affichage) ─────────────────
 // Pilote la variable CSS --sales-cards-per-row utilisée par .sales-grid /
 // .sales-grid-wide (Ventes, Achats, Acheteurs, Vendeurs). 5 par défaut.
@@ -463,7 +490,7 @@ function _buildSaleExtFilterList(kind) {
         const active = currentFilter === name ? 'active' : '';
         const sigleSrc = ext.sigle || bloc.sigle || '';
         return `<div class="pkdx-ext-filter-item ${active}" onclick="setSaleExtFilter('${kind}','${_escJs(name)}')">
-          ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(ext.code||'')}</span>`}
+          ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : `<span class="pkdx-ext-filter-code">${_escHtml(ext.code||'')}</span>`}
           <span>${_escHtml(name)}</span>
         </div>`;
       }).join('');
@@ -666,7 +693,7 @@ function _orderItemRowHtml(item, kind) {
   const qty = parseInt(item.qty,10) || 1;
   const typesHtml = _typeChipsHtml(item.types, true);
   return `<div class="order-item-row">
-    <div class="order-item-thumb">${item.card_image ? `<img src="${item.card_image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+    <div class="order-item-thumb">${item.card_image ? `<img src="${item.card_image}" alt="" onerror="_nasImgRetry(this,_cardImgGiveUp)">` : '🎴'}</div>
     <div class="order-item-info">
       <div class="order-item-name">${item.card_name || item.pokemon_name || '—'}${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</div>
       <div class="order-item-meta">${item.set_name||''}${item.number?' · N°'+item.number:''} · ${item.etat||''}</div>
@@ -950,14 +977,19 @@ function _saleHoloClass(item) {
 // sombre pour la lisibilité), le nom/l'extension/le statut sont superposés.
 // Donne à "la carte" une vraie présence visuelle, et le texte a toute la
 // largeur disponible avant d'être tronqué (fini les noms coupés au milieu).
+//
+// Un fond CSS (background-image) ne peut pas avoir de onerror — impossible
+// d'y appliquer _nasImgRetry directement. On part donc du dégradé neutre
+// (identique à "pas d'image") et on bascule vers la vraie photo seulement
+// une fois confirmée chargée, via une sonde <img> invisible dans le coin
+// (onload -> _saleTopImgLoaded, onerror -> _nasImgRetry) : jamais de
+// bandeau vide figé pendant les tentatives, jamais d'image cassée non plus.
 function _saleCardTopHtml(opts) {
   const pos = _cropPosition(opts.crop);
-  const bg = opts.image
-    ? `background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.72)),url('${opts.image}') ${pos}/cover no-repeat`
-    : `background:linear-gradient(135deg,var(--bg3),var(--bg2))`;
   return `
-    <div class="sale-card-top" style="${bg}">
-      ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="this.style.display='none'">` : ''}
+    <div class="sale-card-top" style="background:linear-gradient(135deg,var(--bg3),var(--bg2))" data-crop-pos="${_escHtml(pos)}">
+      ${opts.image ? `<img src="${_escHtml(opts.image)}" alt="" loading="lazy" class="sale-card-top-probe" onload="_saleTopImgLoaded(this)" onerror="_nasImgRetry(this)">` : ''}
+      ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="_nasImgRetry(this)">` : ''}
       ${opts.spriteId ? `<div class="sale-sprite-badge" id="sale-sprite-${opts.spriteId}"></div>` : ''}
       <div class="sale-top-info">
         <div class="sale-card-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
@@ -966,6 +998,19 @@ function _saleCardTopHtml(opts) {
         ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : ''}
       </div>
     </div>`;
+}
+
+// Bascule le fond de .sale-card-top vers la vraie image une fois que la
+// sonde (voir _saleCardTopHtml) a confirmé qu'elle charge bien — lit
+// directement img.src (déjà résolu par le navigateur) plutôt que de
+// rebâtir une chaîne CSS depuis un attribut HTML, pour ne jamais avoir à
+// échapper une URL dans un onload inline.
+function _saleTopImgLoaded(img) {
+  const container = img.parentElement;
+  if (!container) return;
+  const pos = container.dataset.cropPos || 'center 50%';
+  container.style.background = `linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.72)),url('${img.src}') ${pos}/cover no-repeat`;
+  img.remove(); // la sonde a fait son travail, plus besoin d'elle dans le DOM
 }
 
 // Boutons modifier/supprimer, désormais en bas à droite de la carte (dans le
@@ -982,13 +1027,14 @@ function _saleCardFooterActionsHtml(opts) {
 // (état, prix, type, langue, acheteur…) à droite, bien lisibles sans avoir à
 // zoomer sur une bannière. Partagé par Ventes ET Dépenses (voir buildVenteCompact
 // / buildDepenseCompact) pour ne jamais avoir deux implémentations qui divergent.
+// Même sonde qu'_saleCardTopHtml : le fond CSS n'a pas de onerror, donc on
+// démarre sans image et on bascule au onload confirmé (_saleCompactImgLoaded).
 function _saleCompactCardHtml(opts) {
   const pos = _cropPosition(opts.crop);
-  const bg = opts.image ? `background-image:url('${opts.image}');background-position:${pos};` : '';
   return `
-    <div class="sale-compact-thumb" style="${bg}">
-      ${!opts.image ? '🎴' : ''}
-      ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="this.style.display='none'">` : ''}
+    <div class="sale-compact-thumb" data-crop-pos="${_escHtml(pos)}">
+      ${opts.image ? `<img src="${_escHtml(opts.image)}" alt="" loading="lazy" class="sale-compact-thumb-probe" onload="_saleCompactImgLoaded(this)" onerror="_nasImgRetry(this,_saleCompactImgGiveUp)">` : '🎴'}
+      ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="_nasImgRetry(this)">` : ''}
     </div>
     <div class="sale-compact-body">
       <div class="sale-compact-head">
@@ -1029,7 +1075,7 @@ function _saleCompactCardHtml(opts) {
 function _saleListRowHtml(opts) {
   const hasPerson = !!(opts.personPseudoHtml);
   return `
-    <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+    <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="_nasImgRetry(this,_cardImgGiveUp)">` : '🎴'}</div>
     ${opts.spriteId ? `<div class="sale-list-sprite" id="sale-sprite-${opts.spriteId}"></div>` : ''}
     <div class="sale-list-main">
       <div class="sale-list-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
@@ -2893,7 +2939,7 @@ function _cardPickerRenderPkoList(query) {
   el.innerHTML = list.map((e, i) => `
     <div class="cardpicker-poke-item" onclick="${selectFn}(${i})">
       <div class="cardpicker-poke-sprite" style="background:${color}22">
-        ${e.image ? `<img src="${_escHtml(e.image)}" alt="" loading="lazy">` : `<span style="color:${color};font-size:1.1rem">${PKO_ICON[kind]}</span>`}
+        ${e.image ? `<img src="${_escHtml(e.image)}" alt="" loading="lazy" onerror="_nasImgRetry(this,img=>_pkoCardImgGiveUp(img,'${_escJs(kind)}'))">` : `<span style="color:${color};font-size:1.1rem">${PKO_ICON[kind]}</span>`}
       </div>
       <div class="cardpicker-poke-name">${_escHtml(e.displayName)}</div>
     </div>`).join('');
@@ -3123,7 +3169,7 @@ function _renderManualExtPickerList(query) {
       const active = selectedId === e.id ? 'active' : '';
       const sigleSrc = e.sigle || bloc.sigle || '';
       return `<div class="pkdx-ext-filter-item ${active}" onclick="_selectManualExt('${_jsEscape(e.id)}')">
-        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="this.style.display='none'">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
+        ${sigleSrc ? `<img src="${sigleSrc}" alt="" class="pkdx-ext-filter-sigle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : `<span class="pkdx-ext-filter-code">${_escHtml(e.code||'')}</span>`}
         <span>${_escHtml(e.nom)}</span>
       </div>`;
     }).join('');
@@ -3135,7 +3181,7 @@ function _selectManualExt(extId) {
   const ext = getExt(extId); if (!ext) return;
   document.getElementById('cardpicker-manual-ext-id').value = ext.id;
   document.getElementById('cardpicker-manual-ext-label').innerHTML =
-    `${ext.sigle ? `<img src="${ext.sigle}" alt="" style="height:16px;max-width:26px;object-fit:contain;margin-right:6px;vertical-align:middle" onerror="this.style.display='none'">` : ''}${_escHtml(ext.nom)}`;
+    `${ext.sigle ? `<img src="${ext.sigle}" alt="" style="height:16px;max-width:26px;object-fit:contain;margin-right:6px;vertical-align:middle" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : ''}${_escHtml(ext.nom)}`;
   document.getElementById('cardpicker-manual-ext-panel').style.display = 'none';
 }
 
@@ -3220,9 +3266,9 @@ function _renderCardPreview(prefix) {
   const sigle = sigleField ? sigleField.value : '';
   wrap.innerHTML = `
     <div class="cardpicker-selected-preview">
-      <div class="cardpicker-preview-thumb">${img ? `<img src="${img}" alt="" onerror="this.parentElement.innerHTML='🎴'">` : '🎴'}</div>
+      <div class="cardpicker-preview-thumb">${img ? `<img src="${img}" alt="" onerror="_nasImgRetry(this,_cardImgGiveUp)">` : '🎴'}</div>
       <div class="cardpicker-preview-info">
-        <div class="cardpicker-preview-name">${sigle ? `<img src="${sigle}" class="cardpicker-preview-sigle" alt="">` : ''}${_escHtml(name)}</div>
+        <div class="cardpicker-preview-name">${sigle ? `<img src="${sigle}" class="cardpicker-preview-sigle" alt="" onerror="_nasImgRetry(this,img=>img.style.display='none')">` : ''}${_escHtml(name)}</div>
         <div class="cardpicker-preview-meta">${_escHtml(setName||'')}${number?' · N°'+_escHtml(number):''}</div>
       </div>
     </div>`;

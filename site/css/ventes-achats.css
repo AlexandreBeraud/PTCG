@@ -73,6 +73,14 @@
 .sale-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .15s; cursor: pointer; display: flex; flex-direction: column; height: 100%; }
 .sale-card:hover { border-color: var(--accent); }
 .sale-card-top { min-height: 92px; display: flex; align-items: center; padding: 12px 16px; gap: 12px; position: relative; }
+/* Sonde de chargement (voir _saleCardTopHtml / _saleCompactCardHtml dans
+   ventes-achats.js) : quasi invisible mais volontairement PAS display:none
+   — un élément display:none ne peut pas être évalué par le navigateur pour
+   le lazy-loading (loading="lazy" ne se déclenche jamais), ce qui annulerait
+   l'intérêt de ne charger que les sondes visibles à l'écran. */
+.sale-card-top-probe, .sale-compact-thumb-probe {
+  position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden;
+}
 .sale-top-info { flex: 1; min-width: 0; padding-right: 26px; }
 .sale-card-top .sale-card-name { color: #fff; }
 .sale-card-top .sale-card-meta { color: rgba(255,255,255,.75); }

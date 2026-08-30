@@ -348,6 +348,37 @@ function _persistLocalOnly() {
   }
 }
 
+// ── Retry générique pour une image (NAS FileBrowser en particulier) qui a
+// échoué à charger ───────────────────────────────────────────────────────
+// Le NAS (Raspberry Pi, 1 Go de RAM) génère les aperçus "big" à la volée
+// (redimensionnement) — sous charge (beaucoup d'images demandées d'un coup,
+// RAM serrée), il peut ponctuellement traîner ou timeout sans que l'image
+// soit réellement manquante. Un échec de chargement n'est donc pas
+// forcément définitif : on retente plusieurs fois, avec un délai croissant
+// (+ un peu d'aléatoire pour ne pas relancer plein d'images pile au même
+// instant) et un paramètre anti-cache, avant d'abandonner pour de bon.
+// Généralisation de _spriteOnError (pokedex.js), qui reste spécifique aux
+// sprites Pokémon (avec repli Official Art dédié) — celle-ci sert à TOUTE
+// autre image de l'appli qui n'a pas d'équivalent de repli (cartes,
+// Personnages/Objets/Lieux/Énergies/Accessoires, logos…), donc avec
+// davantage de tentatives avant de laisser tomber.
+// onGiveUp(img) : appelé après le dernier échec — par défaut, retire
+// l'élément (comme le reste de l'appli fait déjà pour une image absente).
+function _nasImgRetry(img, onGiveUp) {
+  const MAX_RETRIES = 3;
+  const tries = parseInt(img.dataset.nasTries || '0', 10);
+  if (tries < MAX_RETRIES) {
+    img.dataset.nasTries = String(tries + 1);
+    const base = img.src.split('&_r=')[0].split('?_r=')[0];
+    const sep  = base.includes('?') ? '&' : '?';
+    const delay = 700 + tries * 900 + Math.random() * 500; // backoff croissant
+    setTimeout(() => { img.src = `${base}${sep}_r=${Date.now()}`; }, delay);
+    return;
+  }
+  if (onGiveUp) onGiveUp(img);
+  else img.remove();
+}
+
 // ── Import d'image locale (fichier) pour n'importe quel champ "URL d'image"
 // de l'appli ────────────────────────────────────────────────────────────
 // PIVOT : les images ne sont plus stockées en base64 dans _D (donc plus
@@ -716,7 +747,7 @@ function extBadgeHtml(ext, bloc, sizeClass = '') {
   const code     = ext.code || '';
   if (sigleSrc) {
     return `<img src="${sigleSrc}" alt="${code}" class="ext-inline-logo ${sizeClass}"
-      onerror="this.style.display='none';this.nextSibling&&(this.nextSibling.style.display='inline')">
+      onerror="_nasImgRetry(this,img=>{img.style.display='none';img.nextSibling&&(img.nextSibling.style.display='inline')})">
       <span class="ext-inline-code" style="color:${color};display:none">${code}</span>`;
   }
   return `<span class="ext-inline-code ${sizeClass}" style="color:${color}">${code}</span>`;
