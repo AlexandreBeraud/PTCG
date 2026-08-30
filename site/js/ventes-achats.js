@@ -273,7 +273,39 @@ function _fmtDate(iso) {
 
 // ── Agrégats ─────────────────────────────────────────────────────────────
 // Prix total d'une ligne (vente ou dépense) = prix unitaire × quantité.
-function _lineTotal(item) { return (parseFloat(item.prix)||0) * (parseInt(item.qty,10)||1); }
+// Un "Lot de cartes" (voir PKO_EXTRA_KINDS dans perso-objets.js) se
+// reconnaît par son pko_key au format "lot:<id>", posé par
+// _cardPickerSelectDirectEntry au moment de la sélection — persiste tel
+// quel sur la ligne vente/dépense, donc reconnaissable même après coup
+// (édition, tri, filtres, bilan…) sans avoir besoin de recharger la fiche.
+function _isLotItem(item) {
+  return !!(item.pko_key && item.pko_key.indexOf('lot:') === 0);
+}
+
+// Prix × quantité pour un article normal (carte, Personnage/Objet/Lieu/
+// Énergie/Accessoire) — mais un Lot de cartes a un prix qui est DÉJÀ le
+// total du lot (saisi tel quel dans le champ "Prix"), pas un prix unitaire :
+// le multiplier par qty (qui ne représente ici que le nombre indicatif de
+// cartes du lot) doublerait le montant. Voir _isLotItem ci-dessus et le
+// champ "Prix total (€)" / "Nombre de cartes" affiché à la place de "Prix
+// unitaire (€)" / "Quantité" dans le formulaire (_syncPrixQtyLabels).
+function _lineTotal(item) {
+  const prix = parseFloat(item.prix) || 0;
+  if (_isLotItem(item)) return prix;
+  return prix * (parseInt(item.qty,10) || 1);
+}
+
+// Bandeau "quantité + prix" affiché sur une carte/ligne vente ou dépense —
+// un Lot de cartes affiche son nombre de cartes en toutes lettres à côté du
+// prix (déjà total, voir _isLotItem/_lineTotal) plutôt que le badge "×N"
+// habituel, qui laisserait croire à une multiplication qui n'a pas lieu
+// pour ce genre d'article.
+function _salePriceHtml(item, qty) {
+  const price = `${(parseFloat(item.prix)||0).toFixed(2)} €`;
+  if (qty <= 1) return price;
+  if (_isLotItem(item)) return `<span class="qty-badge" title="Nombre de cartes du lot">${qty} cartes</span> ${price}`;
+  return `<span class="qty-badge">×${qty}</span> ${price}`;
+}
 
 // ── Acheteur → commandes → ventes ───────────────────────────────────────
 function acheteurCommandes(acheteurId) {
@@ -1116,13 +1148,13 @@ function buildVenteCard(v) {
     }) + `
     <div class="sale-card-body">
       <div class="sale-row"><span class="lbl">État</span><span class="val">${_etatHtml(v.etat)}</span></div>
-      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(v.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${_salePriceHtml(v, qty)}</span></div>
       ${typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${typesHtml}</span></div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${v.langue||'—'}</span></div>
       <div class="sale-card-footer">
         ${acheteurInfo ? `<div class="sale-acheteur">${acheteurInfo}</div>` : ''}
         ${v.cardmarket_url ? `<a href="${v.cardmarket_url}" target="_blank" rel="noopener" class="sale-link" onclick="event.stopPropagation()">Voir sur CardMarket ↗</a>` : ''}
-        ${qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : ''}
+        ${qty > 1 && st.id !== 'vendue' && !_isLotItem(v) ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : ''}
         ${_saleCardFooterActionsHtml({ editFn: 'editVente', delFn: 'deleteVente', id: v.id })}
       </div>
     </div>`;
@@ -1143,10 +1175,10 @@ function buildVenteRow(v) {
     image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
-    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(v.prix)||0).toFixed(2)} €`,
+    priceHtml: _salePriceHtml(v, qty),
     personFlagHtml: acheteurParts.flag, personPseudoHtml: acheteurParts.pseudo, personDateHtml: acheteurParts.date,
     personEmptyLabel: '— Non vendu —', cardmarketUrl: v.cardmarket_url,
-    splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Vente" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
+    splitBtnHtml: qty > 1 && st.id !== 'vendue' && !_isLotItem(v) ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Vente" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id, spriteId: v.id,
   });
   row.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editVente(v.id); });
@@ -1168,9 +1200,9 @@ function buildVenteCompact(v) {
     name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
-    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(v.prix)||0).toFixed(2)} €`,
+    priceHtml: _salePriceHtml(v, qty),
     personInfoHtml: acheteurInfo, cardmarketUrl: v.cardmarket_url,
-    splitBtnHtml: qty > 1 && st.id !== 'vendue' ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : '',
+    splitBtnHtml: qty > 1 && st.id !== 'vendue' && !_isLotItem(v) ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id, kind: 'vente',
   });
   card.addEventListener('click', e => { if (e.target.closest('button,a,select,input,.sale-compact-thumb')) return; editVente(v.id); });
@@ -1254,6 +1286,12 @@ function openVenteSplitModal(id) {
   const v = (_D.ventes||[]).find(x=>x.id===id); if (!v) return;
   const qty = parseInt(v.qty,10) || 1;
   if (qty <= 1) { toast('Cette vente ne contient qu\'un seul exemplaire.', 'error'); return; }
+  // Un Lot de cartes n'a qu'un seul prix TOTAL pour l'ensemble (voir
+  // _isLotItem/_lineTotal) — le diviser en séparant qty ferait perdre toute
+  // signification au prix des deux lignes résultantes. Le bouton est déjà
+  // masqué pour ces articles (voir buildVenteCard/Row/Compact), ce garde-fou
+  // est la dernière ligne de défense si la fonction est déclenchée autrement.
+  if (_isLotItem(v)) { toast('Un Lot de cartes ne peut pas être scindé (le prix est celui du lot entier).', 'error'); return; }
   _venteSplitId = id;
   document.getElementById('vente-split-title').textContent = v.card_name || v.pokemon_name || '—';
   document.getElementById('vente-split-qty-total').textContent = qty;
@@ -1560,7 +1598,7 @@ function buildDepenseCard(d) {
     }) + `
     <div class="sale-card-body">
       <div class="sale-row"><span class="lbl">État</span><span class="val">${_etatHtml(d.etat)}</span></div>
-      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${(parseFloat(d.prix)||0).toFixed(2)} €${qty>1?` <span class="qty-badge">×${qty}</span>`:''}</span></div>
+      <div class="sale-row"><span class="lbl">Prix</span><span class="val price">${_salePriceHtml(d, qty)}</span></div>
       ${typesHtml ? `<div class="sale-row"><span class="lbl">Type</span><span class="val sale-types-val">${typesHtml}</span></div>` : ''}
       <div class="sale-row"><span class="lbl">Langue</span><span class="val">${d.langue||'—'}</span></div>
       <div class="sale-card-footer">
@@ -1585,7 +1623,7 @@ function buildDepenseRow(d) {
     image: d.card_image, qty, name: d.card_name || d.pokemon_name || '—',
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
-    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(d.prix)||0).toFixed(2)} €`,
+    priceHtml: _salePriceHtml(d, qty),
     personFlagHtml: vendeurParts.flag, personPseudoHtml: vendeurParts.pseudo, personDateHtml: vendeurParts.date,
     personEmptyLabel: '— Aucun vendeur —', cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
@@ -1609,7 +1647,7 @@ function buildDepenseCompact(d) {
     name: d.card_name || d.pokemon_name || '—',
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
-    priceHtml: `${qty>1?`<span class="qty-badge">×${qty}</span> `:''}${(parseFloat(d.prix)||0).toFixed(2)} €`,
+    priceHtml: _salePriceHtml(d, qty),
     personInfoHtml: vendeurInfo, cardmarketUrl: d.cardmarket_url,
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id, kind: 'depense',
@@ -2706,7 +2744,7 @@ var CARD_PICKER_MAX_RESULTS = 200;
 // Édition, voir perso-objets.js) — mêmes étapes 2/3 ensuite (les deux
 // alimentent en bout de course les mêmes champs génériques card_name/
 // pokemon_name/set_name… de la vente/dépense, voir saveVente/saveDepense).
-var _cardPickerKind = 'pokemon';    // 'pokemon' | 'personnage' | 'objet' | 'lieu' | 'energie' | 'accessoire'
+var _cardPickerKind = 'pokemon';    // 'pokemon' | 'personnage' | 'objet' | 'lieu' | 'energie' | 'accessoire' | 'lot'
 var _cardPickerPkoList = [];        // sous-ensemble courant de _pko.entries[kind]
 var _cardPickerSelectedPko = null;  // entrée _pko choisie à l'étape 1 (kind ≠ 'pokemon')
 
@@ -2716,10 +2754,13 @@ var CARD_PICKER_KIND_LABELS = {
   objet:      { tab: 'Objets',      search: 'Rechercher un objet',      placeholder: 'Rechercher un objet…' },
   lieu:       { tab: 'Lieux',       search: 'Rechercher un lieu',       placeholder: 'Rechercher un lieu…' },
   energie:    { tab: 'Énergies',    search: 'Rechercher une énergie',   placeholder: 'Rechercher une énergie…' },
-  // "Accessoires" (voir PKO_EXTRA_KINDS dans perso-objets.js) : pas une
-  // carte à retrouver, l'entrée choisie ici EST directement l'article
-  // vendu/acheté — voir _cardPickerSelectAccessoireEntry.
+  // "Accessoires" et "Lot de cartes" (voir PKO_EXTRA_KINDS dans
+  // perso-objets.js) : pas une carte à retrouver, l'entrée choisie ici EST
+  // directement l'article vendu/acheté — voir
+  // _cardPickerSelectDirectEntry. "Lot de cartes" a en plus un prix TOTAL
+  // (pas unitaire) une fois sélectionné — voir _isLotItem/_lineTotal.
   accessoire: { tab: 'Accessoires', search: 'Rechercher un accessoire', placeholder: 'Rechercher un accessoire…' },
+  lot:        { tab: 'Lots de cartes', search: 'Rechercher un lot',     placeholder: 'Rechercher un lot…' },
 };
 
 var CARD_PICKER_KIND_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h8M14 12h8M12 2v4M12 18v4"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>';
@@ -2931,11 +2972,11 @@ function _cardPickerRenderPkoList(query) {
     return;
   }
   const color = PKO_LABELS[kind].color;
-  // "Accessoires" n'a pas d'étape 2 (pas de carte à choisir derrière) :
-  // cliquer sur l'entrée la sélectionne directement — voir
-  // _cardPickerSelectAccessoireEntry. Les autres catégories passent par
+  // "Accessoires"/"Lot de cartes" n'ont pas d'étape 2 (pas de carte à
+  // choisir derrière) : cliquer sur l'entrée la sélectionne directement —
+  // voir _cardPickerSelectDirectEntry. Les autres catégories passent par
   // _cardPickerSelectPkoEntry, qui affiche les cartes possédées rattachées.
-  const selectFn = PKO_EXTRA_KINDS.includes(kind) ? '_cardPickerSelectAccessoireEntry' : '_cardPickerSelectPkoEntry';
+  const selectFn = PKO_EXTRA_KINDS.includes(kind) ? '_cardPickerSelectDirectEntry' : '_cardPickerSelectPkoEntry';
   el.innerHTML = list.map((e, i) => `
     <div class="cardpicker-poke-item" onclick="${selectFn}(${i})">
       <div class="cardpicker-poke-sprite" style="background:${color}22">
@@ -2945,12 +2986,13 @@ function _cardPickerRenderPkoList(query) {
     </div>`).join('');
 }
 
-// Sélection directe d'un Accessoire (voir PKO_EXTRA_KINDS dans
-// perso-objets.js) : contrairement à Personnage/Objet/Lieu/Énergie, il n'y a
-// pas de carte TCG derrière à choisir — l'entrée EST l'article vendu/acheté.
-// Remplit les mêmes champs génériques que _cardPickerSelectCard (card_name,
-// card_image…) directement depuis la fiche, sans passer par l'étape 2.
-function _cardPickerSelectAccessoireEntry(i) {
+// Sélection directe d'un Accessoire ou d'un Lot de cartes (voir
+// PKO_EXTRA_KINDS dans perso-objets.js) : contrairement à Personnage/Objet/
+// Lieu/Énergie, il n'y a pas de carte TCG derrière à choisir — l'entrée EST
+// l'article vendu/acheté. Remplit les mêmes champs génériques que
+// _cardPickerSelectCard (card_name, card_image…) directement depuis la
+// fiche, sans passer par l'étape 2.
+function _cardPickerSelectDirectEntry(i) {
   const entry = _cardPickerPkoList[i]; if (!entry) return;
   const p = _cardPickerTarget; if (!p) return;
   const kind = _cardPickerKind;
@@ -2968,6 +3010,8 @@ function _cardPickerSelectAccessoireEntry(i) {
   // Même format "kind:id" que Personnage/Objet/Lieu/Énergie (voir
   // _cardPickerSelectCard) — permet de retrouver l'entrée (et son image) si
   // elle est renommée/mise à jour plus tard, exactement comme les autres.
+  // C'est aussi CE champ qui permet à _isLotItem (plus bas) de reconnaître
+  // un Lot de cartes et d'adapter le calcul du total en conséquence.
   const pkoKeyField = document.getElementById(`${p}-pko-key`);
   if (pkoKeyField) pkoKeyField.value = `${kind}:${entry.id}`;
   const sigleField = document.getElementById(`${p}-ext-sigle`);
@@ -3250,6 +3294,14 @@ async function _cardPickerSaveManual() {
 }
 
 function _renderCardPreview(prefix) {
+  // Bascule les libellés "Prix"/"Quantité" du formulaire selon que l'article
+  // choisi est un Lot de cartes (prix total, quantité indicative) ou non
+  // (prix unitaire × quantité, comme d'habitude) — voir _isLotItem plus
+  // haut. Appelé à chaque sélection de carte/article ET à l'ouverture d'une
+  // vente/dépense existante (editVente/editDepense appellent aussi cette
+  // fonction), donc toujours synchronisé avec le pko_key actuellement en
+  // place dans le formulaire.
+  _syncPrixQtyLabels(prefix);
   const wrap = document.getElementById(`${prefix}-card-preview`);
   const name = document.getElementById(`${prefix}-card-name`).value;
   const img = document.getElementById(`${prefix}-card-image`).value;
@@ -3272,6 +3324,20 @@ function _renderCardPreview(prefix) {
         <div class="cardpicker-preview-meta">${_escHtml(setName||'')}${number?' · N°'+_escHtml(number):''}</div>
       </div>
     </div>`;
+}
+
+// Voir le commentaire dans _renderCardPreview — un Lot de cartes (pko_key
+// "lot:<id>") affiche "Prix total du lot (€)" / "Nombre de cartes" à la
+// place de "Prix unitaire (€)" / "Quantité", pour que la saisie ne prête
+// jamais à confusion sur ce qui sera réellement enregistré (voir
+// _lineTotal). Ne touche que le texte du libellé, jamais la valeur saisie.
+function _syncPrixQtyLabels(prefix) {
+  const pkoKeyField = document.getElementById(`${prefix}-pko-key`);
+  const isLot = !!(pkoKeyField && pkoKeyField.value.indexOf('lot:') === 0);
+  const prixLabel = document.getElementById(`${prefix}-prix-label`);
+  const qtyLabel  = document.getElementById(`${prefix}-qty-label`);
+  if (prixLabel) prixLabel.textContent = isLot ? 'Prix total du lot (€)' : 'Prix unitaire (€)';
+  if (qtyLabel)  qtyLabel.textContent  = isLot ? 'Nombre de cartes' : 'Quantité';
 }
 
 // ── Rognage de l'image d'en-tête (curseur vertical interactif, 0-100%) ───

@@ -57,27 +57,34 @@ function _tokensContainSeq(haystack, needle) {
 var PKO_KINDS = ['personnage', 'objet', 'lieu', 'energie'];
 // PKO_EXTRA_KINDS = catégories qui vivent dans la même table _D.perso_objets
 // et le même formulaire d'édition (nom + image) que ci-dessus, mais qui ne
-// sont PAS des cartes à retrouver : "accessoire" couvre les autres types
-// d'achats/ventes (sleeves, classeurs, pages, réductions…), sélectionnables
-// tels quels (nom + image de la fiche) dans les modales Ventes/Achats — pas
-// de rattachement de carte, pas de compteur "cartes possédées". Tenue à
-// l'écart de PKO_KINDS pour ne jamais entrer dans la logique de
-// rattachement/orphelines, qui n'a aucun sens pour ce genre d'article.
-var PKO_EXTRA_KINDS = ['accessoire'];
+// sont PAS des cartes à retrouver : sélectionnables telles quelles (nom +
+// image de la fiche) dans les modales Ventes/Achats — pas de rattachement de
+// carte, pas de compteur "cartes possédées". Tenues à l'écart de PKO_KINDS
+// pour ne jamais entrer dans la logique de rattachement/orphelines, qui n'a
+// aucun sens pour ce genre d'article.
+//  - "accessoire" couvre les autres types d'achats/ventes (sleeves,
+//    classeurs, pages, réductions…) — prix unitaire × quantité, comme une
+//    carte normale.
+//  - "lot" (Lot de cartes) : même mécanique de sélection directe, mais le
+//    prix saisi dans Ventes/Achats est le prix TOTAL du lot, jamais
+//    multiplié par la quantité (qui reste juste indicative du nombre de
+//    cartes du lot) — voir _isLotItem/_lineTotal dans ventes-achats.js.
+var PKO_EXTRA_KINDS = ['accessoire', 'lot'];
 // PKO_EDIT_KINDS = tout ce qui apparaît dans Édition › Encyclopédies (les 4
 // catégories "cartes" + les catégories "articles").
 var PKO_EDIT_KINDS = PKO_KINDS.concat(PKO_EXTRA_KINDS);
-var PKO_ICON = { personnage: '🧑', objet: '🎒', lieu: '📍', energie: '⚡', accessoire: '📦' };
+var PKO_ICON = { personnage: '🧑', objet: '🎒', lieu: '📍', energie: '⚡', accessoire: '📦', lot: '🎴' };
 
 const PKO_LABELS = {
   personnage: { title: 'Personnages', singular: 'personnage', color: '#6c5ce7', grid: 'personnages-grid', loadMore: 'personnages-load-more' },
   objet:      { title: 'Objets',      singular: 'objet',      color: '#00b894', grid: 'objets-grid',      loadMore: 'objets-load-more' },
   lieu:       { title: 'Lieux',       singular: 'lieu',       color: '#e17055', grid: 'lieux-grid',       loadMore: 'lieux-load-more' },
   energie:    { title: 'Énergies',    singular: 'énergie',    color: '#fdcb6e', grid: 'energies-grid',    loadMore: 'energies-load-more' },
-  // Pas de grid/loadMore : "Accessoires" n'a pas de vue "Pokédex" dédiée
-  // dans la sidebar, seulement la liste de gestion dans Édition et le
-  // sélecteur de carte Ventes/Achats (voir ventes-achats.js).
+  // Pas de grid/loadMore : "Accessoires" et "Lot de cartes" n'ont pas de vue
+  // "Pokédex" dédiée dans la sidebar, seulement la liste de gestion dans
+  // Édition et le sélecteur de carte Ventes/Achats (voir ventes-achats.js).
   accessoire: { title: 'Accessoires', singular: 'accessoire', color: '#00cec9' },
+  lot:        { title: 'Lots de cartes', singular: 'lot de cartes', color: '#e84393' },
 };
 
 var _pko = { entries: {}, filtered: {}, query: {}, page: {}, initialized: {}, pageSize: 45 };
