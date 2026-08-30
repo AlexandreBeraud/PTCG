@@ -307,6 +307,18 @@ function _salePriceHtml(item, qty) {
   return `<span class="qty-badge">×${qty}</span> ${price}`;
 }
 
+// Badge "×N" affiché à côté du NOM d'une carte/ligne. Un Lot de cartes
+// affiche déjà son nombre de cartes à côté du prix (voir _salePriceHtml
+// ci-dessus) — le répéter ici en plus serait redondant (et c'est
+// littéralement ce qui remontait comme un souci visuel : "×10" à côté du
+// nom ET "10 cartes" à côté du prix sur la même ligne). D'où opts.isLot,
+// posé par l'appelant (_isLotItem(v)/_isLotItem(d)) — voir buildVenteCard/
+// Compact et buildDepenseCard/Compact et _saleListRowHtml.
+function _saleNameQtyBadgeHtml(opts) {
+  if (opts.qty > 1 && !opts.isLot) return ` <span class="qty-badge">×${opts.qty}</span>`;
+  return '';
+}
+
 // ── Acheteur → commandes → ventes ───────────────────────────────────────
 function acheteurCommandes(acheteurId) {
   return (_D.acheteur_commandes||[]).filter(c => c.acheteur_id === acheteurId)
@@ -342,7 +354,8 @@ var _venteExtFilter = 'all', _depenseExtFilter = 'all';
 var _ventePersonFilter = 'all', _depensePersonFilter = 'all';
 // Nouveaux filtres : État (condition de carte, multi-sélection), Type
 // (Normale/Reverse/Holo Cosmos/1ère édition, multi-sélection), plage de
-// dates (created_at) et plage de prix (_lineTotal). Un Set vide = "tous".
+// dates (date de la commande liée — voir _saleSortDateValue, PAS created_at)
+// et plage de prix (_lineTotal). Un Set vide = "tous".
 var _venteEtatFilter = new Set(), _depenseEtatFilter = new Set();
 var _venteTypeFilter = new Set(), _depenseTypeFilter = new Set();
 var _venteDateFrom = '', _venteDateTo = '', _depenseDateFrom = '', _depenseDateTo = '';
@@ -359,13 +372,30 @@ function _personNameFor(item) {
   return '';
 }
 
+// Date "réelle" d'une vente/dépense pour le tri "Date" : celle de la
+// commande liée (date_achat, ou date_arrivee à défaut), PAS created_at —
+// qui n'est que l'horodatage technique d'entrée de la ligne dans l'appli
+// (import, sync, création...) et n'a souvent aucun rapport avec quand la
+// vente/l'achat a réellement eu lieu. Sans commande liée (pas encore
+// vendu/attribué), created_at est le seul repère disponible, donc on
+// retombe dessus dans ce cas précis seulement.
+function _saleSortDateValue(item) {
+  if (item.commande_id) {
+    const ac = (_D.acheteur_commandes||[]).find(x => x.id === item.commande_id);
+    const c = ac || (_D.vendeur_commandes||[]).find(x => x.id === item.commande_id);
+    const d = c && (c.date_achat || c.date_arrivee);
+    if (d) { const t = new Date(d).getTime(); if (!isNaN(t)) return t; }
+  }
+  return item.created_at || 0;
+}
+
 // Tri partagé par Ventes et Dépenses — "tout possible et imaginable" : date,
 // extension, nom, numéro dans l'extension, numéro national (Pokédex), prix, état.
 function _applySaleSort(items, sortId) {
   const arr = [...items];
   const numFrom = s => { const n = parseInt(String(s||'').replace(/\D/g,''),10); return isNaN(n) ? 0 : n; };
   switch (sortId) {
-    case 'date_asc':   arr.sort((a,b) => (a.created_at||0) - (b.created_at||0)); break;
+    case 'date_asc':   arr.sort((a,b) => _saleSortDateValue(a) - _saleSortDateValue(b)); break;
     case 'ext_asc':     arr.sort((a,b) => (a.set_name||'').localeCompare(b.set_name||'','fr') || numFrom(a.number)-numFrom(b.number)); break;
     case 'ext_code_asc': arr.sort((a,b) => _blocSortIndexFor(a)-_blocSortIndexFor(b) || _extSortKeyFor(a).localeCompare(_extSortKeyFor(b),'fr',{numeric:true}) || numFrom(a.number)-numFrom(b.number)); break;
     case 'name_asc':   arr.sort((a,b) => (a.card_name||a.pokemon_name||'').localeCompare(b.card_name||b.pokemon_name||'','fr')); break;
@@ -374,9 +404,9 @@ function _applySaleSort(items, sortId) {
     case 'price_desc': arr.sort((a,b) => _lineTotal(b) - _lineTotal(a)); break;
     case 'price_asc':  arr.sort((a,b) => _lineTotal(a) - _lineTotal(b)); break;
     case 'etat_asc':   arr.sort((a,b) => (a.etat||'').localeCompare(b.etat||'','fr')); break;
-    case 'person_asc': arr.sort((a,b) => _personNameFor(a).localeCompare(_personNameFor(b),'fr') || (b.created_at||0)-(a.created_at||0)); break;
+    case 'person_asc': arr.sort((a,b) => _personNameFor(a).localeCompare(_personNameFor(b),'fr') || _saleSortDateValue(b)-_saleSortDateValue(a)); break;
     case 'date_desc':
-    default:            arr.sort((a,b) => (b.created_at||0) - (a.created_at||0));
+    default:            arr.sort((a,b) => _saleSortDateValue(b) - _saleSortDateValue(a));
   }
   return arr;
 }
@@ -682,7 +712,7 @@ function _applyPersonSort(items, sortId, kind) {
   const lastDateFor = kind === 'acheteur'
     ? (p => { const c = acheteurCommandes(p.id); return c.length ? (c[c.length-1].date_achat||'') : ''; })
     : (p => { const c = vendeurCommandes(p.id);  return c.length ? (c[c.length-1].date_achat||'') : ''; });
-  const cardCountFor = kind === 'acheteur' ? (p => acheteurVentes(p.id).length) : (p => vendeurDepenses(p.id).length);
+  const cardCountFor = kind === 'acheteur' ? (p => _qtySum(acheteurVentes(p.id))) : (p => _qtySum(vendeurDepenses(p.id)));
   const totalFor      = kind === 'acheteur' ? (p => acheteurTotal(p.id))       : (p => vendeurTotal(p.id));
   switch (sortId) {
     case 'date_desc':  arr.sort((a,b) => lastDateFor(b).localeCompare(lastDateFor(a))); break;
@@ -763,8 +793,8 @@ function renderVentes() {
   if (_ventePersonFilter !== 'all') items = items.filter(v => _personNameFor(v) === _ventePersonFilter);
   if (_venteEtatFilter.size) items = items.filter(v => _venteEtatFilter.has(v.etat));
   if (_venteTypeFilter.size) items = items.filter(v => (v.types||[]).some(t => _venteTypeFilter.has(t)));
-  if (_venteDateFrom) { const ts = new Date(_venteDateFrom+'T00:00:00').getTime(); items = items.filter(v => (v.created_at||0) >= ts); }
-  if (_venteDateTo)   { const ts = new Date(_venteDateTo+'T23:59:59.999').getTime(); items = items.filter(v => (v.created_at||0) <= ts); }
+  if (_venteDateFrom) { const ts = new Date(_venteDateFrom+'T00:00:00').getTime(); items = items.filter(v => _saleSortDateValue(v) >= ts); }
+  if (_venteDateTo)   { const ts = new Date(_venteDateTo+'T23:59:59.999').getTime(); items = items.filter(v => _saleSortDateValue(v) <= ts); }
   if (_ventePrixMin !== '') { const n = parseFloat(_ventePrixMin); if (!isNaN(n)) items = items.filter(v => _lineTotal(v) >= n); }
   if (_ventePrixMax !== '') { const n = parseFloat(_ventePrixMax); if (!isNaN(n)) items = items.filter(v => _lineTotal(v) <= n); }
   items = _applySaleSort(items, _venteSort);
@@ -1024,7 +1054,7 @@ function _saleCardTopHtml(opts) {
       ${opts.sigle ? `<img src="${opts.sigle}" class="sale-card-sigle" alt="" onerror="_nasImgRetry(this)">` : ''}
       ${opts.spriteId ? `<div class="sale-sprite-badge" id="sale-sprite-${opts.spriteId}"></div>` : ''}
       <div class="sale-top-info">
-        <div class="sale-card-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
+        <div class="sale-card-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}</div>
         <div class="sale-card-meta">${opts.extName}</div>
         ${opts.number ? `<div class="sale-card-number">N°${_escHtml(opts.number)}</div>` : ''}
         ${opts.statusLabel ? `<div class="status-badge ${opts.statusCls}">${opts.statusLabel}</div>` : ''}
@@ -1071,7 +1101,7 @@ function _saleCompactCardHtml(opts) {
     <div class="sale-compact-body">
       <div class="sale-compact-head">
         <div class="sale-compact-head-text">
-          <div class="sale-compact-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
+          <div class="sale-compact-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}</div>
           <div class="sale-compact-meta">${opts.extName}</div>
           ${opts.number ? `<div class="sale-compact-number">N°${_escHtml(opts.number)}</div>` : ''}
         </div>
@@ -1110,7 +1140,7 @@ function _saleListRowHtml(opts) {
     <div class="sale-list-thumb">${opts.image ? `<img src="${opts.image}" alt="" onerror="_nasImgRetry(this,_cardImgGiveUp)">` : '🎴'}</div>
     ${opts.spriteId ? `<div class="sale-list-sprite" id="sale-sprite-${opts.spriteId}"></div>` : ''}
     <div class="sale-list-main">
-      <div class="sale-list-name">${opts.name}${opts.qty>1?` <span class="qty-badge">×${opts.qty}</span>`:''}</div>
+      <div class="sale-list-name">${opts.name}${_saleNameQtyBadgeHtml(opts)}</div>
       <div class="sale-list-meta">${opts.extName}</div>
       ${opts.number ? `<div class="sale-list-number">N°${_escHtml(opts.number)}</div>` : ''}
     </div>
@@ -1140,7 +1170,7 @@ function buildVenteCard(v) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
     _saleCardTopHtml({
-      image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop,
+      image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v),
       name: v.card_name || v.pokemon_name || '—',
       extName: v.set_name||'', number: v.number||'',
       statusCls: st.cls, statusLabel: st.label,
@@ -1172,7 +1202,7 @@ function buildVenteRow(v) {
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
   row.innerHTML = _saleListRowHtml({
-    image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—',
+    image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—', isLot: _isLotItem(v),
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
     priceHtml: _salePriceHtml(v, qty),
@@ -1196,7 +1226,7 @@ function buildVenteCompact(v) {
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
-    image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop,
+    image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v),
     name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
@@ -1519,8 +1549,8 @@ function renderDepenses() {
   if (_depensePersonFilter !== 'all') items = items.filter(d => _personNameFor(d) === _depensePersonFilter);
   if (_depenseEtatFilter.size) items = items.filter(d => _depenseEtatFilter.has(d.etat));
   if (_depenseTypeFilter.size) items = items.filter(d => (d.types||[]).some(t => _depenseTypeFilter.has(t)));
-  if (_depenseDateFrom) { const ts = new Date(_depenseDateFrom+'T00:00:00').getTime(); items = items.filter(d => (d.created_at||0) >= ts); }
-  if (_depenseDateTo)   { const ts = new Date(_depenseDateTo+'T23:59:59.999').getTime(); items = items.filter(d => (d.created_at||0) <= ts); }
+  if (_depenseDateFrom) { const ts = new Date(_depenseDateFrom+'T00:00:00').getTime(); items = items.filter(d => _saleSortDateValue(d) >= ts); }
+  if (_depenseDateTo)   { const ts = new Date(_depenseDateTo+'T23:59:59.999').getTime(); items = items.filter(d => _saleSortDateValue(d) <= ts); }
   if (_depensePrixMin !== '') { const n = parseFloat(_depensePrixMin); if (!isNaN(n)) items = items.filter(d => _lineTotal(d) >= n); }
   if (_depensePrixMax !== '') { const n = parseFloat(_depensePrixMax); if (!isNaN(n)) items = items.filter(d => _lineTotal(d) <= n); }
   items = _applySaleSort(items, _depenseSort);
@@ -1590,7 +1620,7 @@ function buildDepenseCard(d) {
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
   card.innerHTML =
     _saleCardTopHtml({
-      image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop,
+      image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop, isLot: _isLotItem(d),
       name: d.card_name || d.pokemon_name || '—',
       extName: d.set_name||'', number: d.number||'',
       statusCls: '', statusLabel: '',
@@ -1620,7 +1650,7 @@ function buildDepenseRow(d) {
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
   row.innerHTML = _saleListRowHtml({
-    image: d.card_image, qty, name: d.card_name || d.pokemon_name || '—',
+    image: d.card_image, qty, name: d.card_name || d.pokemon_name || '—', isLot: _isLotItem(d),
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
     priceHtml: _salePriceHtml(d, qty),
@@ -1643,7 +1673,7 @@ function buildDepenseCompact(d) {
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
   card.innerHTML = _saleCompactCardHtml({
-    image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop,
+    image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop, isLot: _isLotItem(d),
     name: d.card_name || d.pokemon_name || '—',
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
@@ -1896,7 +1926,7 @@ function _acheteurCommandeRowHtml(c) {
         <div class="status-badge ${st.cls}">${st.label}</div>
       </div>
       <div class="commande-row-line2">
-        <div class="commande-count">${ventes.length} carte${ventes.length>1?'s':''}</div>
+        <div class="commande-count">${_qtySum(ventes)} carte${_qtySum(ventes)>1?'s':''}</div>
         <div class="commande-total">${total.toFixed(2)} €</div>
         <div class="commande-actions" onclick="event.stopPropagation()">
           ${c.lien_vente ? `<a href="${c.lien_vente}" target="_blank" rel="noopener" class="btn btn-icon btn-sm" title="Lien de la vente">${ICON_LINK}</a>` : ''}
@@ -1927,11 +1957,23 @@ function _dominantExtColor(items) {
   return ext ? extColor(ext) : null;
 }
 
+// Nombre de cartes total d'un ensemble de ventes/dépenses — somme les
+// quantités (qty), pas le nombre de lignes : une ligne "Lot de cartes" de 10
+// ou un achat de 3 exemplaires de la même carte doivent compter pour 10/3
+// cartes, pas 1. Utilisé pour les compteurs "X cartes" des fiches
+// acheteur/vendeur (buildAcheteurCard/Row, buildVendeurCard/Row) — à ne pas
+// confondre avec commandes.length ("X commandes") ni avec le nombre de
+// lignes utilisé dans les messages de confirmation de suppression, qui eux
+// comptent bien des enregistrements, pas des cartes.
+function _qtySum(items) {
+  return (items||[]).reduce((s,x)=>s+(parseInt(x.qty,10)||1),0);
+}
+
 function buildAcheteurCard(a) {
   const commandes = acheteurCommandes(a.id);
   const total  = acheteurTotal(a.id);
   const ventes = acheteurVentes(a.id);
-  const nbCartes = ventes.length;
+  const nbCartes = _qtySum(ventes);
   const expanded = _orderExpandedAcheteurs.has(a.id);
   const card = document.createElement('div');
   card.className = 'order-card';
@@ -1968,7 +2010,7 @@ function buildAcheteurRow(a) {
   const commandes = acheteurCommandes(a.id);
   const total  = acheteurTotal(a.id);
   const ventes = acheteurVentes(a.id);
-  const nbCartes = ventes.length;
+  const nbCartes = _qtySum(ventes);
   const expanded = _orderExpandedAcheteurs.has(a.id);
   const row = document.createElement('div');
   row.className = 'classeur-list-row';
@@ -2185,7 +2227,7 @@ function _vendeurCommandeRowHtml(c) {
         <div class="status-badge ${st.cls}">${st.label}</div>
       </div>
       <div class="commande-row-line2">
-        <div class="commande-count">${depenses.length} carte${depenses.length>1?'s':''}</div>
+        <div class="commande-count">${_qtySum(depenses)} carte${_qtySum(depenses)>1?'s':''}</div>
         <div class="commande-total">${total.toFixed(2)} €</div>
         <div class="commande-actions" onclick="event.stopPropagation()">
           ${c.lien_achat ? `<a href="${c.lien_achat}" target="_blank" rel="noopener" class="btn btn-icon btn-sm" title="Lien de l'achat">${ICON_LINK}</a>` : ''}
@@ -2206,7 +2248,7 @@ function buildVendeurCard(v) {
   const commandes = vendeurCommandes(v.id);
   const total    = vendeurTotal(v.id);
   const depensesForVendeur = vendeurDepenses(v.id);
-  const nbCartes = depensesForVendeur.length;
+  const nbCartes = _qtySum(depensesForVendeur);
   const expanded = _orderExpandedVendeurs.has(v.id);
   const card = document.createElement('div');
   card.className = 'order-card';
@@ -2243,7 +2285,7 @@ function buildVendeurRow(v) {
   const commandes = vendeurCommandes(v.id);
   const total    = vendeurTotal(v.id);
   const depensesForVendeur = vendeurDepenses(v.id);
-  const nbCartes = depensesForVendeur.length;
+  const nbCartes = _qtySum(depensesForVendeur);
   const expanded = _orderExpandedVendeurs.has(v.id);
   const row = document.createElement('div');
   row.className = 'classeur-list-row';
