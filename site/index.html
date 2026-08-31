@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=30">
-<link rel="stylesheet" href="css/collection.css?v=30">
-<link rel="stylesheet" href="css/pokedex.css?v=30">
-<link rel="stylesheet" href="css/ventes-achats.css?v=30">
+<link rel="stylesheet" href="css/base.css?v=31">
+<link rel="stylesheet" href="css/collection.css?v=31">
+<link rel="stylesheet" href="css/pokedex.css?v=31">
+<link rel="stylesheet" href="css/ventes-achats.css?v=31">
 </head>
 <body>
 
@@ -250,6 +250,7 @@
         <div class="page-header-left"><h1>Ventes</h1><p>Cartes mises en vente et vendues</p></div>
         <div class="page-header-right">
           <input type="text" class="sales-search-input" placeholder="Rechercher une carte…" oninput="filterVentes(this.value)">
+          <button class="btn btn-secondary" id="ventes-select-toggle-btn" onclick="toggleSaleSelectMode('vente')">Sélectionner</button>
           <button class="btn btn-primary" onclick="openAddVenteModal()">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -257,6 +258,18 @@
             Nouvelle vente
           </button>
         </div>
+      </div>
+      <div class="bulk-action-bar" id="ventes-bulk-bar" style="display:none">
+        <span class="bulk-count" id="ventes-bulk-count">0 sélectionnée</span>
+        <select id="ventes-bulk-status-select" class="sales-sort-select">
+          <option value="">Changer le statut…</option>
+          <option value="a_mettre">À mettre en vente</option>
+          <option value="en_vente">En vente</option>
+        </select>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="applyBulkVenteStatus()">Appliquer</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="bulkSelectAll('vente')">Tout sélectionner</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteSales('vente')">Supprimer</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSaleSelectMode('vente')">Annuler</button>
       </div>
       <div class="stats-row" id="ventes-stats"></div>
       <div class="sales-toolbar-row">
@@ -388,6 +401,7 @@
         <div class="page-header-left"><h1>Dépenses</h1><p>Cartes achetées auprès de vendeurs</p></div>
         <div class="page-header-right">
           <input type="text" class="sales-search-input" placeholder="Rechercher une carte…" oninput="filterDepenses(this.value)">
+          <button class="btn btn-secondary" id="depenses-select-toggle-btn" onclick="toggleSaleSelectMode('depense')">Sélectionner</button>
           <button class="btn btn-primary" onclick="openAddDepenseModal()">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -395,6 +409,12 @@
             Nouvel achat
           </button>
         </div>
+      </div>
+      <div class="bulk-action-bar" id="depenses-bulk-bar" style="display:none">
+        <span class="bulk-count" id="depenses-bulk-count">0 sélectionnée</span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="bulkSelectAll('depense')">Tout sélectionner</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteSales('depense')">Supprimer</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSaleSelectMode('depense')">Annuler</button>
       </div>
       <div class="stats-row" id="depenses-stats"></div>
       <div class="sales-toolbar-row">
@@ -1622,9 +1642,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=30"></script>
-<script src="data.js?v=30"></script>
-<script src="js/sync.js?v=30"></script>
+<script src="config.js?v=31"></script>
+<script src="data.js?v=31"></script>
+<script src="js/sync.js?v=31"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1664,14 +1684,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=30"></script>
-<script src="js/collection.js?v=30"></script>
-<script src="js/edition.js?v=30"></script>
-<script src="js/mapping.js?v=30"></script>
-<script src="js/labels.js?v=30"></script>
-<script src="js/ventes-achats.js?v=30"></script>
-<script src="js/label-categories.js?v=30"></script>
-<script src="js/pokedex.js?v=30"></script>
-<script src="js/perso-objets.js?v=30"></script>
+<script src="js/core.js?v=31"></script>
+<script src="js/collection.js?v=31"></script>
+<script src="js/edition.js?v=31"></script>
+<script src="js/mapping.js?v=31"></script>
+<script src="js/labels.js?v=31"></script>
+<script src="js/ventes-achats.js?v=31"></script>
+<script src="js/label-categories.js?v=31"></script>
+<script src="js/pokedex.js?v=31"></script>
+<script src="js/perso-objets.js?v=31"></script>
 </body>
 </html>

@@ -360,6 +360,113 @@ function vendeurTotal(vendeurId) { return vendeurDepenses(vendeurId).reduce((s,d
 var _venteFilter = 'all', _depenseFilter = 'all', _acheteurFilter = 'all', _vendeurFilter = 'all';
 var _venteQuery = '', _depenseQuery = '', _acheteurQuery = '', _vendeurQuery = '';
 var _venteSort = 'date_desc', _depenseSort = 'date_desc';
+// Sélection multiple (Ventes/Dépenses) — changer un statut ou supprimer
+// plusieurs entrées d'un coup. La sélection persiste tant qu'on ne quitte
+// pas le mode (changer de filtre/tri n'y touche pas), pour pouvoir cocher
+// des cartes réparties sur plusieurs filtres successifs.
+var _venteSelectMode = false, _depenseSelectMode = false;
+var _venteSelection = new Set(), _depenseSelection = new Set();
+
+function _selState(kind) { return kind === 'vente' ? { mode:_venteSelectMode, set:_venteSelection } : { mode:_depenseSelectMode, set:_depenseSelection }; }
+function _selPrefix(kind) { return kind === 'vente' ? 'ventes' : 'depenses'; }
+
+// Case à cocher en overlay (voir toggleSaleSelectMode/toggleSaleSelection) —
+// vide en dehors du mode sélection, pour ne jamais l'afficher par accident.
+// Utilisée par les 6 buildVenteXxx/buildDepenseXxx (grille/liste/carte à
+// gauche), toujours insérée en tout premier enfant de la carte/ligne.
+function _saleSelectBoxHtml(kind, id) {
+  const { mode, set } = _selState(kind);
+  if (!mode) return '';
+  return `<label class="sale-select-box" onclick="event.stopPropagation()"><input type="checkbox" class="sale-select-checkbox" ${set.has(id)?'checked':''} onchange="toggleSaleSelection('${kind}','${_escJs(id)}')"></label>`;
+}
+
+// Active/désactive le mode sélection — quitter le mode vide toujours la
+// sélection en cours (on ne veut pas la retrouver "fantôme" à la prochaine
+// activation, ça surprendrait plus qu'autre chose).
+function toggleSaleSelectMode(kind) {
+  const isVente = kind === 'vente';
+  const nowOn = isVente ? (_venteSelectMode = !_venteSelectMode) : (_depenseSelectMode = !_depenseSelectMode);
+  if (!nowOn) { (isVente ? _venteSelection : _depenseSelection).clear(); }
+  const btn = document.getElementById(`${_selPrefix(kind)}-select-toggle-btn`);
+  if (btn) btn.textContent = nowOn ? 'Annuler la sélection' : 'Sélectionner';
+  const bar = document.getElementById(`${_selPrefix(kind)}-bulk-bar`);
+  if (bar) bar.style.display = nowOn ? '' : 'none';
+  isVente ? renderVentes() : renderDepenses();
+}
+
+// Bascule un item — appelé par la case à cocher (onchange, source de vérité
+// = le Set, pas l'attribut checked) et par un clic n'importe où sur la
+// carte/ligne quand le mode sélection est actif (voir les 6 buildXxx). Met
+// à jour juste ce qu'il faut (contour + case), pas de re-rendu complet de
+// la liste — long, et ça ferait sauter le scroll.
+function toggleSaleSelection(kind, id) {
+  const { set } = _selState(kind);
+  if (set.has(id)) set.delete(id); else set.add(id);
+  const el = document.getElementById(`sale-item-${kind}-${id}`);
+  if (el) {
+    el.classList.toggle('sale-selected', set.has(id));
+    const cb = el.querySelector('.sale-select-checkbox');
+    if (cb) cb.checked = set.has(id);
+  }
+  _updateBulkBar(kind);
+}
+
+// Sélectionne tout ce qui est actuellement affiché (donc après filtres) —
+// pas tout l'historique en une fois, pour rester cohérent avec ce que la
+// personne a sous les yeux au moment où elle clique.
+function bulkSelectAll(kind) {
+  const { set } = _selState(kind);
+  document.querySelectorAll(`#${_selPrefix(kind)}-grid [id^="sale-item-${kind}-"]`).forEach(el => {
+    set.add(el.id.slice(`sale-item-${kind}-`.length));
+  });
+  kind === 'vente' ? renderVentes() : renderDepenses();
+}
+
+function _updateBulkBar(kind) {
+  const { set } = _selState(kind);
+  const countEl = document.getElementById(`${_selPrefix(kind)}-bulk-count`);
+  if (countEl) countEl.textContent = `${set.size} sélectionnée${set.size>1?'s':''}`;
+}
+
+// Changement de statut en masse — Ventes uniquement : les Dépenses n'ont
+// pas de statut par ligne (leur état "arrivé" dépend uniquement de la
+// commande liée, voir _depenseIsArrivee). "Vendue" est volontairement
+// absent des choix : ce statut exige de choisir un acheteur/une commande
+// par carte (voir saveVente) — impossible à faire proprement en masse sans
+// risquer des ventes "vendues" sans acheteur assigné.
+function applyBulkVenteStatus() {
+  const sel = document.getElementById('ventes-bulk-status-select');
+  const statut = sel ? sel.value : '';
+  if (!statut) { toast('Choisis un statut à appliquer.','error'); return; }
+  if (!_venteSelection.size) { toast('Aucune vente sélectionnée.','error'); return; }
+  const st = VENTE_STATUTS.find(s=>s.id===statut);
+  if (!confirm(`Passer ${_venteSelection.size} vente(s) à "${st?st.label:statut}" ?`)) return;
+  let n = 0;
+  (_D.ventes||[]).forEach(v => { if (_venteSelection.has(v.id)) { v.statut = statut; v.updated_at = Date.now(); n++; } });
+  saveData(); renderAll();
+  toast(`${n} vente${n>1?'s':''} mise${n>1?'s':''} à jour.`, 'success');
+  if (sel) sel.value = '';
+}
+
+// Suppression en masse — Ventes et Dépenses. Quitte le mode sélection après
+// coup (la sélection ne référence plus que du vide de toute façon).
+function bulkDeleteSales(kind) {
+  const { set } = _selState(kind);
+  const label = kind === 'vente' ? 'vente' : 'dépense';
+  if (!set.size) { toast(`Aucune ${label} sélectionnée.`,'error'); return; }
+  if (!confirm(`Supprimer ${set.size} ${label}${set.size>1?'s':''} ? Cette action est irréversible.`)) return;
+  const n = set.size;
+  if (kind === 'vente') _D.ventes = (_D.ventes||[]).filter(v => !set.has(v.id));
+  else _D.depenses = (_D.depenses||[]).filter(d => !set.has(d.id));
+  if (kind === 'vente') { _venteSelectMode = false; _venteSelection.clear(); }
+  else { _depenseSelectMode = false; _depenseSelection.clear(); }
+  const btn = document.getElementById(`${_selPrefix(kind)}-select-toggle-btn`);
+  if (btn) btn.textContent = 'Sélectionner';
+  const bar = document.getElementById(`${_selPrefix(kind)}-bulk-bar`);
+  if (bar) bar.style.display = 'none';
+  saveData(); renderAll();
+  toast(`${n} ${label}${n>1?'s':''} supprimée${n>1?'s':''}.`, 'success');
+}
 var _acheteurSort = 'alpha_asc', _vendeurSort = 'alpha_asc';
 var _venteExtFilter = 'all', _depenseExtFilter = 'all';
 var _ventePersonFilter = 'all', _depensePersonFilter = 'all';
@@ -840,6 +947,7 @@ function renderVentes() {
   }
   if (addBtn) grid.appendChild(addBtn);
   renderVentesStats();
+  _updateBulkBar('vente');
 }
 
 // La valeur (€) par statut est l'information la plus importante ici : elle
@@ -1195,10 +1303,11 @@ function buildVenteCard(v) {
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = _typeChipsHtml(v.types);
   const card = document.createElement('div');
-  card.className = 'sale-card' + _saleHoloClass(v);
+  card.id = `sale-item-vente-${v.id}`;
+  card.className = 'sale-card' + _saleHoloClass(v) + (_venteSelection.has(v.id) ? ' sale-selected' : '');
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
-  card.innerHTML =
+  card.innerHTML = _saleSelectBoxHtml('vente', v.id) +
     _saleCardTopHtml({
       image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v), pourCompteDe: v.pour_compte_de,
       name: v.card_name || v.pokemon_name || '—',
@@ -1218,7 +1327,11 @@ function buildVenteCard(v) {
         ${_saleCardFooterActionsHtml({ editFn: 'editVente', delFn: 'deleteVente', id: v.id })}
       </div>
     </div>`;
-  card.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editVente(v.id); });
+  card.addEventListener('click', e => {
+    if (e.target.closest('button,a,select,input')) return;
+    if (_venteSelectMode) { toggleSaleSelection('vente', v.id); return; }
+    editVente(v.id);
+  });
   return card;
 }
 
@@ -1228,10 +1341,11 @@ function buildVenteRow(v) {
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = _typeChipsHtml(v.types, true);
   const row = document.createElement('div');
-  row.className = 'sale-list-row' + _saleHoloClass(v);
+  row.id = `sale-item-vente-${v.id}`;
+  row.className = 'sale-list-row' + _saleHoloClass(v) + (_venteSelection.has(v.id) ? ' sale-selected' : '');
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
-  row.innerHTML = _saleListRowHtml({
+  row.innerHTML = _saleSelectBoxHtml('vente', v.id) + _saleListRowHtml({
     image: v.card_image, qty, name: v.card_name || v.pokemon_name || '—', isLot: _isLotItem(v), pourCompteDe: v.pour_compte_de,
     extName: v.set_name||'', number: v.number||'',
     statusCls: st.cls, statusLabel: st.label, etat: v.etat, langue: v.langue, typesHtml,
@@ -1241,7 +1355,11 @@ function buildVenteRow(v) {
     splitBtnHtml: qty > 1 && st.id !== 'vendue' && !_isLotItem(v) ? `<button class="btn btn-icon btn-sm sale-list-split-btn" title="Vente" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT}</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id, spriteId: v.id,
   });
-  row.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editVente(v.id); });
+  row.addEventListener('click', e => {
+    if (e.target.closest('button,a,select,input')) return;
+    if (_venteSelectMode) { toggleSaleSelection('vente', v.id); return; }
+    editVente(v.id);
+  });
   return row;
 }
 
@@ -1252,10 +1370,11 @@ function buildVenteCompact(v) {
   const qty = parseInt(v.qty,10) || 1;
   const typesHtml = _typeChipsHtml(v.types);
   const card = document.createElement('div');
-  card.className = 'sale-compact-row' + _saleHoloClass(v);
+  card.id = `sale-item-vente-${v.id}`;
+  card.className = 'sale-compact-row' + _saleHoloClass(v) + (_venteSelection.has(v.id) ? ' sale-selected' : '');
   const extColorVal = _extColorForSaleItem(v);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
-  card.innerHTML = _saleCompactCardHtml({
+  card.innerHTML = _saleSelectBoxHtml('vente', v.id) + _saleCompactCardHtml({
     image: v.card_image, qty, sigle: _sigleForSaleItem(v), crop: v.crop, isLot: _isLotItem(v), pourCompteDe: v.pour_compte_de,
     name: v.card_name || v.pokemon_name || '—',
     extName: v.set_name||'', number: v.number||'',
@@ -1265,7 +1384,11 @@ function buildVenteCompact(v) {
     splitBtnHtml: qty > 1 && st.id !== 'vendue' && !_isLotItem(v) ? `<button type="button" class="btn btn-secondary btn-sm sale-split-btn" onclick="event.stopPropagation();openVenteSplitModal('${v.id}')">${ICON_SPLIT} Vente</button>` : '',
     editFn: 'editVente', delFn: 'deleteVente', id: v.id, kind: 'vente',
   });
-  card.addEventListener('click', e => { if (e.target.closest('button,a,select,input,.sale-compact-thumb')) return; editVente(v.id); });
+  card.addEventListener('click', e => {
+    if (e.target.closest('button,a,select,input,.sale-compact-thumb')) return;
+    if (_venteSelectMode) { toggleSaleSelection('vente', v.id); return; }
+    editVente(v.id);
+  });
   return card;
 }
 
@@ -1651,6 +1774,7 @@ function renderDepenses() {
   }
   if (addBtn) grid.appendChild(addBtn);
   renderDepensesStats();
+  _updateBulkBar('depense');
 }
 
 function renderDepensesStats() {
@@ -1700,10 +1824,11 @@ function buildDepenseCard(d) {
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = _typeChipsHtml(d.types);
   const card = document.createElement('div');
-  card.className = 'sale-card' + _saleHoloClass(d);
+  card.id = `sale-item-depense-${d.id}`;
+  card.className = 'sale-card' + _saleHoloClass(d) + (_depenseSelection.has(d.id) ? ' sale-selected' : '');
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) card.style.background = `linear-gradient(160deg, ${extColorVal}82, var(--bg2) 55%)`;
-  card.innerHTML =
+  card.innerHTML = _saleSelectBoxHtml('depense', d.id) +
     _saleCardTopHtml({
       image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop, isLot: _isLotItem(d),
       name: d.card_name || d.pokemon_name || '—',
@@ -1722,7 +1847,11 @@ function buildDepenseCard(d) {
         ${_saleCardFooterActionsHtml({ editFn: 'editDepense', delFn: 'deleteDepense', id: d.id })}
       </div>
     </div>`;
-  card.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editDepense(d.id); });
+  card.addEventListener('click', e => {
+    if (e.target.closest('button,a,select,input')) return;
+    if (_depenseSelectMode) { toggleSaleSelection('depense', d.id); return; }
+    editDepense(d.id);
+  });
   return card;
 }
 
@@ -1731,10 +1860,11 @@ function buildDepenseRow(d) {
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = _typeChipsHtml(d.types, true);
   const row = document.createElement('div');
-  row.className = 'sale-list-row' + _saleHoloClass(d);
+  row.id = `sale-item-depense-${d.id}`;
+  row.className = 'sale-list-row' + _saleHoloClass(d) + (_depenseSelection.has(d.id) ? ' sale-selected' : '');
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) row.style.background = `linear-gradient(90deg, ${extColorVal}3d, var(--bg2) 40%)`;
-  row.innerHTML = _saleListRowHtml({
+  row.innerHTML = _saleSelectBoxHtml('depense', d.id) + _saleListRowHtml({
     image: d.card_image, qty, name: d.card_name || d.pokemon_name || '—', isLot: _isLotItem(d),
     extName: d.set_name||'', number: d.number||'',
     statusCls: '', statusLabel: '', etat: d.etat, langue: d.langue, typesHtml,
@@ -1744,7 +1874,11 @@ function buildDepenseRow(d) {
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id, spriteId: d.id,
   });
-  row.addEventListener('click', e => { if (e.target.closest('button,a,select,input')) return; editDepense(d.id); });
+  row.addEventListener('click', e => {
+    if (e.target.closest('button,a,select,input')) return;
+    if (_depenseSelectMode) { toggleSaleSelection('depense', d.id); return; }
+    editDepense(d.id);
+  });
   return row;
 }
 
@@ -1754,10 +1888,11 @@ function buildDepenseCompact(d) {
   const qty = parseInt(d.qty,10) || 1;
   const typesHtml = _typeChipsHtml(d.types);
   const card = document.createElement('div');
-  card.className = 'sale-compact-row' + _saleHoloClass(d);
+  card.id = `sale-item-depense-${d.id}`;
+  card.className = 'sale-compact-row' + _saleHoloClass(d) + (_depenseSelection.has(d.id) ? ' sale-selected' : '');
   const extColorVal = _extColorForSaleItem(d);
   if (extColorVal) card.style.background = `linear-gradient(135deg, ${extColorVal}82, var(--bg2) 68%)`;
-  card.innerHTML = _saleCompactCardHtml({
+  card.innerHTML = _saleSelectBoxHtml('depense', d.id) + _saleCompactCardHtml({
     image: d.card_image, qty, sigle: _sigleForSaleItem(d), crop: d.crop, isLot: _isLotItem(d),
     name: d.card_name || d.pokemon_name || '—',
     extName: d.set_name||'', number: d.number||'',
@@ -1767,7 +1902,11 @@ function buildDepenseCompact(d) {
     splitBtnHtml: '',
     editFn: 'editDepense', delFn: 'deleteDepense', id: d.id, kind: 'depense',
   });
-  card.addEventListener('click', e => { if (e.target.closest('button,a,select,input,.sale-compact-thumb')) return; editDepense(d.id); });
+  card.addEventListener('click', e => {
+    if (e.target.closest('button,a,select,input,.sale-compact-thumb')) return;
+    if (_depenseSelectMode) { toggleSaleSelection('depense', d.id); return; }
+    editDepense(d.id);
+  });
   return card;
 }
 
