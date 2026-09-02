@@ -50,6 +50,19 @@ function _tokensContainSeq(haystack, needle) {
   return false;
 }
 
+// `needle` est-il un PRÉFIXE PROPRE de `haystack` (ses tokens correspondent
+// exactement au tout début, aucun mot intercalé) ? Ex. "Lien Spirituel" est
+// un préfixe propre de "Lien Spirituel Dracaufeu". Sert à distinguer un
+// Objet/Personnage/Lieu/Énergie nommé "[Nom] [Pokémon]" (une vraie carte de
+// cette catégorie — ex. les cartes "Lien Spirituel X", un Dresseur par Méga-
+// Évolution) d'une carte qui matche juste par coïncidence quelque part dans
+// un titre par ailleurs authentiquement Pokémon.
+function _isCleanTokenPrefix(haystack, needle) {
+  if (!needle.length || needle.length > haystack.length) return false;
+  for (let i = 0; i < needle.length; i++) { if (haystack[i] !== needle[i]) return false; }
+  return true;
+}
+
 // ── État & catégories ───────────────────────────────────────────────────
 // PKO_KINDS = catégories qui RATTACHENT automatiquement des cartes possédées
 // par correspondance de nom (Pokédex, cartes orphelines, compteur "cartes
@@ -340,10 +353,25 @@ async function _pkoComputeOwnedCounts() {
         // la boucle ci-dessous (une carte au premier token ambigu peut
         // avoir plusieurs candidates, ce qui répétait ces vérifications
         // pour rien).
+        // BUG corrigé : containsAnyTokenized (Pokémon connu N'IMPORTE OÙ
+        // dans le titre) vivait ici, en exclusion GLOBALE de la carte —
+        // une carte comme "Lien Spirituel Dracaufeu" (un Objet nommé
+        // d'après un Pokémon, PAS une carte Pokémon) était donc exclue de
+        // TOUTE fiche Personnage/Objet/Lieu/Énergie simplement parce que
+        // "Dracaufeu" apparaît plus loin dans son titre — alors que ces
+        // cartes existent bel et bien (les cartes "Lien Spirituel X" de
+        // Méga-Évolution en sont un exemple réel). Descendue plus bas,
+        // candidat par candidat, avec une exception : elle ne s'applique
+        // plus quand l'entrée candidate est elle-même un PRÉFIXE PROPRE du
+        // titre (_isCleanTokenPrefix) — un signal bien plus fiable que
+        // "Dracaufeu apparaît quelque part" pour dire "ceci EST une vraie
+        // carte Pokémon". _cardNameMatchesKnown et
+        // _cardMatchesSomeLabeledPokemon restent ici tels quels : tous
+        // deux sont déjà ancrés en tête de titre, donc déjà fiables sans
+        // exception.
         let isKnownPokemon = false;
         if (!forced) {
           isKnownPokemon = _cardNameMatchesKnown(c.name, knownPokemon)
-            || containsAnyTokenized(cardTokens, knownPokemonTokenized)
             || (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(c.name));
         }
         if (isKnownPokemon) return;
@@ -352,6 +380,7 @@ async function _pkoComputeOwnedCounts() {
         candidates.forEach(({ entry, tokens, kind }) => {
           if (!_tokensContainSeq(cardTokens, tokens)) return;
           if (forced) { if (forced === kind) realMatches.push({ entry, tokens, kind }); return; }
+          if (!_isCleanTokenPrefix(cardTokens, tokens) && containsAnyTokenized(cardTokens, knownPokemonTokenized)) return;
           if (containsAnyTokenized(cardTokens, knownOtherTokenizedByKind[kind])) return;
           realMatches.push({ entry, tokens, kind });
         });
@@ -525,8 +554,16 @@ async function _fetchLocalCardsContainingName(name, kind, knownPokemonSet, known
     const forced = _cardCategoryOverride(c.id);
     if (forced) { if (forced !== kind) return; }
     else {
-      if (_cardNameMatchesKnown(c.name, knownPokemonSet) || _cardNameContainsKnown(c.name, knownPokemonSet)) return;
+      if (_cardNameMatchesKnown(c.name, knownPokemonSet)) return;
       if (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(c.name)) return;
+      // BUG corrigé : _cardNameContainsKnown (Pokémon connu N'IMPORTE OÙ
+      // dans le titre) excluait à tort les cartes comme "Lien Spirituel
+      // Dracaufeu" (un Objet nommé d'après un Pokémon, PAS une carte
+      // Pokémon) simplement parce que "Dracaufeu" apparaît plus loin dans
+      // le titre — même correction que dans _pkoComputeOwnedCounts :
+      // n'exclut plus quand CETTE entrée est elle-même un préfixe propre du
+      // titre (_isCleanTokenPrefix), un signal bien plus fiable.
+      if (!_isCleanTokenPrefix(cardTokens, nameTokens) && _cardNameContainsKnown(c.name, knownPokemonSet)) return;
       if (knownOtherKindsSet && _cardNameContainsKnown(c.name, knownOtherKindsSet)) return;
     }
 
