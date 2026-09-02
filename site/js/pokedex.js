@@ -1226,77 +1226,94 @@ function _pkdxTcgSectionHtml() {
 // générique "gmax" existe ailleurs dans l'appli), sans qu'aucune fiche de
 // forme ne l'affiche non plus puisqu'aucune forme Gigamax n'existe réellement
 // pour ce Pokémon — la carte devenait introuvable nulle part.
+//
+// BUG corrigé (même défaut que _fetchLocalCardsContainingName dans
+// perso-objets.js) : cette fonction envoyait un filtre ilike AU SERVEUR
+// (plusieurs variantes en OR, plafonnées à limit=500) avant toute
+// comparaison, avec une recherche de repli à part (dizaines de requêtes
+// séquentielles) spécifiquement pour rattraper les formes Méga/Gigamax dont
+// le préfixe précède le nom ("Méga Dracaufeu") ET les cartes tombées hors de
+// la fenêtre des 500 premiers résultats. Tout ça reposait sur le même filtre
+// texte fragile côté serveur que celui qui empêchait les fiches Personnages/
+// Objets/Lieux/Énergies de retrouver leurs cartes. On réutilise maintenant
+// _pkoAllLocalCards (déjà chargé pour ces compteurs) : toute la comparaison —
+// nom du Pokémon ET préfixes de forme — se fait en JS sur le catalogue
+// COMPLET, sans plafond ni filtre serveur ; le serveur n'est requêté
+// qu'ENSUITE, pour les détails des cartes déjà identifiées comme
+// correspondantes. La recherche de repli devient inutile et disparaît.
 async function _fetchCardsGroupedByExtension(frName, formType, ownFormTypes) {
   const linkedTypes = _allLinkedFormTypes();
+  await _pkoFetchAllLocalCards();
 
   // Ancré sur le nom ENTIER du Pokémon (exact, ou suivi d'un espace/tiret
   // pour les suffixes EX/GX/V/VMAX…) plutôt qu'un simple "contient" — un
-  // "contient" faisait remonter des Pokémon sans aucun rapport dont le nom
+  // "contient" ferait remonter des Pokémon sans aucun rapport dont le nom
   // contient la chaîne recherchée en plein milieu ou en préfixe collé (ex.
   // "Abra" dans "Simiabraz", "Draco" en préfixe de "Dracolosse", "Marill"
-  // dans "Azumarill"). On cherche aussi la variante SANS accent (ex.
-  // "Negapi") en plus de celle avec (ex. "Négapi") : certaines cartes sont
-  // enregistrées sans accent selon l'import TCGdex, et ILIKE ne fait pas
-  // l'équivalence accentué/non-accentué tout seul — sans ça ces cartes
-  // étaient invisibles quelle que soit la façon dont on tapait le nom.
-  const nameVariants = _accentVariants(frName);
-  const orFilter = `or=(${nameVariants.flatMap(n => {
-    const e = encodeURIComponent(n);
-    return [`name.ilike.${e}`, `name.ilike.${e}%20*`, `name.ilike.${e}-*`];
-  }).join(',')})`;
-  const url = `${SB_URL}/rest/v1/cards?${orFilter}&order=set_id.asc,number.asc&limit=500`;
-  const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  let cards = await res.json();
+  // dans "Azumarill"). On teste aussi la variante SANS accent (ex. "Negapi")
+  // en plus de celle avec (ex. "Négapi") : certaines cartes sont enregistrées
+  // sans accent selon l'import TCGdex.
+  const nameVariants = _accentVariants(frName).map(v => v.toLowerCase());
+  // Une carte "a le préfixe" une variante si son nom lui est identique, ou
+  // commence par elle suivie d'un espace ou d'un tiret — jamais collé, pour
+  // ne jamais confondre "Abra" et "Simiabraz". Réplique exactement les 3
+  // motifs ilike historiques (égalité, "variante ", "variante-").
+  const hasPrefix = (cardName, variants) => {
+    const cn = (cardName || '').toLowerCase();
+    return variants.some(v => {
+      if (cn === v) return true;
+      if (cn.length > v.length && cn.startsWith(v)) {
+        const next = cn[v.length];
+        return next === ' ' || next === '-';
+      }
+      return false;
+    });
+  };
 
-  // Une carte forcée manuellement vers "objet" ou "personnage" (fiche carte
-  // → "Catégorie", voir perso-objets.js) ne doit plus jamais apparaître
-  // dans une fiche Pokémon, même si son nom matche par ailleurs.
-  if (typeof _cardCategoryOverride === 'function') {
-    cards = cards.filter(c => { const forced = _cardCategoryOverride(c.id); return !forced || forced === 'pokemon'; });
+  // Variantes "préfixe de forme + nom" (ex. "Méga Dracaufeu", "M-Dracaufeu",
+  // "Gigamax Dracaufeu"…) — nécessaires pour les formes dont le préfixe
+  // précède le nom du Pokémon : ces cartes ne commencent PAS par le nom du
+  // Pokémon lui-même, donc hasPrefix(nameVariants) seul ne les trouverait
+  // jamais. Même logique que l'ancienne recherche de repli, juste testée en
+  // JS contre le catalogue complet plutôt qu'en requêtes serveur séparées.
+  let formPrefixVariants = [];
+  if (formType && linkedTypes.includes(formType)) {
+    const cfg = getFormLabelConfig(formType);
+    const shortTokens = [...new Set(
+      (cfg.prefixes||[]).map(p => p.replace(/[-\s]+$/, '').replace(/^[-\s]+/, '')).filter(Boolean)
+    )];
+    shortTokens.forEach(token => {
+      _accentVariants(token).forEach(tokenVariant => {
+        [' ', '-'].forEach(joiner => {
+          nameVariants.forEach(nv => formPrefixVariants.push((tokenVariant + joiner + nv).toLowerCase()));
+        });
+      });
+    });
+  }
+  const allPrefixVariants = nameVariants.concat(formPrefixVariants);
+
+  const matchedIds = [];
+  (_pkoAllLocalCards || []).forEach(c => {
+    if (!hasPrefix(c.name, allPrefixVariants)) return;
+    // Une carte forcée manuellement vers "objet" ou "personnage" (fiche carte
+    // → "Catégorie", voir perso-objets.js) ne doit plus jamais apparaître
+    // dans une fiche Pokémon, même si son nom matche par ailleurs.
+    const forced = typeof _cardCategoryOverride === 'function' ? _cardCategoryOverride(c.id) : '';
+    if (forced && forced !== 'pokemon') return;
+    matchedIds.push(c.id);
+  });
+
+  let cards = [];
+  if (matchedIds.length) {
+    const idFilter = `id=in.(${matchedIds.map(id => encodeURIComponent(id)).join(',')})`;
+    const url = `${SB_URL}/rest/v1/cards?${idFilter}&select=id,name,set_id,set_name,image_url,number,rarity,cardmarket_url&order=set_id.asc,number.asc`;
+    const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    cards = await res.json();
   }
 
   if (formType && linkedTypes.includes(formType)) {
     cards = cards.filter(card => _cardMatchesFormType(card.name, formType));
-    // Certaines cartes au format court ("M Dracaufeu", "M-Dracaufeu") peuvent
-    // se trouver hors de la fenêtre limit=500 de la requête principale. On
-    // détecte les préfixes/suffixes réduits à une seule lettre ou un seul mot
-    // court (ex. "M ", "M-" désignent tous la lettre "M") et on refait une
-    // recherche dédiée pour chacun, en testant à la fois la jointure espace
-    // ET la jointure tiret (les deux se rencontrent selon les imports TCGdex),
-    // quelle que soit la façon dont l'utilisateur les a saisis dans Édition › Labels.
-    const cfg = getFormLabelConfig(formType);
-    // BUG corrigé : _nnLbl() retirait l'accent du préfixe ("Méga-" → "mega-")
-    // avant même de construire la requête — et Postgres ILIKE ne confond
-    // JAMAIS "é" et "e". Une carte réellement nommée "Méga-Dracaufeu X-ex"
-    // ne pouvait donc plus jamais être trouvée par le préfixe "Méga-", alors
-    // qu'elle l'était par un préfixe sans accent comme "M-". On garde
-    // l'accent du préfixe tel qu'écrit dans Édition › Labels, et on essaie
-    // EN PLUS sa variante sans accent (même traitement que _accentVariants
-    // applique déjà au nom du Pokémon lui-même juste au-dessus).
-    const shortTokens = [...new Set(
-      (cfg.prefixes||[])
-        .map(p => p.replace(/[-\s]+$/, '').replace(/^[-\s]+/, ''))
-        .filter(Boolean)
-    )];
-    const seen = new Set(cards.map(c => c.id));
-    for (const token of shortTokens) {
-      const tokenVariants = _accentVariants(token);
-      for (const joiner of [' ', '-']) {
-        for (const nameVariant of nameVariants) {
-          for (const tokenVariant of tokenVariants) {
-            try {
-              const r2 = await fetch(`${SB_URL}/rest/v1/cards?name=ilike.${encodeURIComponent(tokenVariant + joiner + nameVariant)}*&order=set_id.asc,number.asc&limit=200`,
-                { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-              const extra = r2.ok ? await r2.json() : [];
-              extra.filter(c => _cardMatchesFormType(c.name, formType)).forEach(c => {
-                if (!seen.has(c.id)) { cards.push(c); seen.add(c.id); }
-              });
-            } catch(_) {}
-          }
-        }
-      }
-    }
   } else if (!formType) {
     // Base Pokémon : exclure les cartes qui appartiennent à une forme spéciale
     // liée — mais seulement parmi les formes qui existent VRAIMENT pour ce

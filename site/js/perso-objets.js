@@ -348,12 +348,24 @@ async function _pkoComputeOwnedCounts() {
         }
         if (isKnownPokemon) return;
 
+        const realMatches = []; // { entry, tokens, kind } — voir "la plus spécifique gagne" plus bas
         candidates.forEach(({ entry, tokens, kind }) => {
           if (!_tokensContainSeq(cardTokens, tokens)) return;
-          if (forced) { if (forced === kind) entry._ownedCount++; return; }
+          if (forced) { if (forced === kind) realMatches.push({ entry, tokens, kind }); return; }
           if (containsAnyTokenized(cardTokens, knownOtherTokenizedByKind[kind])) return;
-          entry._ownedCount++;
+          realMatches.push({ entry, tokens, kind });
         });
+        if (!realMatches.length) return;
+
+        // Une carte comme "Super Potion" matche À LA FOIS "Potion" et
+        // "Super Potion" si les deux fiches existent (le nom le plus court
+        // est une sous-séquence du plus long) — ne créditer QUE la fiche la
+        // plus SPÉCIFIQUE (le nom avec le plus de mots, donc le plus
+        // précis) évite cette confusion. En cas d'égalité exacte de
+        // longueur entre deux fiches différentes (rare, vraie ambiguïté),
+        // les deux sont créditées faute de pouvoir trancher tout seul.
+        const maxLen = Math.max(...realMatches.map(m => m.tokens.length));
+        realMatches.filter(m => m.tokens.length === maxLen).forEach(m => { m.entry._ownedCount++; });
       });
       // Rend la main au navigateur entre chaque paquet — c'est ce point de
       // reprise qui évite le gel, même sur une collection de plusieurs
@@ -460,39 +472,74 @@ async function openPkoModal(kind, entryId) {
   _pkoLoadLocalCards(kind, entry);
 }
 
-// Recherche les cartes POSSÉDÉES (table Supabase "cards") dont le nom
-// contient, n'importe où, le nom de l'entrée — à la différence de la fiche
-// Pokémon (ancrée en préfixe), un Personnage/Objet/Lieu/Énergie peut
-// apparaître n'importe où dans le titre ("Ordres de Cynthia"). Se
-// combinent, dans l'ordre :
+// Recherche les cartes POSSÉDÉES dont le nom contient, n'importe où, le nom
+// de l'entrée — à la différence de la fiche Pokémon (ancrée en préfixe), un
+// Personnage/Objet/Lieu/Énergie peut apparaître n'importe où dans le titre
+// ("Ordres de Cynthia"). Se combinent, dans l'ordre :
 //  1) une catégorie FORCÉE à la main (fiche carte → "Catégorie") tranche
 //     directement — utile pour résoudre les rares ambiguïtés entre
 //     catégories (ex. un Objet nommé d'après un Personnage) ;
 //  2) exclusion Pokémon connu (y compris formes/labels EX/GX/V…) ;
 //  3) exclusion croisée avec les 3 AUTRES catégories Personnage/Objet/Lieu/
 //     Énergie (une carte qui matche aussi le nom d'une autre catégorie est
-//     ambiguë sans forçage manuel — voir 1).
+//     ambiguë sans forçage manuel — voir 1) ;
+//  4) exclusion vis-à-vis d'une fiche SŒUR plus spécifique dans la MÊME
+//     catégorie (ex. "Potion" ne récupère jamais les cartes "Super Potion"
+//     si cette dernière fiche existe aussi — voir longerSiblings plus bas).
+//
+// BUG corrigé : cette fonction envoyait avant tout un filtre texte (ilike)
+// AU SERVEUR pour ne récupérer qu'un sous-ensemble de cartes, puis
+// réappliquait la comparaison JS (_tokensContainSeq) derrière — cette
+// dernière est plus souple que le ilike littéral (accents/ponctuation/ordre
+// des mots), si bien qu'une carte correctement reconnue par
+// _pkoComputeOwnedCounts (qui lit TOUT le catalogue et ne compare qu'en JS,
+// sans filtre serveur) pouvait ne jamais apparaître dans la fiche de son
+// entrée : le ilike, trop littéral, la filtrait avant même que la
+// comparaison JS (pourtant correcte) ait sa chance. On réutilise maintenant
+// exactement la même source (_pkoAllLocalCards, déjà chargée pour le
+// compteur) et exactement la même comparaison — le serveur n'est
+// redemandé qu'ENSUITE, pour les détails (image, set, numéro…) des cartes
+// déjà identifiées comme correspondantes, jamais pour filtrer par texte.
 async function _fetchLocalCardsContainingName(name, kind, knownPokemonSet, knownOtherKindsSet) {
-  const variants = _accentVariants(name);
-  const orFilter = `or=(${variants.map(n => `name.ilike.*${encodeURIComponent(n)}*`).join(',')})`;
-  const url = `${SB_URL}/rest/v1/cards?${orFilter}&order=set_id.asc,number.asc&limit=500`;
-  const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const raw = await res.json();
+  await _pkoFetchAllLocalCards();
   const nameTokens = _pkoNormTokens(name);
+  if (!nameTokens.length) return [];
 
-  return raw.filter(c => {
+  // Fiches SŒURS plus longues (même catégorie) — voir "la plus spécifique
+  // gagne" dans _pkoComputeOwnedCounts : seule une fiche dont le nom compte
+  // STRICTEMENT PLUS de mots peut "voler" une carte à celle-ci (ex. "Super
+  // Potion" vole ses cartes à "Potion", jamais l'inverse). Cette fonction ne
+  // connaît que l'entrée dont la fiche est ouverte, contrairement au calcul
+  // du compteur qui voit toutes les entrées d'un coup — on doit donc lister
+  // ici explicitement les sœurs plus spécifiques à vérifier.
+  const longerSiblings = (_pko.entries[kind] || [])
+    .filter(e => e.displayName !== name)
+    .map(e => _pkoNormTokens(e.displayName))
+    .filter(t => t.length > nameTokens.length);
+
+  const matchedIds = [];
+  (_pkoAllLocalCards || []).forEach(c => {
     const cardTokens = _pkoNormTokens(c.name);
-    if (!_tokensContainSeq(cardTokens, nameTokens)) return false;
+    if (!cardTokens.length || !_tokensContainSeq(cardTokens, nameTokens)) return;
 
     const forced = _cardCategoryOverride(c.id);
-    if (forced) return forced === kind;
+    if (forced) { if (forced !== kind) return; }
+    else {
+      if (_cardNameMatchesKnown(c.name, knownPokemonSet) || _cardNameContainsKnown(c.name, knownPokemonSet)) return;
+      if (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(c.name)) return;
+      if (knownOtherKindsSet && _cardNameContainsKnown(c.name, knownOtherKindsSet)) return;
+    }
 
-    if (_cardNameMatchesKnown(c.name, knownPokemonSet) || _cardNameContainsKnown(c.name, knownPokemonSet)) return false;
-    if (typeof _cardMatchesSomeLabeledPokemon === 'function' && _cardMatchesSomeLabeledPokemon(c.name)) return false;
-    if (knownOtherKindsSet && _cardNameContainsKnown(c.name, knownOtherKindsSet)) return false;
-    return true;
+    if (longerSiblings.some(t => _tokensContainSeq(cardTokens, t))) return; // volée par une fiche sœur plus précise
+    matchedIds.push(c.id);
   });
+  if (!matchedIds.length) return [];
+
+  const idFilter = `id=in.(${matchedIds.map(id => encodeURIComponent(id)).join(',')})`;
+  const url = `${SB_URL}/rest/v1/cards?${idFilter}&select=id,name,set_id,set_name,image_url,number,rarity,cardmarket_url&order=set_id.asc,number.asc`;
+  const res = await fetch(url, { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
 }
 
 // Fiche actuellement ouverte (Personnage, Objet, Lieu ou Énergie) — utilisé
