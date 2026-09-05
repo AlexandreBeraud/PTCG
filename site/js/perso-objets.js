@@ -381,7 +381,14 @@ async function _pkoComputeOwnedCounts() {
           if (!_tokensContainSeq(cardTokens, tokens)) return;
           if (forced) { if (forced === kind) realMatches.push({ entry, tokens, kind }); return; }
           if (!_isCleanTokenPrefix(cardTokens, tokens) && containsAnyTokenized(cardTokens, knownPokemonTokenized)) return;
-          if (containsAnyTokenized(cardTokens, knownOtherTokenizedByKind[kind])) return;
+          // Même exception que ci-dessus, appliquée à l'exclusion croisée
+          // entre catégories (Personnage/Lieu/Énergie) : un Objet comme
+          // "Sac" nommé en tête d'un titre "Sac de Nabil" ne doit pas être
+          // écarté juste parce que "Nabil" (un Personnage enregistré)
+          // apparaît plus loin dans ce même titre, connecté par une
+          // particule ("de", "du"…). Le préfixe propre reste le signal fort
+          // qui tranche : si CETTE entrée ouvre bien le titre, elle gagne.
+          if (!_isCleanTokenPrefix(cardTokens, tokens) && containsAnyTokenized(cardTokens, knownOtherTokenizedByKind[kind])) return;
           realMatches.push({ entry, tokens, kind });
         });
         if (!realMatches.length) return;
@@ -564,7 +571,10 @@ async function _fetchLocalCardsContainingName(name, kind, knownPokemonSet, known
       // n'exclut plus quand CETTE entrée est elle-même un préfixe propre du
       // titre (_isCleanTokenPrefix), un signal bien plus fiable.
       if (!_isCleanTokenPrefix(cardTokens, nameTokens) && _cardNameContainsKnown(c.name, knownPokemonSet)) return;
-      if (knownOtherKindsSet && _cardNameContainsKnown(c.name, knownOtherKindsSet)) return;
+      // Même exception que juste au-dessus (Pokémon), appliquée cette fois à
+      // l'exclusion croisée Personnage/Objet/Lieu/Énergie : voir le
+      // commentaire équivalent dans _pkoComputeOwnedCounts ("Sac de Nabil").
+      if (knownOtherKindsSet && !_isCleanTokenPrefix(cardTokens, nameTokens) && _cardNameContainsKnown(c.name, knownOtherKindsSet)) return;
     }
 
     if (longerSiblings.some(t => _tokensContainSeq(cardTokens, t))) return; // volée par une fiche sœur plus précise
@@ -823,6 +833,15 @@ function pkoSaveEntry() {
   if (!_D.perso_objets) _D.perso_objets = [];
   const isNew = !_pkoEdit.editingId;
   const id = _pkoEdit.editingId || _pkoUniqueId();
+
+  // Empêche deux fiches de la même catégorie avec le même nom (comparaison
+  // insensible à la casse/aux accents) — exclut l'entrée elle-même en cas
+  // de correction (le nom peut rester inchangé). Sans ce garde-fou, deux
+  // fiches "Sac" créent une ambiguïté silencieuse dans le rattachement de
+  // cartes (laquelle des deux récupère "Sac Aventure" ?).
+  const normName = _normalizeStr(name).trim();
+  const dup = _D.perso_objets.find(o => o.kind === kind && o.id !== id && _normalizeStr(o.display_name || '').trim() === normName);
+  if (dup) { toast(`Une entrée "${dup.display_name}" existe déjà dans cette catégorie.`, 'error'); return; }
   let ov = _D.perso_objets.find(o => o.id === id && o.kind === kind);
   if (!ov) { ov = { id, kind, sort_order: _D.perso_objets.length }; _D.perso_objets.push(ov); }
   ov.display_name = name;

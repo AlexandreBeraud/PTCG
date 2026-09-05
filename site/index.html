@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PTCG Collection</title>
-<link rel="stylesheet" href="css/base.css?v=35">
-<link rel="stylesheet" href="css/collection.css?v=35">
-<link rel="stylesheet" href="css/pokedex.css?v=35">
-<link rel="stylesheet" href="css/ventes-achats.css?v=35">
+<link rel="stylesheet" href="css/base.css?v=36">
+<link rel="stylesheet" href="css/collection.css?v=36">
+<link rel="stylesheet" href="css/pokedex.css?v=36">
+<link rel="stylesheet" href="css/ventes-achats.css?v=36">
 </head>
 <body>
 
@@ -261,13 +261,8 @@
       </div>
       <div class="bulk-action-bar" id="ventes-bulk-bar" style="display:none">
         <span class="bulk-count" id="ventes-bulk-count">0 sélectionnée</span>
-        <select id="ventes-bulk-status-select" class="sales-sort-select">
-          <option value="">Changer le statut…</option>
-          <option value="a_mettre">À mettre en vente</option>
-          <option value="en_vente">En vente</option>
-        </select>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="applyBulkVenteStatus()">Appliquer</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="bulkSelectAll('vente')">Tout sélectionner</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openBulkEditModal('vente')">Modifier en masse</button>
         <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteSales('vente')">Supprimer</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSaleSelectMode('vente')">Annuler</button>
       </div>
@@ -413,6 +408,7 @@
       <div class="bulk-action-bar" id="depenses-bulk-bar" style="display:none">
         <span class="bulk-count" id="depenses-bulk-count">0 sélectionnée</span>
         <button type="button" class="btn btn-secondary btn-sm" onclick="bulkSelectAll('depense')">Tout sélectionner</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openBulkEditModal('depense')">Modifier en masse</button>
         <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteSales('depense')">Supprimer</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSaleSelectMode('depense')">Annuler</button>
       </div>
@@ -1409,6 +1405,69 @@
   </div>
 </div>
 
+<!-- Modal: Modification en masse (Ventes/Dépenses) — chaque champ n'est
+     appliqué que si sa case est cochée ; les autres restent inchangés sur
+     toutes les lignes sélectionnées (voir applyBulkEdit dans ventes-achats.js). -->
+<div class="modal-backdrop" id="modal-bulk-edit">
+  <div class="modal" style="width:460px">
+    <h2 id="bulk-edit-title">Modifier en masse</h2>
+    <p class="form-hint" style="margin:-6px 0 14px">Coche les champs à modifier — <span id="bulk-edit-count">0</span> ligne(s) sélectionnée(s), les autres champs restent inchangés.</p>
+
+    <div class="bulk-edit-field">
+      <label><input type="checkbox" id="bulk-edit-etat-chk" onchange="_bulkEditToggle(this)"> État</label>
+      <select id="bulk-edit-etat-select" disabled>
+        <option>Mint</option><option selected>Near Mint</option><option>Excellent</option>
+        <option>Good</option><option>Light Played</option><option>Played</option><option>Poor</option>
+      </select>
+    </div>
+
+    <div class="bulk-edit-field">
+      <label><input type="checkbox" id="bulk-edit-prix-chk" onchange="_bulkEditToggle(this)"> Prix unitaire (€)</label>
+      <input type="number" id="bulk-edit-prix-input" step="0.01" min="0" placeholder="0.00" disabled>
+    </div>
+
+    <div class="bulk-edit-field">
+      <label><input type="checkbox" id="bulk-edit-qty-chk" onchange="_bulkEditToggle(this)"> Quantité</label>
+      <input type="number" id="bulk-edit-qty-input" step="1" min="1" value="1" disabled>
+    </div>
+
+    <div class="bulk-edit-field">
+      <label><input type="checkbox" id="bulk-edit-langue-chk" onchange="_bulkEditToggle(this)"> Langue</label>
+      <select id="bulk-edit-langue-select" disabled>
+        <option>Français</option><option>Anglais</option><option>Japonais</option><option>Allemand</option>
+        <option>Italien</option><option>Espagnol</option><option>Portugais</option><option>Néerlandais</option>
+        <option>Coréen</option><option>Chinois</option>
+      </select>
+    </div>
+
+    <div class="bulk-edit-field">
+      <label><input type="checkbox" id="bulk-edit-type-chk" onchange="_bulkEditToggle(this)"> Type</label>
+      <div class="chip-toggle-group" id="bulk-edit-type-chips"></div>
+    </div>
+
+    <div class="bulk-edit-field" id="bulk-edit-statut-row">
+      <label><input type="checkbox" id="bulk-edit-statut-chk" onchange="_bulkEditToggle(this)"> Statut</label>
+      <select id="bulk-edit-statut-select" disabled>
+        <option value="a_mettre">À mettre en vente</option>
+        <option value="en_vente">En vente</option>
+      </select>
+    </div>
+
+    <div class="bulk-edit-field" id="bulk-edit-pourcompte-row">
+      <label><input type="checkbox" id="bulk-edit-pourcompte-chk" onchange="_bulkEditToggle(this)"> Pour le compte de</label>
+      <div class="bulk-edit-control">
+        <select id="bulk-edit-pourcompte-select" disabled onchange="_onBulkEditPourCompteDeSelectChange()"></select>
+        <input type="text" id="bulk-edit-pourcompte-new" placeholder="Nom du tiers" style="display:none;margin-top:6px" disabled>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-bulk-edit')">Annuler</button>
+      <button class="btn btn-primary" onclick="applyBulkEdit()">Appliquer</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Dépense -->
 <div class="modal-backdrop" id="modal-depense">
   <div class="modal" style="width:480px">
@@ -1642,9 +1701,9 @@
 <div id="toast-container"></div>
 <!-- Chart.js (graphiques du Bilan — répartition/évolution, voir js/ventes-achats.js) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="config.js?v=35"></script>
-<script src="data.js?v=35"></script>
-<script src="js/sync.js?v=35"></script>
+<script src="config.js?v=36"></script>
+<script src="data.js?v=36"></script>
+<script src="js/sync.js?v=36"></script>
 <script>
 // One-time migration: clear localStorage if it still has old built-in blocs data
 // (detectable by presence of ext_overrides with built-in IDs like SV01, SWSH01 etc.)
@@ -1684,14 +1743,14 @@
   } catch(e) { /* ignore */ }
 })();
 </script>
-<script src="js/core.js?v=35"></script>
-<script src="js/collection.js?v=35"></script>
-<script src="js/edition.js?v=35"></script>
-<script src="js/mapping.js?v=35"></script>
-<script src="js/labels.js?v=35"></script>
-<script src="js/ventes-achats.js?v=35"></script>
-<script src="js/label-categories.js?v=35"></script>
-<script src="js/pokedex.js?v=35"></script>
-<script src="js/perso-objets.js?v=35"></script>
+<script src="js/core.js?v=36"></script>
+<script src="js/collection.js?v=36"></script>
+<script src="js/edition.js?v=36"></script>
+<script src="js/mapping.js?v=36"></script>
+<script src="js/labels.js?v=36"></script>
+<script src="js/ventes-achats.js?v=36"></script>
+<script src="js/label-categories.js?v=36"></script>
+<script src="js/pokedex.js?v=36"></script>
+<script src="js/perso-objets.js?v=36"></script>
 </body>
 </html>

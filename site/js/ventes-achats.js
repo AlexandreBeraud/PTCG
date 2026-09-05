@@ -428,24 +428,119 @@ function _updateBulkBar(kind) {
   if (countEl) countEl.textContent = `${set.size} sélectionnée${set.size>1?'s':''}`;
 }
 
-// Changement de statut en masse — Ventes uniquement : les Dépenses n'ont
-// pas de statut par ligne (leur état "arrivé" dépend uniquement de la
-// commande liée, voir _depenseIsArrivee). "Vendue" est volontairement
-// absent des choix : ce statut exige de choisir un acheteur/une commande
-// par carte (voir saveVente) — impossible à faire proprement en masse sans
-// risquer des ventes "vendues" sans acheteur assigné.
-function applyBulkVenteStatus() {
-  const sel = document.getElementById('ventes-bulk-status-select');
-  const statut = sel ? sel.value : '';
-  if (!statut) { toast('Choisis un statut à appliquer.','error'); return; }
-  if (!_venteSelection.size) { toast('Aucune vente sélectionnée.','error'); return; }
-  const st = VENTE_STATUTS.find(s=>s.id===statut);
-  if (!confirm(`Passer ${_venteSelection.size} vente(s) à "${st?st.label:statut}" ?`)) return;
+// ── Modification en masse (Ventes/Dépenses) ─────────────────────────────
+// Étend la sélection multiple au-delà du statut/de la suppression : État,
+// Prix, Quantité, Langue, Type, Statut (Ventes) et Pour le compte de
+// (Ventes) sont tous modifiables d'un coup sur toute la sélection. Chaque
+// champ n'est appliqué QUE s'il est explicitement coché (voir
+// _bulkEditToggle) — sans ça, "Prix vide = 0€" ou "Type non coché = remis à
+// Normale" écraseraient silencieusement des valeurs existantes différentes
+// sur les lignes sélectionnées.
+var _bulkEditKind = null;
+
+function openBulkEditModal(kind) {
+  const { set } = _selState(kind);
+  if (!set.size) { toast(`Aucune ${kind==='vente'?'vente':'dépense'} sélectionnée.`,'error'); return; }
+  _bulkEditKind = kind;
+
+  document.getElementById('bulk-edit-title').textContent = 'Modifier en masse : ' + (kind==='vente' ? 'ventes' : 'dépenses');
+  document.getElementById('bulk-edit-count').textContent = set.size;
+
+  // Remet tous les champs à "non modifié" (décoché + désactivé) à chaque
+  // ouverture, pour ne jamais réappliquer par erreur une valeur laissée en
+  // place lors d'un précédent passage.
+  ['etat','prix','qty','langue','type','statut','pourcompte'].forEach(f => {
+    const chk = document.getElementById(`bulk-edit-${f}-chk`);
+    if (chk) { chk.checked = false; _bulkEditToggle(chk); }
+  });
+  document.getElementById('bulk-edit-etat-select').value = 'Near Mint';
+  document.getElementById('bulk-edit-prix-input').value = '';
+  document.getElementById('bulk-edit-qty-input').value = 1;
+  document.getElementById('bulk-edit-langue-select').value = 'Français';
+  _setChipGroup('bulk-edit-type-chips', ['normale']);
+
+  // Statut et "Pour le compte de" n'ont de sens que pour les Ventes (les
+  // Dépenses n'ont pas de statut propre — voir le commentaire historique
+  // ci-dessous — et pas de notion de tiers).
+  const isVente = kind === 'vente';
+  document.getElementById('bulk-edit-statut-row').style.display = isVente ? '' : 'none';
+  document.getElementById('bulk-edit-pourcompte-row').style.display = isVente ? '' : 'none';
+  if (isVente) {
+    document.getElementById('bulk-edit-statut-select').value = 'a_mettre';
+    _bulkEditPopulatePourCompteDeSelect();
+  }
+
+  document.getElementById('modal-bulk-edit').classList.add('open');
+}
+
+// Active/désactive un champ de la modale — grise son contrôle et, pour les
+// boutons chip (Type), empêche le clic tant que non coché.
+function _bulkEditToggle(chk) {
+  const row = chk.closest('.bulk-edit-field'); if (!row) return;
+  const on = chk.checked;
+  row.classList.toggle('bulk-edit-field-active', on);
+  row.querySelectorAll('select, input:not([type="checkbox"]), .chip-toggle-btn').forEach(el => { el.disabled = !on; });
+}
+
+// Même principe que populatePourCompteDeSelect (voir plus haut) mais pour
+// la modale de masse — select dédié, pas de valeur "déjà en place" à
+// pré-sélectionner puisque la sélection couvre potentiellement plusieurs
+// valeurs différentes à la fois.
+function _bulkEditPopulatePourCompteDeSelect() {
+  const sel = document.getElementById('bulk-edit-pourcompte-select'); if (!sel) return;
+  const names = _distinctPourCompteDeNames();
+  sel.innerHTML = '<option value="">— Pour toi —</option>' +
+    names.map(n => `<option value="${_escHtml(n)}">${_escHtml(n)}</option>`).join('') +
+    '<option value="__new__">+ Nouveau…</option>';
+  sel.value = '';
+  const newField = document.getElementById('bulk-edit-pourcompte-new');
+  if (newField) { newField.style.display = 'none'; newField.value = ''; }
+}
+function _onBulkEditPourCompteDeSelectChange() {
+  const sel = document.getElementById('bulk-edit-pourcompte-select');
+  const newField = document.getElementById('bulk-edit-pourcompte-new');
+  if (!sel || !newField) return;
+  if (sel.value === '__new__') { newField.style.display = ''; newField.disabled = false; newField.focus(); }
+  else { newField.style.display = 'none'; newField.value = ''; }
+}
+function _bulkEditCurrentPourCompteDeValue() {
+  const sel = document.getElementById('bulk-edit-pourcompte-select'); if (!sel) return '';
+  if (sel.value === '__new__') { const nf = document.getElementById('bulk-edit-pourcompte-new'); return (nf ? nf.value : '').trim(); }
+  return sel.value;
+}
+
+function applyBulkEdit() {
+  const kind = _bulkEditKind;
+  const { set } = _selState(kind);
+  if (!set.size) { toast('Aucune ligne sélectionnée.','error'); return; }
+
+  const changes = {};
+  if (document.getElementById('bulk-edit-etat-chk').checked) changes.etat = document.getElementById('bulk-edit-etat-select').value;
+  if (document.getElementById('bulk-edit-prix-chk').checked) changes.prix = parseFloat(document.getElementById('bulk-edit-prix-input').value) || 0;
+  if (document.getElementById('bulk-edit-qty-chk').checked) changes.qty = Math.max(1, parseInt(document.getElementById('bulk-edit-qty-input').value,10) || 1);
+  if (document.getElementById('bulk-edit-langue-chk').checked) changes.langue = document.getElementById('bulk-edit-langue-select').value;
+  if (document.getElementById('bulk-edit-type-chk').checked) changes.types = _getChipGroup('bulk-edit-type-chips');
+  if (kind === 'vente') {
+    if (document.getElementById('bulk-edit-statut-chk').checked) {
+      // "Vendue" volontairement absent du select (voir markup) : ce statut
+      // exige un acheteur/une commande par carte (saveVente), impossible à
+      // déduire proprement en masse.
+      changes.statut = document.getElementById('bulk-edit-statut-select').value;
+    }
+    if (document.getElementById('bulk-edit-pourcompte-chk').checked) {
+      changes.pour_compte_de = _bulkEditCurrentPourCompteDeValue();
+    }
+  }
+
+  if (!Object.keys(changes).length) { toast('Coche au moins un champ à modifier.','error'); return; }
+  if (!confirm(`Appliquer ces modifications à ${set.size} ligne${set.size>1?'s':''} ?`)) return;
+
+  const list = kind === 'vente' ? _D.ventes : _D.depenses;
   let n = 0;
-  (_D.ventes||[]).forEach(v => { if (_venteSelection.has(v.id)) { v.statut = statut; v.updated_at = Date.now(); n++; } });
+  (list||[]).forEach(item => { if (set.has(item.id)) { Object.assign(item, changes); item.updated_at = Date.now(); n++; } });
   saveData(); renderAll();
-  toast(`${n} vente${n>1?'s':''} mise${n>1?'s':''} à jour.`, 'success');
-  if (sel) sel.value = '';
+  closeModal('modal-bulk-edit');
+  toast(`${n} ligne${n>1?'s':''} modifiée${n>1?'s':''}.`, 'success');
 }
 
 // Suppression en masse — Ventes et Dépenses. Quitte le mode sélection après
