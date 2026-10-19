@@ -19,3 +19,5 @@ api/docker-compose.yml
 migration/__pycache__/
 migration/venv/
 *.log
+# Cache des noms FR des Pokémon (import-tcgdex.js)
+.pokemon-names-cache.json
