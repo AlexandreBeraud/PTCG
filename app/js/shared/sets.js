@@ -1,10 +1,10 @@
 import { api } from '../api.js';
 import { html } from '../ui/dom.js';
 
-// Toutes les extensions pour les menus, les blocs les plus récents d'abord
+// Toutes les extensions pour les menus : blocs dans l'ordre choisi (Réglages), sinon les plus récents d'abord
 let cache = null;
 export function setOptions() {
-  cache ||= api.list('set_options', { order: 'serie_release.desc.nullslast,serie_id,release_date.desc.nullslast,name' })
+  cache ||= api.list('set_options', { order: 'serie_sort.asc.nullslast,serie_release.desc.nullslast,serie_id,release_date.desc.nullslast,name' })
     .catch(err => { cache = null; throw err; });
   return cache;
 }

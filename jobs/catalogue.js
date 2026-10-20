@@ -222,7 +222,8 @@ async function processSet(id, briefs, ctx) {
     name: (fr && fr.name) || en.name,
     name_en: (en && en.name) || null,
     logo: png((fr && fr.logo) || (en && en.logo)),
-    symbol: png((fr && fr.symbol) || (en && en.symbol)),
+    symbol: symbolFor(ctx, id, inDb ? inDb.cardmarket_code : abbreviation(fr, en), (en && en.name) || null)
+      || png((fr && fr.symbol) || (en && en.symbol)),
     card_count: count.official || null,
     card_count_total: Math.max(count.total || 0, wanted.length) || null,
     release_date: main.releaseDate || (en && en.releaseDate) || null,
@@ -231,8 +232,7 @@ async function processSet(id, briefs, ctx) {
   };
   // code Cardmarket proposé à la création seulement : ensuite c'est le tien
   if (!inDb) {
-    const abbr = (en && en.abbreviation) || (fr && fr.abbreviation) || {};
-    setRow.cardmarket_code = abbr.official || (en && en.tcgOnline) || null;
+    setRow.cardmarket_code = abbreviation(fr, en);
   }
 
   await db.upsert('sets', [setRow]);
@@ -346,6 +346,49 @@ async function fillImages(ctx) {
   return { cherchees: todo.length, trouvees: found, restantes: missing.length - todo.length };
 }
 
+// ── Sigles des extensions ──────────────────────────────────────────────────
+// TCGdex n'a pas l'icône de beaucoup d'extensions : on prend celle de
+// pokemontcg.io quand on y retrouve l'extension (même code, sinon même nom anglais).
+
+const abbreviation = (fr, en) => {
+  const abbr = (en && en.abbreviation) || (fr && fr.abbreviation) || {};
+  return abbr.official || (en && en.tcgOnline) || null;
+};
+const simple = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+async function loadSymbols() {
+  const headers = env.POKEMONTCG_KEY ? { 'X-Api-Key': env.POKEMONTCG_KEY } : undefined;
+  const res = await getJson(`${env.POKEMONTCG_URL}/sets?select=id,name,ptcgoCode,images&pageSize=250`, { headers, retries: 1, timeout: 30000 })
+    .catch(e => { console.warn(`⚠ Sigles pokemontcg.io indisponibles (${e.message})`); return null; });
+  const byCode = new Map(), byName = new Map();
+  for (const s of (res && res.data) || []) {
+    const url = s.images && s.images.symbol;
+    if (!url) continue;
+    if (s.ptcgoCode && !byCode.has(s.ptcgoCode.toUpperCase())) byCode.set(s.ptcgoCode.toUpperCase(), url);
+    if (!byName.has(simple(s.name))) byName.set(simple(s.name), url);
+  }
+  return { byCode, byName };
+}
+
+function symbolFor(ctx, id, code, nameEn) {
+  const { byCode, byName } = ctx.symbols;
+  return (code && byCode.get(code.toUpperCase())) || (nameEn && byName.get(simple(nameEn))) || null;
+}
+
+// extensions que cette nuit n'a pas relues : on leur met aussi le sigle pokemontcg.io
+async function fixSymbols(ctx, done) {
+  let n = 0;
+  for (const [id, set] of ctx.dbSets) {
+    if (done.has(id) || set.source === 'manual') continue;
+    const url = symbolFor(ctx, id, set.cardmarket_code, set.name_en);
+    if (!url || url === set.symbol) continue;
+    await db.patch('sets', `id=eq.${encodeURIComponent(id)}`, { symbol: url });
+    set.symbol = url;
+    n++;
+  }
+  return n;
+}
+
 // ── Liens Cardmarket ───────────────────────────────────────────────────────
 // Calculés par la base (v2.refresh_cardmarket_urls), comme quand on change
 // le code Cardmarket d'une extension dans l'appli.
@@ -378,7 +421,7 @@ runlog.run('catalogue', async () => {
     getJson(`${TCGDEX}/fr/series`),
     getJson(`${TCGDEX}/en/series`),
     tcgdex('en', `series/${POCKET_SERIE}`).catch(() => null),
-    db.select('sets', 'select=id,name,name_en,lang,source,release_date,cardmarket_code,parent_id'),
+    db.select('sets', 'select=id,name,name_en,lang,source,release_date,cardmarket_code,parent_id,symbol'),
     db.select('cards', 'select=id,set_id,number,name,name_en,lang,category,source&order=id'),
     db.select('pokemon', 'select=name_fr,name_en,is_default'),
   ]);
@@ -390,6 +433,7 @@ runlog.run('catalogue', async () => {
     seriesIds: new Set(),
     priced: new Set(),
     translate: buildTranslator(pokemon),
+    symbols: await loadSymbols(),
   };
   for (const c of dbCards) {
     if (!ctx.cardsBySet.has(c.set_id)) ctx.cardsBySet.set(c.set_id, []);
@@ -439,6 +483,7 @@ runlog.run('catalogue', async () => {
   });
 
   const parents = await linkParents(ctx);
+  const sigles = env.DRY_RUN ? 0 : await fixSymbols(ctx, new Set(results.filter(r => !r.error && !r.skipped).map(r => r.id)));
   const prices = PRICES ? await refreshPrices(ctx) : null;
   const links = await refreshCardmarket();
   await db.rpc('refresh_card_forms');
@@ -458,6 +503,7 @@ runlog.run('catalogue', async () => {
     sous_extensions: parents,
     prix: prices,
     liens_cardmarket: links,
+    sigles,
     images,
     erreurs: errors.map(r => `${r.id} : ${r.error}`),
   };

@@ -68,7 +68,7 @@ async function route() {
 document.addEventListener('error', e => {
   const img = e.target;
   if (!(img instanceof HTMLImageElement)) return;
-  if (img.src.includes('/nas/api/') && !img.dataset.retried) {
+  if (img.src.includes('/nas/api/') && !img.dataset.retried && !img.dataset.fallback) {
     img.dataset.retried = '1';
     const src = img.src;
     setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + 'r=' + Date.now(); }, 800 + Math.random() * 600);

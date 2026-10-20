@@ -227,6 +227,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
   async function mountItem() {
     if (st.kind === 'carte' && !st.card) {
       cardPicker(root.querySelector('#lf-picker'), {
+        stockToggle: direction === 'vente',
         onManual: async name => {
           const { openManualCard } = await import('../cartes/manual.js');
           openManualCard({ name, onSaved: async id => {

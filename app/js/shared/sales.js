@@ -1,5 +1,5 @@
 import { config } from '../../config.js';
-import { imageUrl } from '../nas.js';
+import { imageUrl, rawUrl } from '../nas.js';
 import { html, esc } from '../ui/dom.js';
 
 export const CONDITIONS = [
@@ -110,8 +110,9 @@ export function spriteHtml(t, cls = 'sprite') {
   const official = t.pokeapi_id
     ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${t.pokeapi_id}.png`
     : '';
-  // « big » garde le PNG transparent (« thumb » le recadre en JPEG)
-  const nas = t.sprite ? [config.spritesRoot, config.spritesRootAlt].filter(Boolean).map(root => imageUrl(`${root}/${t.sprite}`, 'big')) : [];
+  // le fichier brut d'abord (adresse fixe, en cache), l'aperçu FileBrowser si le cookie ne passe pas
+  const path = `${config.spritesRoot}/${t.sprite}`;
+  const nas = t.sprite ? [rawUrl(path), imageUrl(path, 'big')] : [];
   const [src, ...rest] = [...nas, official].filter(Boolean);
   return html`<img class="${cls}" src="${src}" alt="" loading="lazy" data-fallback="${rest.join(' ')}" data-hide-on-error>`;
 }

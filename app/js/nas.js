@@ -17,6 +17,8 @@ async function login() {
   });
   if (!res.ok) throw new Error(res.status === 403 ? 'Identifiants FileBrowser refusés (config.local.js)' : `FileBrowser injoignable (${res.status})`);
   token = (await res.text()).trim();
+  // le jeton en cookie (limité à /nas) : les sprites gardent une adresse fixe, que le navigateur met en cache
+  document.cookie = `auth=${token}; path=${config.nas}/; max-age=7200; SameSite=Strict`;
   setTimeout(() => { token = null; ensureLogin(); }, RENEW);
   return token;
 }
@@ -55,6 +57,9 @@ export async function upload(file, folder = '') {
   if (!res.ok) throw new Error(`Le NAS a refusé l’envoi (${res.status})`);
   return path;
 }
+
+// Fichier tel quel (sans redimensionnement par FileBrowser) : plus rapide pour les petits sprites
+export const rawUrl = path => `${config.nas}/api/raw/${encodePath(path)}?inline=true`;
 
 // Adresse d'affichage : les anciennes URL complètes restent telles quelles
 export function imageUrl(pathOrUrl, size = 'big') {

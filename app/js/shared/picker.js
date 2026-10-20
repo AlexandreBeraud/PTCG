@@ -8,7 +8,8 @@ import { cardImage, spriteHtml, formBadge, setSymbolHtml, norm, inList } from '.
 // Choix d'une carte en deux temps : le Pokémon (ou le personnage, l'objet…),
 // puis la carte parmi toutes les siennes. L'onglet « Recherche » garde la
 // recherche directe : « dracaufeu 013 », « goupix nuit noire »…
-// cardPicker(el, { onPick(card), onManual(nom), autofocus })
+// cardPicker(el, { onPick(card), onManual(nom), autofocus, stockToggle })
+//   stockToggle : case « Seulement mon stock » (nouvelle vente)
 
 const TABS = [
   { id: 'pokemon', label: 'Pokémon', search: 'Chercher un Pokémon…', one: 'Pokémon' },
@@ -21,6 +22,8 @@ const TABS = [
 const CARD_SELECT = 'id,name,number,set_id,set_name,set_symbol,set_count,image,variants,rarity,lang,source,price_trend,price_low,price_low_holo,cardmarket_url,en_stock,release_date,number_sort,form_badge,form_color';
 
 let lastTab = 'pokemon';
+let stockOnly = false;
+const inStock = x => Number(x.en_stock) > 0;
 
 const bySortie = (a, b) => String(b.release_date || '').localeCompare(String(a.release_date || ''))
   || String(a.set_id).localeCompare(String(b.set_id))
@@ -36,8 +39,9 @@ function entityImg(e, small = false) {
     <img src="${card ? cardImage(e.image) : imageUrl(e.image, 'thumb')}" alt="" loading="lazy" data-hide-on-error></span>`;
 }
 
-export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
-  const st = { tab: lastTab, q: '', entity: null, entities: [], cards: [], results: [] };
+export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle = false } = {}) {
+  const st = { tab: lastTab, q: '', entity: null, entities: [], list: [], cards: [], results: [] };
+  const onlyStock = () => stockToggle && stockOnly;
   let timer = null;
   let seq = 0;
 
@@ -45,6 +49,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     <div class="picker">
       <div class="picker-tabs" role="tablist" aria-label="Type de carte">
         ${TABS.map(t => html`<button type="button" role="tab" class="chip" data-tab="${t.id}" aria-selected="${t.id === st.tab}">${t.label}</button>`)}
+        ${stockToggle ? html`<label class="check-inline picker-stock"><input type="checkbox" data-stock ${stockOnly ? 'checked' : ''}> Seulement mon stock</label>` : ''}
       </div>
       <div class="picker-head" hidden></div>
       <label class="search">
@@ -55,7 +60,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
       ${onManual ? html`<button type="button" class="link small" data-manual>Carte introuvable ? L’ajouter à la main</button>` : ''}
     </div>
   `);
-  const input = el.querySelector('input');
+  const input = el.querySelector('input[type="search"]');
   const body = el.querySelector('.picker-body');
   const head = el.querySelector('.picker-head');
   const tab = () => TABS.find(t => t.id === st.tab);
@@ -72,7 +77,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     const q = input.value.trim();
     note('Recherche…');
     try {
-      const rows = await api.rpc('picker_entities', { kind: st.tab, q: q || null, lim: 400 });
+      const rows = await api.rpc('picker_entities', { kind: st.tab, q: q || null, lim: 2000 });
       if (mine !== seq) return;
       st.entities = rows || [];
       renderEntities(q);
@@ -84,19 +89,20 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
   function renderEntities(q) {
     const t = tab();
     const exact = st.entities.some(e => e.type === 'entite' && norm(e.name) === norm(q));
+    st.list = onlyStock() ? st.entities.filter(inStock) : st.entities;
     const create = t.id !== 'pokemon' && q.length >= 2 && !exact
       ? html`<button type="button" class="ent ent-new" data-create>+ Créer la fiche ${t.one} « ${q} »<span class="muted small">regroupe toutes les cartes dont le nom contient « ${q} »</span></button>`
       : '';
-    if (!st.entities.length) {
+    if (!st.list.length) {
       setHtml(body, html`
-        <p class="muted small picker-note">${q ? `Aucun ${t.one} pour « ${q} »` : t.id === 'pokemon' ? 'Tape le nom du Pokémon.' : `Tape le nom d’un ${t.one}.`}</p>
+        <p class="muted small picker-note">${onlyStock() ? `Aucun ${t.one} en stock${q ? ` pour « ${q} »` : ''}` : q ? `Aucun ${t.one} pour « ${q} »` : `Tape le nom d’un ${t.one}.`}</p>
         ${create ? html`<div class="ent-grid">${create}</div>` : ''}`);
       return;
     }
     setHtml(body, html`
-      ${!q ? html`<p class="muted small picker-note">${t.id === 'pokemon' ? 'Ceux que tu as déjà vendus ou achetés, dans l’ordre du Pokédex' : 'Tes fiches et les cartes que tu as déjà vendues ou achetées'}</p>` : ''}
+      ${!q && t.id !== 'pokemon' && !onlyStock() ? html`<p class="muted small picker-note">Tes fiches et les cartes que tu as déjà vendues ou achetées · tape un nom pour les autres</p>` : ''}
       <div class="ent-grid">
-        ${st.entities.map((e, i) => html`
+        ${st.list.map((e, i) => html`
           <button type="button" class="ent" data-ent="${i}">
             ${entityImg(e)}
             <span class="ent-name">${e.name} ${formBadge(e)}</span>
@@ -142,13 +148,13 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
 
   function renderCards() {
     const words = norm(input.value).split(/\s+/).filter(Boolean);
-    const shown = st.cards.filter(c => {
+    const shown = st.cards.filter(c => (!onlyStock() || inStock(c)) && (() => {
       const text = norm(`${c.set_name} ${c.set_id} ${c.number} ${String(c.number || '').replace(/^0+/, '')} ${c.name}`);
       return words.every(w => text.includes(w));
-    });
+    })());
     st.results = shown;
     if (!st.cards.length) return note('Aucune carte pour l’instant.');
-    if (!shown.length) return note('Aucune carte pour ce filtre.');
+    if (!shown.length) return note(onlyStock() ? 'Aucune de ses cartes n’est en stock.' : 'Aucune carte pour ce filtre.');
     // une section par extension, de la plus récente à la plus ancienne, cartes par numéro
     const groups = [];
     shown.forEach((c, i) => {
@@ -179,7 +185,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     try {
       const rows = await api.rpc('search_cards', { q, lim: 40 });
       if (mine !== seq) return;
-      st.results = rows || [];
+      st.results = (rows || []).filter(c => !onlyStock() || inStock(c));
       if (st.results.length) {
         return setHtml(body, html`<div class="picker-results" role="listbox" aria-label="Cartes trouvées">${st.results.map((c, i) => html`
           <button type="button" class="picker-item" role="option" data-card="${i}">
@@ -242,11 +248,12 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     if (st.tab === 'cartes' || st.entity) { if (st.results[0]) onPick?.(st.results[0]); }
-    else if (st.entities[0]) openEntity(st.entities[0]);
+    else if (st.list[0]) openEntity(st.list[0]);
   });
   on(el, 'click', '[data-tab]', (_, b) => selectTab(b.dataset.tab));
   on(el, 'click', '[data-back]', () => selectTab(st.tab));
-  on(body, 'click', '[data-ent]', (_, b) => openEntity(st.entities[Number(b.dataset.ent)]));
+  on(body, 'click', '[data-ent]', (_, b) => openEntity(st.list[Number(b.dataset.ent)]));
+  el.querySelector('[data-stock]')?.addEventListener('change', e => { stockOnly = e.target.checked; refresh(); });
   on(body, 'click', '[data-create]', () => createEntity());
   on(body, 'click', '[data-card]', (_, b) => onPick?.(st.results[Number(b.dataset.card)]));
   on(body, 'click', '[data-suggest]', (_, b) => { input.value = b.dataset.suggest; searchCards(); input.focus(); });

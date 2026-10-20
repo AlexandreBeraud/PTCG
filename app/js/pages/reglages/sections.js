@@ -5,6 +5,7 @@ import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { dropzone } from '../../ui/upload.js';
 import { store } from '../../shared/store.js';
+import { forgetSets } from '../../shared/sets.js';
 
 const nb = n => Number(n || 0).toLocaleString('fr-FR');
 const pct = (a, b) => (b ? `${Math.round(a / b * 100)} %` : '—');
@@ -140,8 +141,11 @@ export async function renderAccessoires(panel) {
   on(box, 'click', '[data-acc-edit]', (_, b) => edit(items.find(x => x.id === b.dataset.accEdit)));
 }
 
-// Blocs (séries TCGdex) créés par le catalogue : je choisis seulement couleur et visibilité
-export async function renderSeries(box) {
+// Blocs (séries TCGdex) créés par le catalogue : je choisis couleur, visibilité et ordre
+export async function renderSeries(panel) {
+  const box = document.createElement('div');
+  box.className = 'contents';
+  panel.replaceChildren(box);
   let series = [], prefs = [], counts = [];
   try {
     [series, prefs, counts] = await Promise.all([
@@ -155,26 +159,55 @@ export async function renderSeries(box) {
   const pref = id => prefs.find(p => p.target_id === id) || {};
   const recent = id => counts.filter(c => c.serie_id === id).map(c => c.release_date || '').sort().pop() || '';
   const nbSets = id => counts.filter(c => c.serie_id === id).length;
-  series.sort((a, b) => recent(b.id).localeCompare(recent(a.id)));
+  // l'ordre choisi d'abord, sinon du plus récent au plus ancien (comme la page Extensions)
+  series.sort((a, b) => (pref(a.id).sort_order ?? 1e6) - (pref(b.id).sort_order ?? 1e6) || recent(b.id).localeCompare(recent(a.id)));
+  const custom = series.some(s => pref(s.id).sort_order != null);
 
   setHtml(box, html`
-    <div class="panel-head"><h2>Blocs</h2><span class="muted small">Créés par le catalogue · tu choisis la couleur (reprise par les extensions qui n’en ont pas) et la visibilité</span></div>
-    <div class="series-list">${series.map(s => html`
+    <div class="panel-head"><h2>Blocs</h2><span class="muted small">Créés par le catalogue · tu choisis la couleur (reprise par les extensions qui n’en ont pas), la visibilité et l’ordre</span></div>
+    <div class="series-list">${series.map((s, i) => html`
       <div class="serie-row">
         <input class="input input-color" type="color" data-serie-color="${s.id}" value="${pref(s.id).color || '#8C95A8'}" aria-label="Couleur de ${s.name}">
         <span class="grow"><strong>${s.name}</strong> <span class="muted small">${nbSets(s.id)} extension(s)</span></span>
         <label class="check-inline small"><input type="checkbox" data-serie-visible="${s.id}" ${pref(s.id).hidden ? '' : 'checked'}> Visible</label>
-      </div>`)}</div>`);
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-serie-move="${i}:-1" aria-label="Monter ${s.name}" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-serie-move="${i}:1" aria-label="Descendre ${s.name}" ${i === series.length - 1 ? 'disabled' : ''}>↓</button>
+      </div>`)}</div>
+    ${custom ? html`<div><button type="button" class="btn btn-sm btn-ghost" data-serie-reset>Revenir à l’ordre par date</button></div>` : ''}`);
 
+  const row = (id, patch) => {
+    const cur = pref(id);
+    return { kind: 'serie', target_id: id, color: cur.color ?? null, hidden: cur.hidden ?? false, sort_order: cur.sort_order ?? null, ...patch };
+  };
   const savePref = async (id, patch) => {
     try {
-      const cur = pref(id);
-      const row = { kind: 'serie', target_id: id, color: cur.color ?? null, hidden: cur.hidden ?? false, sort_order: cur.sort_order ?? null, ...patch };
-      await api.upsert('set_prefs', row, 'kind,target_id');
+      const r = row(id, patch);
+      await api.upsert('set_prefs', r, 'kind,target_id');
       const i = prefs.findIndex(p => p.target_id === id);
-      if (i >= 0) prefs[i] = row; else prefs.push(row);
+      if (i >= 0) prefs[i] = r; else prefs.push(r);
+    } catch (err) { toastError(err); }
+  };
+  // l'ordre complet est enregistré d'un coup
+  const saveOrder = async list => {
+    try {
+      await api.upsert('set_prefs', list.map((s, i) => row(s.id, { sort_order: i + 1 })), 'kind,target_id');
+      forgetSets();
+      renderSeries(panel);
     } catch (err) { toastError(err); }
   };
   on(box, 'change', '[data-serie-color]', (_, inp) => savePref(inp.dataset.serieColor, { color: inp.value }));
   on(box, 'change', '[data-serie-visible]', (_, c) => savePref(c.dataset.serieVisible, { hidden: !c.checked }));
+  on(box, 'click', '[data-serie-move]', (_, b) => {
+    const [i, d] = b.dataset.serieMove.split(':').map(Number);
+    const list = [...series];
+    [list[i], list[i + d]] = [list[i + d], list[i]];
+    saveOrder(list);
+  });
+  on(box, 'click', '[data-serie-reset]', async () => {
+    try {
+      await api.upsert('set_prefs', series.map(s => row(s.id, { sort_order: null })), 'kind,target_id');
+      forgetSets();
+      renderSeries(panel);
+    } catch (err) { toastError(err); }
+  });
 }

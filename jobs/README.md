@@ -8,7 +8,7 @@ ligne dans `v2.job_runs`, visible dans Réglages.
 | --- | --- | --- |
 | `pokemon.js` | dimanche 02:30 | une fiche par espèce **et par forme** (PokéAPI), noms FR, types, chemin du sprite NAS, type de forme pour les labels |
 | `backup.sh` | 02:45 | `pg_dump` de toute la base `ptcg`, 14 jours gardés |
-| `catalogue.js` | 03:00 | séries, extensions et cartes TCGdex (FR, repli EN), prix des cartes suivies, liens Cardmarket (calculés par la base), rangement des cartes par fiche, image de secours pour les cartes sans image |
+| `catalogue.js` | 03:00 | séries, extensions et cartes TCGdex (FR, repli EN), prix des cartes suivies, liens Cardmarket (calculés par la base), rangement des cartes par fiche, sigles et images de secours (pokemontcg.io) |
 
 Options utiles : `--dry-run` partout ; pour le catalogue `--set=me02,me05`,
 `--en=<id>`, `--all`, `--refresh`, `--no-prices`, `--no-images`.
@@ -40,3 +40,9 @@ semaine pour celles qu'il ne trouve pas. L'image trouvée est gardée à part
 (`cards.image_fallback`) ; celle ajoutée à la main dans l'appli
 (`cards.image_manual`) passe avant tout. Une clé pokemontcg.io (facultative)
 se met dans `.env` : `POKEMONTCG_KEY=…`.
+
+## Sigles des extensions
+
+TCGdex n'a pas l'icône de beaucoup d'extensions. Le catalogue prend celle de
+pokemontcg.io quand il y retrouve l'extension (code Cardmarket = `ptcgoCode`,
+sinon même nom anglais), à chaque passage, pour toutes les extensions.

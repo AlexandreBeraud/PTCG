@@ -173,7 +173,8 @@
 .picked > .grow { display: flex; flex-direction: column; gap: 4px; }
 
 .picker { display: flex; flex-direction: column; gap: 10px; }
-.picker-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.picker-tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.picker-stock { margin-left: auto; }
 .picker-tabs .chip[aria-selected="true"] { border-color: var(--accent); background: var(--accent-bg); color: var(--accent-text); font-weight: 600; }
 .picker-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .picker-body { max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }

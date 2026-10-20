@@ -70,11 +70,11 @@ export default {
       const series = [];
       for (const s of list) {
         let g = series.find(x => x.id === (s.serie_id || ''));
-        if (!g) series.push(g = { id: s.serie_id || '', name: s.serie_name || 'Hors bloc', sets: [] });
+        if (!g) series.push(g = { id: s.serie_id || '', name: s.serie_name || 'Hors bloc', sort: s.serie_sort, sets: [] });
         g.sets.push(s);
       }
-      // les extensions sans bloc toujours à la fin
-      series.sort((a, b) => (a.id === '') - (b.id === ''));
+      // l'ordre des blocs choisi dans Réglages passe avant la date ; les extensions sans bloc à la fin
+      series.sort((a, b) => (a.id === '') - (b.id === '') || (a.sort ?? 1e6) - (b.sort ?? 1e6));
 
       setHtml($('#list'), series.length ? html`${series.map(g => {
         const stock = g.sets.reduce((n, s) => n + Number(s.en_stock), 0);
