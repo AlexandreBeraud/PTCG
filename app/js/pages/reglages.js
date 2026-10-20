@@ -4,6 +4,7 @@ import { html, setHtml, on } from '../ui/dom.js';
 import { toast, toastError } from '../ui/toast.js';
 import { dropzone } from '../ui/upload.js';
 import { THEMES, RADII, applyAppearance } from '../appearance.js';
+import { store } from '../shared/store.js';
 
 let settings = null;
 
@@ -66,28 +67,29 @@ export default {
       <div class="grid-auto" style="--min: 340px">
         <section class="panel" id="conn"><h2>Connexion</h2><p class="muted">Vérification…</p></section>
         <section class="panel">
-          <h2>Envoi de photo vers le NAS</h2>
-          <p class="muted small" style="margin: 0">Dossier : ${config.uploadRoot}</p>
+          <h2>Image des lots de cartes</h2>
+          <p class="muted small" style="margin: 0">Affichée pour chaque lot dans les ventes et achats. Envoyée dans ${config.uploadRoot}/Lots.</p>
           <div id="upload"></div>
-          <p class="muted small" id="upload-path" style="margin: 0"></p>
         </section>
         <section class="panel" id="appearance"><h2>Apparence</h2><p class="muted">Chargement…</p></section>
       </div>
     `);
-
-    dropzone(main.querySelector('#upload'), {
-      folder: 'Tests',
-      onChange: path => {
-        main.querySelector('#upload-path').textContent = path;
-        toast('Photo envoyée sur le NAS');
-      },
-    });
 
     this.checkConnection(main.querySelector('#conn'));
 
     const box = main.querySelector('#appearance');
     try {
       settings = await api.one('settings', { id: 'eq.1' });
+      dropzone(main.querySelector('#upload'), {
+        value: settings.lot_image || '',
+        folder: 'Lots',
+        label: 'Glisse la photo des lots ici',
+        onChange: async path => {
+          await save({ lot_image: path });
+          store.forget('settings');
+          toast('Image des lots enregistrée');
+        },
+      });
       setHtml(box, html`<h2>Apparence</h2>${appearanceHtml()}`);
     } catch (err) {
       setHtml(box, html`<h2>Apparence</h2><p class="muted">${err.message}</p>`);

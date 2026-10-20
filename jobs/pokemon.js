@@ -85,6 +85,7 @@ function buildRows({ pokemon, species, speciesNames, forms, formNames, types, ty
 
     return {
       key: p.identifier,
+      pokeapi_id: Number(p.id),
       dex,
       species_key: speciesKey.get(p.species_id) || p.identifier,
       name_fr: label('fr') || label('en') || p.identifier,

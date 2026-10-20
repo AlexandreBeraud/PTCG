@@ -54,3 +54,24 @@ export function openModal({ title, body = '', actions = [], width = 720, onOpen 
   onOpen?.(modal);
   return { el: modal, close };
 }
+
+// Confirmation simple : renvoie true si l'action est validée
+export function confirmModal({ title, message, confirmLabel = 'Confirmer', danger = false }) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
+    const m = openModal({
+      title,
+      width: 460,
+      body: html`<p class="muted" style="margin: 0">${message}</p>`,
+      actions: [
+        { label: 'Annuler', run: () => finish(false) },
+        { label: confirmLabel, primary: !danger, danger, run: () => finish(true) },
+      ],
+    });
+    // fermeture par la croix, Échap ou le fond : on considère que c'est non
+    new MutationObserver((_, obs) => {
+      if (!m.el.isConnected) { obs.disconnect(); finish(false); }
+    }).observe(document.body, { childList: true });
+  });
+}
