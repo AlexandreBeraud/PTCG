@@ -262,21 +262,24 @@ function fixFiche(c, fiches) {
             <span class="grow"><span class="picker-name">${p.name_fr} ${formBadge(p)}</span><span class="muted small">n°${String(p.dex).padStart(3, '0')}</span></span>
           </button>`)}`);
       });
+      // la correction s'applique tout de suite (plus de recalcul de tout le rangement)
+      let busy = false;
       on(el, 'click', '[data-key]', async (_, b) => {
+        if (busy) return;
+        busy = true;
+        b.setAttribute('aria-busy', 'true');
         try {
           await api.upsert('card_overrides', { card_id: c.id, pokemon_key: b.dataset.key }, 'card_id');
-          await api.rpc('refresh_card_forms');
           toast('Fiche corrigée');
           m.close();
           reloadPage();
-        } catch (err) { toastError(err); }
+        } catch (err) { toastError(err); } finally { busy = false; b.removeAttribute('aria-busy'); }
       });
     },
     actions: [
       ...(corrected ? [{ label: 'Revenir au rangement automatique', run: async () => {
         try {
           await api.remove('card_overrides', { card_id: `eq.${c.id}` });
-          await api.rpc('refresh_card_forms');
           toast('Rangement automatique rétabli');
           reloadPage();
         } catch (err) { toastError(err); return false; }

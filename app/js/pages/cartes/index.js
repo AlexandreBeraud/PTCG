@@ -11,7 +11,7 @@ const SORTS = [
   { id: 'old', label: 'Date de sortie, anciennes d’abord', order: `release_date.asc.nullslast,set_id,${NUM}` },
   { id: 'name', label: 'Nom (A → Z)', order: `name,release_date.desc.nullslast,${NUM}` },
   { id: 'name_desc', label: 'Nom (Z → A)', order: `name.desc,release_date.desc.nullslast,${NUM}` },
-  { id: 'stock', label: 'En stock d’abord', order: `en_stock.desc,release_date.desc.nullslast,${NUM}` },
+  { id: 'stock', label: 'En stock d’abord', order: `a_du_stock.desc,release_date.desc.nullslast,set_id,${NUM}` },
   { id: 'vendues', label: 'Les plus vendues', order: `vendues.desc,release_date.desc.nullslast,${NUM}` },
   { id: 'price', label: 'Prix le plus bas, décroissant', order: `price_low.desc.nullslast,release_date.desc.nullslast,${NUM}` },
 ];

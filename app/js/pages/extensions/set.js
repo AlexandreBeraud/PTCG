@@ -19,7 +19,7 @@ const byNumber = (a, b) => String(a.number ?? '').localeCompare(String(b.number 
 const SORTS = [
   { id: 'number', label: 'Numéro', cmp: byNumber },
   { id: 'name', label: 'Nom (A → Z)', cmp: (a, b) => a.name.localeCompare(b.name, 'fr') || byNumber(a, b) },
-  { id: 'stock', label: 'En stock d’abord', cmp: (a, b) => Number(b.en_stock) - Number(a.en_stock) || byNumber(a, b) },
+  { id: 'stock', label: 'En stock d’abord', cmp: (a, b) => (Number(b.en_stock) > 0) - (Number(a.en_stock) > 0) || byNumber(a, b) },
   { id: 'price', label: 'Prix le plus bas, décroissant', cmp: (a, b) => Number(b.price_low ?? -1) - Number(a.price_low ?? -1) || byNumber(a, b) },
 ];
 let sortId = 'number';

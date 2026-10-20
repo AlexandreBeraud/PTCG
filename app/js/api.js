@@ -28,9 +28,9 @@ function signal(ok) {
   window.dispatchEvent(new CustomEvent('pi-status', { detail: { ok } }));
 }
 
-async function request(path, { method = 'GET', body, headers = {} } = {}) {
+async function request(path, { method = 'GET', body, headers = {}, timeout = TIMEOUT } = {}) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
+  const timer = setTimeout(() => ctrl.abort(), timeout);
   const h = { 'Accept-Profile': PROFILE, ...headers };
   if (body !== undefined) {
     h['Content-Type'] = 'application/json';
@@ -119,7 +119,8 @@ export const api = {
     await request(`/${table}${query(filter)}`, { method: 'DELETE' });
   },
 
-  async rpc(fn, args = {}) {
-    return (await request(`/rpc/${fn}`, { method: 'POST', body: args })).data;
+  // api.rpc('refresh_card_forms', {}, { timeout: 120000 }) pour un calcul long
+  async rpc(fn, args = {}, { timeout } = {}) {
+    return (await request(`/rpc/${fn}`, { method: 'POST', body: args, timeout })).data;
   },
 };

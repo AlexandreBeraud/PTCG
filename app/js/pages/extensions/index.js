@@ -9,7 +9,7 @@ const SORTS = [
   { id: 'date_desc', label: 'Date de sortie, récentes d’abord', group: true },
   { id: 'date_asc', label: 'Date de sortie, anciennes d’abord', group: true },
   { id: 'name', label: 'Nom (A → Z)', cmp: (a, b) => a.name.localeCompare(b.name, 'fr') },
-  { id: 'stock', label: 'Cartes en stock', cmp: (a, b) => Number(b.en_stock) - Number(a.en_stock) || byDate(b, a) },
+  { id: 'stock', label: 'En stock d’abord', cmp: (a, b) => (Number(b.en_stock) > 0) - (Number(a.en_stock) > 0) || byDate(b, a) },
   { id: 'vendues', label: 'Cartes vendues', cmp: (a, b) => Number(b.vendues) - Number(a.vendues) || byDate(b, a) },
 ];
 

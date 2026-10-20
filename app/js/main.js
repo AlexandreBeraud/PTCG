@@ -73,8 +73,11 @@ document.addEventListener('error', e => {
     const src = img.src;
     setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + 'r=' + Date.now(); }, 800 + Math.random() * 600);
   } else if (img.dataset.fallback) {
-    img.src = img.dataset.fallback;
-    img.removeAttribute('data-fallback');
+    // plusieurs adresses de repli possibles, séparées par une espace
+    const [next, ...rest] = img.dataset.fallback.split(' ');
+    if (rest.length) img.dataset.fallback = rest.join(' ');
+    else img.removeAttribute('data-fallback');
+    img.src = next;
   } else if (img.hasAttribute('data-hide-on-error') || img.classList.contains('sprite')) {
     img.hidden = true;
   }

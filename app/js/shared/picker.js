@@ -22,7 +22,19 @@ const CARD_SELECT = 'id,name,number,set_id,set_name,set_symbol,set_count,image,v
 
 let lastTab = 'pokemon';
 
-const entityImage = src => (!src ? '' : /tcgdex|pokemontcg/.test(src) ? cardImage(src) : imageUrl(src, 'thumb'));
+const bySortie = (a, b) => String(b.release_date || '').localeCompare(String(a.release_date || ''))
+  || String(a.set_id).localeCompare(String(b.set_id))
+  || (a.number_sort ?? 1e9) - (b.number_sort ?? 1e9) || String(a.number).localeCompare(String(b.number));
+
+// image d'une fiche : son portrait, sinon l'illustration de sa carte la plus récente
+const isCard = src => /tcgdex|pokemontcg|cardmarket/.test(src || '');
+function entityImg(e, small = false) {
+  if (e.type === 'pokemon') return html`<span class="ent-img ${small ? 'ent-img-sm' : ''}">${spriteHtml(e, 'poke-img')}</span>`;
+  if (!e.image) return html`<span class="ent-img ${small ? 'ent-img-sm' : ''}"></span>`;
+  const card = isCard(e.image);
+  return html`<span class="ent-img ${card ? 'ent-img-card' : 'ent-img-photo'} ${small ? 'ent-img-sm' : ''}">
+    <img src="${card ? cardImage(e.image) : imageUrl(e.image, 'thumb')}" alt="" loading="lazy" data-hide-on-error></span>`;
+}
 
 export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
   const st = { tab: lastTab, q: '', entity: null, entities: [], cards: [], results: [] };
@@ -60,7 +72,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     const q = input.value.trim();
     note('Recherche…');
     try {
-      const rows = await api.rpc('picker_entities', { kind: st.tab, q: q || null, lim: 48 });
+      const rows = await api.rpc('picker_entities', { kind: st.tab, q: q || null, lim: 400 });
       if (mine !== seq) return;
       st.entities = rows || [];
       renderEntities(q);
@@ -82,11 +94,11 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
       return;
     }
     setHtml(body, html`
-      ${!q ? html`<p class="muted small picker-note">${t.id === 'pokemon' ? 'Ceux que tu vends ou achètes le plus' : 'Tes fiches, puis les cartes que tu vends ou achètes le plus'}</p>` : ''}
+      ${!q ? html`<p class="muted small picker-note">${t.id === 'pokemon' ? 'Ceux que tu as déjà vendus ou achetés, dans l’ordre du Pokédex' : 'Tes fiches et les cartes que tu as déjà vendues ou achetées'}</p>` : ''}
       <div class="ent-grid">
         ${st.entities.map((e, i) => html`
           <button type="button" class="ent" data-ent="${i}">
-            <span class="ent-img">${e.type === 'pokemon' ? spriteHtml(e, 'poke-img') : e.image ? html`<img src="${entityImage(e.image)}" alt="" loading="lazy" data-hide-on-error>` : ''}</span>
+            ${entityImg(e)}
             <span class="ent-name">${e.name} ${formBadge(e)}</span>
             <span class="muted small">${e.cartes} carte${e.cartes > 1 ? 's' : ''}${Number(e.en_stock) ? html` · <span class="pos">${e.en_stock} en stock</span>` : ''}</span>
           </button>`)}
@@ -101,7 +113,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     setPlaceholder();
     setHtml(head, html`
       <button type="button" class="btn btn-sm btn-ghost" data-back>← ${tab().label}</button>
-      <span class="ent-img ent-img-sm">${e.type === 'pokemon' ? spriteHtml(e, 'poke-img') : e.image ? html`<img src="${entityImage(e.image)}" alt="" data-hide-on-error>` : ''}</span>
+      ${entityImg(e, true)}
       <strong>${e.name}</strong> ${formBadge(e)}`);
     head.hidden = false;
     note('Chargement des cartes…');
@@ -120,7 +132,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     try {
       const rows = await p;
       if (mine !== seq) return;
-      st.cards = rows || [];
+      st.cards = (rows || []).sort(bySortie);
       renderCards();
     } catch (err) {
       if (mine === seq) note(err.message);
@@ -137,17 +149,25 @@ export function cardPicker(el, { onPick, onManual, autofocus = true } = {}) {
     st.results = shown;
     if (!st.cards.length) return note('Aucune carte pour l’instant.');
     if (!shown.length) return note('Aucune carte pour ce filtre.');
-    setHtml(body, html`
-      <p class="muted small picker-note">${shown.length} carte${shown.length > 1 ? 's' : ''}, les plus récentes d’abord</p>
-      <div class="pick-grid">${shown.map((c, i) => html`
+    // une section par extension, de la plus récente à la plus ancienne, cartes par numéro
+    const groups = [];
+    shown.forEach((c, i) => {
+      let g = groups[groups.length - 1];
+      if (!g || g.id !== c.set_id) groups.push(g = { id: c.set_id, first: c, cards: [] });
+      g.cards.push({ c, i });
+    });
+    setHtml(body, html`${groups.map(g => html`
+      <div class="pick-set">${setSymbolHtml(g.first)}<strong>${g.first.set_name}</strong>
+        <span class="muted small">${g.first.release_date ? g.first.release_date.slice(0, 4) : ''} · ${g.cards.length} carte${g.cards.length > 1 ? 's' : ''}</span></div>
+      <div class="pick-grid">${g.cards.map(({ c, i }) => html`
         <button type="button" class="pick-card" data-card="${i}" title="${c.name} · ${c.set_name} ${c.number || ''}">
           <span class="pick-img">${c.image ? html`<img src="${cardImage(c.image)}" alt="" loading="lazy" data-hide-on-error>` : html`<span class="thumb-empty">${c.name}</span>`}
             ${Number(c.en_stock) ? html`<span class="card-stock">Stock ${c.en_stock}</span>` : ''}
             ${c.lang === 'en' ? html`<span class="card-lang">EN</span>` : ''}</span>
-          <span class="pick-meta">${setSymbolHtml(c)}<span class="small">${c.number || '—'}</span></span>
+          <span class="pick-meta"><span class="small">${c.number || '—'}</span></span>
           <span class="pick-name small">${c.name}</span>
         </button>`)}
-      </div>`);
+      </div>`)}`);
   }
 
   // ── recherche directe ──

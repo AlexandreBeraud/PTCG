@@ -211,17 +211,20 @@ export default {
       on(box, 'click', '[data-assign]', (_, b) => save(() => api.upsert('pokemon_labels', { pokemon_key: b.dataset.assign, label_type: l.type }, 'pokemon_key'), 'Label assigné'));
     }
 
-    // chaque changement recalcule le rangement des cartes
+    // chaque changement recalcule le rangement des cartes : long sur le Pi, un seul à la fois
+    let saving = false;
     async function save(write, message) {
+      if (saving) return toast('Recalcul des fiches en cours, un instant…');
+      saving = true;
       try {
         await write();
-        await api.rpc('refresh_card_forms');
+        await api.rpc('refresh_card_forms', {}, { timeout: 180000 });
         toast(`${message} · fiches recalculées`);
         await load();
         renderCats();
         renderTable();
         renderEditor();
-      } catch (err) { toastError(err); }
+      } catch (err) { toastError(err); } finally { saving = false; }
     }
 
     function categoryForm(cat = null) {

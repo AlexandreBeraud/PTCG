@@ -9,7 +9,7 @@ const SORTS = [
   { id: 'recent', label: 'Extensions récentes d’abord' },
   { id: 'old', label: 'Extensions anciennes d’abord' },
   { id: 'name', label: 'Nom (A → Z)', cmp: (a, b) => a.name.localeCompare(b.name, 'fr') },
-  { id: 'stock', label: 'En stock d’abord', cmp: (a, b) => Number(b.en_stock) - Number(a.en_stock) },
+  { id: 'stock', label: 'En stock d’abord', cmp: (a, b) => (Number(b.en_stock) > 0) - (Number(a.en_stock) > 0) },
 ];
 let sortId = 'recent';
 
@@ -153,7 +153,6 @@ async function rangerIci(p, here) {
         if (!picked.size) { toastError(new Error('Coche au moins une carte')); return false; }
         try {
           await api.upsert('card_overrides', [...picked].map(id => ({ card_id: id, pokemon_key: p.key })), 'card_id');
-          await api.rpc('refresh_card_forms');
           toast(`${picked.size} carte${picked.size > 1 ? 's' : ''} rangée${picked.size > 1 ? 's' : ''} sur ${p.name_fr}`);
           reloadPage();
         } catch (err) { toastError(err); return false; }

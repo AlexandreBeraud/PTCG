@@ -15,11 +15,12 @@ Options utiles : `--dry-run` partout ; pour le catalogue `--set=me02,me05`,
 
 ## Rangement des cartes par fiche
 
-Fait en base (`v2.card_forms`, vue matérialisée) avec la même règle que
-l'ancienne appli : une carte Pokémon va sur la fiche de la forme dont le
-label (préfixes **et** suffixes, mots entiers) correspond à son nom, sinon
-sur l'espèce. Un label assigné à la main reste prioritaire, et
-`v2.card_overrides` corrige une carte isolée. Recalcul : `select v2.refresh_card_forms();`
+Fait en base avec la même règle que l'ancienne appli : une carte Pokémon va
+sur la fiche de la forme dont le label (préfixes **et** suffixes, mots entiers)
+correspond à son nom, sinon sur l'espèce. Ce rangement automatique est la vue
+matérialisée `v2.card_forms_auto` (recalcul : `select v2.refresh_card_forms();`,
+fait par l'appli quand un label change et par les jobs). `v2.card_forms` y
+ajoute en direct les fiches corrigées à la main (`v2.card_overrides`).
 
 ## Lien Cardmarket
 

@@ -75,10 +75,16 @@
 @media (prefers-reduced-motion: reduce) { .foil::after { transition: none; } }
 
 .tx-media { position: relative; display: inline-flex; align-items: center; gap: 8px; flex: none; }
-/* icône officielle de l'extension, devant la carte */
-.set-sym { width: 26px; height: 26px; display: inline-grid; place-items: center; flex: none; font-size: 9px; font-weight: 700; color: var(--text-3); vertical-align: middle; }
-.set-sym img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.tx-title .set-sym { width: 18px; height: 18px; vertical-align: -3px; }
+/* icône officielle de l'extension, devant la carte : fond clair, les icônes TCGdex sont souvent noires */
+.set-sym {
+  width: 28px; height: 28px; padding: 3px; display: inline-grid; place-items: center; flex: none;
+  border-radius: 7px; background: #F1F2F5; color: #3A3F4B; font-size: 8.5px; font-weight: 800; letter-spacing: -0.2px;
+  vertical-align: middle; overflow: hidden;
+}
+.set-sym-none { background: transparent; }
+.set-sym img { width: 100%; height: 100%; object-fit: contain; }
+.set-sym img:not([hidden]) + .set-sym-code { display: none; }
+.tx-title .set-sym { width: 20px; height: 20px; padding: 2px; font-size: 7px; vertical-align: -4px; }
 .tx-sprite { width: 40px; height: 40px; display: inline-grid; place-items: center; flex: none; }
 .sprite-inline { max-width: 40px; max-height: 40px; object-fit: contain; }
 .sprite {
@@ -118,10 +124,10 @@
 }
 .tx-row:first-child { border-top: 0; }
 .tx-row.is-selected { background: var(--surface-2); }
-/* couleur de l'extension (ou de son bloc) en fondu sur la gauche */
-.tx-row.has-set-color { background: linear-gradient(90deg, color-mix(in srgb, var(--set-color) 26%, transparent), transparent 42%); }
-.tx-row.has-set-color.is-selected { background: linear-gradient(90deg, color-mix(in srgb, var(--set-color) 26%, transparent), var(--surface-2) 42%); }
-.tx-card.has-set-color { background: linear-gradient(160deg, color-mix(in srgb, var(--set-color) 34%, var(--surface)), var(--surface) 55%); }
+/* couleur de l'extension (ou de son bloc) : un liseré et un léger fondu */
+.tx-row.has-set-color { box-shadow: inset 3px 0 0 var(--set-color); background: linear-gradient(90deg, color-mix(in srgb, var(--set-color) 10%, transparent), transparent 30%); }
+.tx-row.has-set-color.is-selected { background: linear-gradient(90deg, color-mix(in srgb, var(--set-color) 10%, var(--surface-2)), var(--surface-2) 30%); }
+.tx-card.has-set-color { border-top: 3px solid var(--set-color); background: linear-gradient(180deg, color-mix(in srgb, var(--set-color) 10%, var(--surface)), var(--surface) 35%); }
 .mini-row .tx-sprite { width: 32px; height: 32px; }
 .mini-row .sprite-inline { max-width: 32px; max-height: 32px; }
 .tx-head { font-size: 12px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; padding-block: 8px; }
@@ -181,9 +187,16 @@
 }
 .ent:hover, .ent:focus-visible { border-color: var(--accent); }
 .ent-new { justify-content: center; color: var(--accent-text); grid-column: span 2; }
-.ent-img { width: 64px; height: 64px; display: grid; place-items: center; }
-.ent-img img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
-.ent-img-sm { width: 36px; height: 36px; }
+.ent-img { width: 72px; height: 72px; display: grid; place-items: center; flex: none; overflow: hidden; border-radius: 10px; }
+.ent-img img { width: 100%; height: 100%; object-fit: contain; }
+/* portrait de personnage : on garde le haut (le visage) ; carte : on garde l'illustration */
+.ent-img-photo { background: var(--surface-3); }
+.ent-img-photo img { object-fit: cover; object-position: 50% 0; }
+.ent-img-card { background: var(--surface-3); }
+.ent-img-card img { object-fit: cover; object-position: 50% 22%; transform: scale(1.35); transform-origin: 50% 22%; }
+.ent-img-sm { width: 36px; height: 36px; border-radius: 7px; }
+.pick-set { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.pick-set:first-child { margin-top: 0; }
 .ent-name { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
 /* étape 2 : ses cartes */
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
@@ -294,7 +307,12 @@
 }
 .orders { display: flex; flex-direction: column; gap: 8px; }
 .flag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
-.flag-btn { min-height: 44px; font-size: 24px; line-height: 1; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; }
+.flag-btn { min-height: 44px; display: grid; place-items: center; font-size: 13px; line-height: 1; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; }
+.flag { display: inline-grid; place-items: center; }
+.flag img { width: 28px; height: 20px; object-fit: cover; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); }
+.flag img:not([hidden]) + .flag-code { display: none; }
+.flag-code { font-size: 11px; font-weight: 700; }
+.avatar .flag img { width: calc(var(--size, 40px) * 0.62); height: calc(var(--size, 40px) * 0.44); }
 .flag-btn[aria-checked="true"] { border-color: var(--accent); background: var(--accent-bg); }
 .flag-none { font-size: 16px; color: var(--text-3); }
 .order { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px; border-radius: var(--radius); background: var(--surface-2); }

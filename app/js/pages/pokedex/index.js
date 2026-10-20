@@ -12,7 +12,7 @@ const SORTS = [
   { id: 'dex_desc', label: 'Numéro, décroissant', order: 'sort_order.desc,key' },
   { id: 'name', label: 'Nom (A → Z)', order: 'name_fr,sort_order' },
   { id: 'cartes', label: 'Nombre de cartes', order: 'cartes.desc,sort_order' },
-  { id: 'stock', label: 'En stock d’abord', order: 'en_stock.desc,cartes.desc,sort_order' },
+  { id: 'stock', label: 'En stock d’abord', order: 'a_du_stock.desc,sort_order,key' },
   { id: 'vendues', label: 'Les plus vendus', order: 'vendues.desc,sort_order' },
 ];
 

@@ -111,8 +111,9 @@ export function spriteHtml(t, cls = 'sprite') {
     ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${t.pokeapi_id}.png`
     : '';
   // « big » garde le PNG transparent (« thumb » le recadre en JPEG)
-  const src = t.sprite ? imageUrl(`${config.spritesRoot}/${t.sprite}`, 'big') : official;
-  return html`<img class="${cls}" src="${src}" alt="" loading="lazy" data-fallback="${t.sprite ? official : ''}" data-hide-on-error>`;
+  const nas = t.sprite ? [config.spritesRoot, config.spritesRootAlt].filter(Boolean).map(root => imageUrl(`${root}/${t.sprite}`, 'big')) : [];
+  const [src, ...rest] = [...nas, official].filter(Boolean);
+  return html`<img class="${cls}" src="${src}" alt="" loading="lazy" data-fallback="${rest.join(' ')}" data-hide-on-error>`;
 }
 
 export const foilClass = variant => variant === 'reverse' ? 'foil foil-reverse' : variant === 'holo' ? 'foil foil-holo' : '';
@@ -126,13 +127,11 @@ export function thumbHtml(t, { lotImage, size = 'sm' } = {}) {
     </span>`;
 }
 
-// Petite icône officielle de l'extension (TCGdex), sinon son code
+// Petite icône officielle de l'extension (TCGdex) ; son code si l'icône manque
 export function setSymbolHtml(t) {
   const id = t.set_key || t.set_id;
-  if (!id) return html`<span class="set-sym" aria-hidden="true"></span>`;
-  return html`<span class="set-sym" title="${t.set_name || ''}">${t.set_symbol
-    ? html`<img src="${t.set_symbol}" alt="${t.set_name || id}" loading="lazy" data-hide-on-error>`
-    : html`<span>${String(id).toUpperCase().slice(0, 5)}</span>`}</span>`;
+  if (!id) return html`<span class="set-sym set-sym-none" aria-hidden="true"></span>`;
+  return html`<span class="set-sym" title="${t.set_name || ''}">${t.set_symbol ? html`<img src="${t.set_symbol}" alt="" loading="lazy" data-hide-on-error>` : ''}<span class="set-sym-code">${String(id).toUpperCase().slice(0, 5)}</span></span>`;
 }
 
 // Couleur de l'extension (ou de son bloc) pour le fond des lignes
@@ -169,7 +168,10 @@ export const COUNTRIES = [
   ['lt', 'Lituanie'], ['li', 'Liechtenstein'], ['mc', 'Monaco'], ['ca', 'Canada'], ['us', 'États-Unis'],
   ['jp', 'Japon'],
 ];
-export const flag = code => (/^[a-z]{2}$/.test(code || '') ? String.fromCodePoint(...[...code].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 97)) : '');
+// Windows n'affiche pas les drapeaux en emoji : une image (flagcdn), le code pays si elle ne charge pas
+export const flag = code => (/^[a-z]{2}$/.test(code || '')
+  ? html`<span class="flag"><img src="https://flagcdn.com/${code}.svg" alt="" loading="lazy" data-hide-on-error><span class="flag-code">${code.toUpperCase()}</span></span>`
+  : '');
 
 // Icône d'un contact : code pays (fr, be…) → drapeau, sinon initiales
 export function contactAvatar(c, size = 40) {
