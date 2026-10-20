@@ -36,6 +36,7 @@ const DRY_RUN = args.includes('--dry-run');
 // Une extension qui n'existe qu'en anglais et plus vieille que ça est ignorée
 // (promos US, sets jamais sortis en France…), sauf demande explicite --en=
 const EN_FALLBACK_MAX_AGE_DAYS = 365;
+const POCKET_SERIE = 'tcgp';
 const SET_CONCURRENCY = 3;
 const CARD_CONCURRENCY = 6;
 const BATCH_SIZE = 500;
@@ -256,6 +257,10 @@ async function processSet(id, briefs, db, forceEn) {
   const wantEn = briefs.en && (!frCards.length || inDb.enIds.size > 0 || forceEn || enTotal > frCards.length);
   const en = wantEn ? await getJson(`${TCGDEX}/en/sets/${encodeURIComponent(id)}`, { allow404: true }) : null;
 
+  // filet de sécurité si la liste des séries n'a pas pu être lue
+  const serie = (fr && fr.serie) || (en && en.serie);
+  if (serie && serie.id === POCKET_SERIE) return { id, label, pocket: true };
+
   if (!frCards.length && !inDb.ids.size && !forceEn && !(en && isRecent(en.releaseDate))) {
     return { id, label, skipped: true };
   }
@@ -291,15 +296,20 @@ async function processSet(id, briefs, db, forceEn) {
 async function main() {
   console.log(`Import TCGdex${DRY_RUN ? ' (simulation, rien ne sera écrit)' : ''}\n`);
 
-  const [db, frList, enList] = await Promise.all([
+  const [db, frList, enList, pocket] = await Promise.all([
     loadDbCards(),
     getJson(`${TCGDEX}/fr/sets`),
     getJson(`${TCGDEX}/en/sets`),
+    getJson(`${TCGDEX}/en/series/${POCKET_SERIE}`, { allow404: true }).catch(() => null),
   ]);
 
+  // TCG Pocket (jeu mobile) : aucune carte physique, on ne l'importe jamais
+  const pocketIds = new Set(((pocket && pocket.sets) || []).map(s => s.id));
+
   const sets = new Map();
-  for (const s of frList) sets.set(s.id, { fr: s, en: null });
+  for (const s of frList) if (!pocketIds.has(s.id)) sets.set(s.id, { fr: s, en: null });
   for (const s of enList) {
+    if (pocketIds.has(s.id)) continue;
     if (sets.has(s.id)) sets.get(s.id).en = s;
     else sets.set(s.id, { fr: null, en: s });
   }
