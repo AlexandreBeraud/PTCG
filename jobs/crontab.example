@@ -1,0 +1,17 @@
+# Tâches de nuit du remake. À ajouter avec : crontab -e
+# (chemins à adapter si le dépôt n'est pas dans ~/ptcg-repo)
+# Les journaux restent dans jobs/*.log ; le résumé de chaque passage
+# s'affiche aussi dans Réglages.
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# 02:30 le dimanche — référentiel Pokémon (nouvelles formes PokéAPI)
+30 2 * * 0  cd $HOME/ptcg-repo/jobs && node pokemon.js >> pokemon.log 2>&1
+
+# 02:45 — sauvegarde de la base, avant toute écriture des jobs
+45 2 * * *  $HOME/ptcg-repo/jobs/backup.sh >> $HOME/ptcg-repo/jobs/backup.log 2>&1
+
+# 03:00 — catalogue TCGdex, prix et liens Cardmarket
+# flock : ne démarre pas si le passage précédent (ou un lancement à la main) tourne encore
+0 3 * * *   cd $HOME/ptcg-repo/jobs && flock -n /tmp/ptcg-catalogue.lock node catalogue.js >> catalogue.log 2>&1

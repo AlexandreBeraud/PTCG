@@ -1,0 +1,30 @@
+# Tâches de nuit (remake v2)
+
+Node 18+ sans dépendance npm. Les jobs écrivent dans le schéma `v2` via
+PostgREST avec un jeton signé (rôle `ptcg_job`), et chaque passage laisse une
+ligne dans `v2.job_runs`, visible dans Réglages.
+
+| Script | Quand | Rôle |
+| --- | --- | --- |
+| `pokemon.js` | dimanche 02:30 | une fiche par espèce **et par forme** (PokéAPI), noms FR, types, chemin du sprite NAS, type de forme pour les labels |
+| `backup.sh` | 02:45 | `pg_dump` de toute la base `ptcg`, 14 jours gardés |
+| `catalogue.js` | 03:00 | séries, extensions et cartes TCGdex (FR, repli EN), prix des cartes suivies, liens Cardmarket, rangement des cartes par fiche |
+
+Options utiles : `--dry-run` partout ; pour le catalogue `--set=me02,me05`,
+`--en=<id>`, `--all`, `--refresh`, `--no-prices`.
+
+## Rangement des cartes par fiche
+
+Fait en base (`v2.card_forms`, vue matérialisée) avec la même règle que
+l'ancienne appli : une carte Pokémon va sur la fiche de la forme dont le
+label (préfixes **et** suffixes, mots entiers) correspond à son nom, sinon
+sur l'espèce. Un label assigné à la main reste prioritaire, et
+`v2.card_overrides` corrige une carte isolée. Recalcul : `select v2.refresh_card_forms();`
+
+## Lien Cardmarket
+
+Calculé quand l'extension a un code Cardmarket (`sets.cardmarket_code`,
+proposé à partir de l'abréviation TCGdex à la création) :
+`…/Singles/Phantasmal-Flames/Mega-Charizard-X-ex-V1-PFL013?language=2`.
+Sans code : lien de recherche. Un lien corrigé à la main
+(`cardmarket_url_manual = true`) n'est jamais réécrit.

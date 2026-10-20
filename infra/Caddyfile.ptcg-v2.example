@@ -9,10 +9,11 @@
 :8085 {
 	encode gzip
 
+	# Authorization est transmis : les jobs de nuit s'authentifient avec un
+	# jeton signé (rôle ptcg_job). L'appli n'en envoie pas et reste en anon.
+	# (Le bloc :3003 de l'ancienne appli garde son header_up -Authorization.)
 	handle_path /api/* {
-		reverse_proxy postgrest-ptcg:3000 {
-			header_up -Authorization
-		}
+		reverse_proxy postgrest-ptcg:3000
 	}
 
 	handle_path /nas/* {

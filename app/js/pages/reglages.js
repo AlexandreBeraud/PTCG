@@ -7,6 +7,22 @@ import { THEMES, RADII, applyAppearance } from '../appearance.js';
 
 let settings = null;
 
+const JOBS = { catalogue: 'Catalogue TCGdex', pokemon: 'Référentiel Pokémon', sauvegarde: 'Sauvegarde de la base' };
+
+function runSummary(job, s) {
+  if (!s) return 'OK';
+  if (job === 'catalogue') {
+    const added = (s.cartes_fr || 0) + (s.cartes_en || 0);
+    const parts = [added ? `${added} carte(s) ajoutée(s)` : 'rien de nouveau'];
+    if (s.passees_fr) parts.push(`${s.passees_fr} passée(s) en FR`);
+    if (s.illisibles) parts.push(`${s.illisibles} à reprendre`);
+    return parts.join(', ');
+  }
+  if (job === 'pokemon') return `${s.pokemon} Pokémon dont ${s.formes} formes`;
+  if (job === 'sauvegarde') return `${s.fichier} (${Math.round(s.taille_ko / 1024 * 10) / 10} Mo)`;
+  return 'OK';
+}
+
 async function save(patch) {
   const before = settings;
   settings = { ...settings, ...patch };
@@ -45,7 +61,7 @@ export default {
   async render(main) {
     setHtml(main, html`
       <header class="page-header">
-        <div><h1>Réglages</h1><p>Lot 0 : vérification de la connexion, de l’envoi de photos et de l’apparence</p></div>
+        <div><h1>Réglages</h1><p>Connexion, tâches de nuit, envoi de photos et apparence</p></div>
       </header>
       <div class="grid-auto" style="--min: 340px">
         <section class="panel" id="conn"><h2>Connexion</h2><p class="muted">Vérification…</p></section>
@@ -96,17 +112,24 @@ export default {
       await api.update('settings', { id: 'eq.1' }, { updated_at: new Date().toISOString() });
       return `réglages enregistrés (thème ${s.theme})`;
     });
-    await check('Dernier passage des jobs', async () => {
-      const run = await api.one('job_runs', { order: 'started_at.desc' });
-      return run ? new Date(run.started_at).toLocaleString('fr-FR') : 'aucun pour l’instant (lot 1)';
-    });
+
+    // dernier passage de chaque tâche de nuit
+    let runs = [];
+    try { runs = await api.list('job_runs', { order: 'started_at.desc', limit: 50 }); } catch (_) { /* déjà signalé plus haut */ }
+    for (const [job, label] of Object.entries(JOBS)) {
+      const run = runs.find(r => r.job === job);
+      if (!run) { rows.push({ label, ok: null, detail: 'jamais lancé' }); continue; }
+      const when = new Date(run.started_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+      const detail = !run.finished_at ? 'en cours…' : run.ok ? runSummary(job, run.summary) : run.error;
+      rows.push({ label, ok: run.finished_at ? run.ok : null, detail: `${when} — ${detail}` });
+    }
 
     setHtml(box, html`
       <h2>Connexion</h2>
       <div>
         ${rows.map(r => html`
           <div class="status-row">
-            <span class="dot ${r.ok ? 'dot-ok' : 'dot-danger'}"></span>
+            <span class="dot ${r.ok === null ? 'dot-warn' : r.ok ? 'dot-ok' : 'dot-danger'}"></span>
             <span class="grow"><span>${r.label}</span><span class="muted small">${r.detail}</span></span>
           </div>`)}
       </div>
