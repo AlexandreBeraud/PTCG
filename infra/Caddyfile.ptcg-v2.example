@@ -1,0 +1,28 @@
+# Bloc à ajouter dans ~/hub/Caddyfile pour le site de recette du remake.
+# Tout passe par la même origine (port 8085) : pas de CORS entre l'appli,
+# PostgREST et FileBrowser.
+#
+# Noms de conteneurs à vérifier avec : docker ps --format '{{.Names}}'
+#   postgrest-ptcg  → PostgREST de PTCG (port interne 3000)
+#   filebrowser     → FileBrowser (port interne 80)
+
+:8085 {
+	encode gzip
+
+	handle_path /api/* {
+		reverse_proxy postgrest-ptcg:3000 {
+			header_up -Authorization
+		}
+	}
+
+	handle_path /nas/* {
+		reverse_proxy filebrowser:80
+	}
+
+	handle {
+		root * /srv/ptcg-v2
+		# le navigateur revérifie chaque fichier (ETag) : plus besoin de ?v=N
+		header Cache-Control "no-cache"
+		file_server
+	}
+}

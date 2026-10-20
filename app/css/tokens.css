@@ -1,0 +1,67 @@
+:root,
+[data-theme="braise"] {
+  --bg: #0E1016;
+  --sidebar: #12151C;
+  --surface: #161A22;
+  --surface-2: #1A1F2A;
+  --surface-3: #1D2230;
+  --border: #232938;
+  --border-strong: #2A3142;
+  --text: #ECEEF3;
+  --text-2: #A3ACBE;
+  --text-3: #8C95A8;
+  --nav-text: #C9CFDB;
+  --accent: #FF5E5B;
+  --accent-text: #FF8A87;
+  --accent-bg: #2A1719;
+  --on-accent: #1A0B0B;
+  --ok: #3DD68C;
+  --ok-bg: #15291F;
+  --warn: #F2C14E;
+  --warn-bg: #2B2416;
+  --info: #7CC0FF;
+  --info-bg: #13283A;
+  --danger: #FF8A87;
+  --danger-bg: #2A1719;
+  --scrim: rgba(7, 8, 11, 0.78);
+  color-scheme: dark;
+}
+
+[data-theme="abysses"] {
+  --bg: #0A141F; --sidebar: #0D1926; --surface: #101F30; --surface-2: #132538; --surface-3: #16293D;
+  --border: #1B3248; --border-strong: #22415C; --text: #E6F1FB; --text-2: #9DBCD6; --text-3: #7E9CB6;
+  --accent: #2196D8; --accent-text: #5FC9F8; --accent-bg: #0F2A40; --on-accent: #04121D;
+}
+
+[data-theme="sylve"] {
+  --bg: #0B1310; --sidebar: #0E1814; --surface: #121E18; --surface-2: #15241C; --surface-3: #182A21;
+  --border: #20372B; --border-strong: #294536; --text: #E7F3EC; --text-2: #A2C2B2; --text-3: #82A695;
+  --accent: #22A06B; --accent-text: #4ADE80; --accent-bg: #10291D; --on-accent: #04140C;
+}
+
+[data-theme="amethyste"] {
+  --bg: #120E1A; --sidebar: #16111F; --surface: #1A1425; --surface-2: #1F182C; --surface-3: #241C33;
+  --border: #2E2342; --border-strong: #3A2C52; --text: #F0E9F9; --text-2: #BDAED6; --text-3: #A392C1;
+  --accent: #9333EA; --accent-text: #C084FC; --accent-bg: #26163A; --on-accent: #FFFFFF;
+}
+
+[data-theme="aurore"] {
+  --bg: #F4F1EA; --sidebar: #ECE7DB; --surface: #FFFFFF; --surface-2: #F7F4EE; --surface-3: #ECE7DB;
+  --border: #E4DCCB; --border-strong: #DDD4C0; --text: #241F1A; --text-2: #5E5546; --text-3: #6C6252;
+  --nav-text: #3D362D;
+  --accent: #C2410C; --accent-text: #9A3412; --accent-bg: #FBE7DC; --on-accent: #FFFFFF;
+  --ok: #15803D; --ok-bg: #DCF3E4; --warn: #A16207; --warn-bg: #FBF0D5;
+  --info: #1D4ED8; --info-bg: #E0E9FB; --danger: #B91C1C; --danger-bg: #FBE3E3;
+  --scrim: rgba(36, 31, 26, 0.45);
+  color-scheme: light;
+}
+
+:root {
+  --font: 'Inter', system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Inter', sans-serif;
+  --radius-lg: 14px;
+  --radius: 10px;
+  --radius-sm: 8px;
+}
+[data-radius="angulaire"] { --radius-lg: 6px; --radius: 4px; --radius-sm: 3px; }
+[data-radius="arrondi"] { --radius-lg: 20px; --radius: 14px; --radius-sm: 10px; }

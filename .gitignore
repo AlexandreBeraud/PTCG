@@ -21,3 +21,6 @@ migration/venv/
 *.log
 # Cache des noms FR des Pokémon (import-tcgdex.js)
 .pokemon-names-cache.json
+
+# Identifiants FileBrowser de la nouvelle appli
+app/config.local.js
