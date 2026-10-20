@@ -90,6 +90,14 @@ export const api = {
     return Array.isArray(row) ? data : data?.[0];
   },
 
+  // Crée ou remplace selon la clé : api.upsert('set_prefs', row, 'kind,target_id')
+  async upsert(table, row, onConflict) {
+    const { data } = await request(`/${table}${query({ on_conflict: onConflict })}`, {
+      method: 'POST', body: row, headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+    });
+    return Array.isArray(row) ? data : data?.[0];
+  },
+
   // api.update('settings', { id: 'eq.1' }, { theme: 'sylve' })
   async update(table, filter, patch) {
     const { data } = await request(`/${table}${query(filter)}`, { method: 'PATCH', body: patch, headers: { Prefer: 'return=representation' } });

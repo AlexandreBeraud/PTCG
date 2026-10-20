@@ -20,7 +20,6 @@
 const env = require('./lib/env');
 const db = require('./lib/db');
 const { getJson, mapLimit } = require('./lib/http');
-const cardmarket = require('./lib/cardmarket');
 const runlog = require('./lib/runlog');
 
 const TCGDEX = env.TCGDEX_URL;
@@ -301,21 +300,11 @@ async function refreshPrices(ctx) {
 }
 
 // ── Liens Cardmarket ───────────────────────────────────────────────────────
+// Calculés par la base (v2.refresh_cardmarket_urls), comme quand on change
+// le code Cardmarket d'une extension dans l'appli.
 
-async function refreshCardmarket(ctx) {
-  const changed = [];
-  for (const [setId, cards] of ctx.cardsBySet) {
-    const set = ctx.dbSets.get(setId);
-    if (!set) continue;
-    const urls = cardmarket.setUrls(set, cards);
-    for (const c of cards) {
-      if (c.cardmarket_url_manual) continue;
-      const url = urls.get(c.id);
-      if (url && url !== c.cardmarket_url) changed.push({ id: c.id, set_id: c.set_id, name: c.name, cardmarket_url: url });
-    }
-  }
-  await db.upsert('cards', changed);
-  return changed.length;
+async function refreshCardmarket() {
+  return (await db.rpc('refresh_cardmarket_urls', { only_set: null })) || 0;
 }
 
 // Sous-extensions TCGdex (galerie, Trainer Gallery…) : swsh9tg → swsh9
@@ -343,7 +332,7 @@ runlog.run('catalogue', async () => {
     getJson(`${TCGDEX}/en/series`),
     tcgdex('en', `series/${POCKET_SERIE}`).catch(() => null),
     db.select('sets', 'select=id,name,name_en,lang,source,release_date,cardmarket_code,parent_id'),
-    db.select('cards', 'select=id,set_id,number,name,name_en,lang,category,source,cardmarket_url,cardmarket_url_manual&order=id'),
+    db.select('cards', 'select=id,set_id,number,name,name_en,lang,category,source&order=id'),
     db.select('pokemon', 'select=name_fr,name_en,is_default'),
   ]);
   if (!pokemon.length) console.warn('⚠ v2.pokemon est vide : lance d\'abord pokemon.js, sinon les cartes anglaises gardent leur nom anglais.\n');
@@ -404,7 +393,7 @@ runlog.run('catalogue', async () => {
 
   const parents = await linkParents(ctx);
   const prices = PRICES ? await refreshPrices(ctx) : null;
-  const links = await refreshCardmarket(ctx);
+  const links = await refreshCardmarket();
   await db.rpc('refresh_card_forms');
 
   const sum = key => results.reduce((n, r) => n + (r[key] || 0), 0);

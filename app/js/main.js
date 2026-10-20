@@ -13,14 +13,15 @@ const PAGES = {
   accueil: () => import('./pages/accueil.js'),
   ventes: ventes('vente'),
   achats: ventes('achat'),
+  extensions: () => import('./pages/extensions/index.js'),
+  cartes: () => import('./pages/cartes/index.js'),
+  pokedex: () => import('./pages/pokedex/index.js'),
+  labels: () => import('./pages/labels/index.js'),
   contacts: () => import('./pages/contacts/index.js'),
   bilan: () => import('./pages/bilan/index.js'),
   reglages: () => import('./pages/reglages.js'),
 };
-const LOTS = {
-  extensions: 3, cartes: 3, pokedex: 3, labels: 3,
-  classeurs: 4, produits: 4,
-};
+const LOTS = { classeurs: 4, produits: 4 };
 
 const main = document.getElementById('main');
 let current = null;

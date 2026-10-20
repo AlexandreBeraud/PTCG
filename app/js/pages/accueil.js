@@ -1,12 +1,12 @@
 import { api } from '../api.js';
-import { html, setHtml, on, eur } from '../ui/dom.js';
+import { html, setHtml, on, eur, reloadPage as reload } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { toastError } from '../ui/toast.js';
 import { store } from '../shared/store.js';
 import { thumbHtml, spriteHtml, subtitle, fmtDate } from '../shared/sales.js';
 
 const JOBS = { catalogue: 'Catalogue TCGdex', pokemon: 'Référentiel Pokémon', sauvegarde: 'Sauvegarde de la base' };
-const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
 const signed = n => (n > 0 ? '+' : '') + eur(n);
 
 function jobMeta(run) {

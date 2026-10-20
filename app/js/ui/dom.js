@@ -46,3 +46,6 @@ export function uid() {
   // pas de crypto.randomUUID ici : il n'existe pas hors HTTPS
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
+
+// Réaffiche la page courante dans un conteneur neuf (voir route() dans main.js)
+export const reloadPage = () => window.dispatchEvent(new HashChangeEvent('hashchange'));

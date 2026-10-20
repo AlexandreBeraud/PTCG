@@ -30,10 +30,10 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     card: line?.card_id ? {
       id: line.card_id, name: line.title, set_name: line.set_name, number: line.number, image: line.card_image,
       variants: line.card_variants || [], price_trend: line.price_trend, price_low: line.price_low, cardmarket_url: line.cardmarket_url,
-    } : null,
+    } : preset.card || null,
     accessoireId: line?.accessoire_id || null,
     newAccessoire: null,
-    variant: line?.variant || null,
+    variant: line?.variant || (preset.card?.variants?.length === 1 ? preset.card.variants[0] : null),
     condition: line?.condition || preset.condition || 'Near Mint',
     lang: line?.lang || preset.lang || 'FR',
     qty: line?.qty || 1,
@@ -212,6 +212,15 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
   async function mountItem() {
     if (st.kind === 'carte' && !st.card) {
       cardPicker(root.querySelector('#lf-picker'), {
+        onManual: async name => {
+          const { openManualCard } = await import('../cartes/manual.js');
+          openManualCard({ name, onSaved: async id => {
+            const [card] = await api.list('card_list', { id: `eq.${id}` });
+            st.card = { ...card, set_name: card.set_name };
+            st.variant = card.variants?.length === 1 ? card.variants[0] : null;
+            render();
+          } });
+        },
         onPick: card => {
           st.card = card;
           st.variant = card.variants?.length === 1 ? card.variants[0] : null;

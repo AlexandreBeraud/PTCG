@@ -5,7 +5,7 @@ import { cardImage } from './sales.js';
 
 // Recherche de carte : « dracaufeu », « dracaufeu 013 », « goupix nuit noire »…
 // cardPicker(el, { onPick(card), autofocus })
-export function cardPicker(el, { onPick, autofocus = true, placeholder = 'Nom de la carte, numéro, extension…' } = {}) {
+export function cardPicker(el, { onPick, onManual, autofocus = true, placeholder = 'Nom de la carte, numéro, extension…' } = {}) {
   let results = [];
   let timer = null;
   let seq = 0;
@@ -17,6 +17,7 @@ export function cardPicker(el, { onPick, autofocus = true, placeholder = 'Nom de
         <input type="search" placeholder="${placeholder}" aria-label="Chercher une carte" autocomplete="off">
       </label>
       <div class="picker-results" role="listbox" aria-label="Cartes trouvées"></div>
+      ${onManual ? html`<button type="button" class="link small" data-manual>Carte introuvable ? L’ajouter à la main</button>` : ''}
     </div>
   `);
   const input = el.querySelector('input');
@@ -66,6 +67,7 @@ export function cardPicker(el, { onPick, autofocus = true, placeholder = 'Nom de
     if (e.key === 'ArrowUp') { e.preventDefault(); (btn.previousElementSibling || input).focus(); }
   });
   on(list, 'click', '.picker-item', (_, btn) => onPick?.(results[Number(btn.dataset.i)]));
+  if (onManual) el.querySelector('[data-manual]').addEventListener('click', () => onManual(input.value.trim()));
 
   if (autofocus) setTimeout(() => input.focus(), 0);
   return { focus: () => input.focus(), clear() { input.value = ''; results = []; renderResults(''); } };

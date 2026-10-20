@@ -111,7 +111,7 @@ export function spriteHtml(t, cls = 'sprite') {
     ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${t.pokeapi_id}.png`
     : '';
   const src = t.sprite ? imageUrl(`${config.spritesRoot}/${t.sprite}`, 'thumb') : official;
-  return html`<img class="${cls}" src="${src}" alt="" loading="lazy" data-fallback="${t.sprite ? official : ''}">`;
+  return html`<img class="${cls}" src="${src}" alt="" loading="lazy" data-fallback="${t.sprite ? official : ''}" data-hide-on-error>`;
 }
 
 export const foilClass = variant => variant === 'reverse' ? 'foil foil-reverse' : variant === 'holo' ? 'foil foil-holo' : '';

@@ -8,7 +8,7 @@ ligne dans `v2.job_runs`, visible dans Réglages.
 | --- | --- | --- |
 | `pokemon.js` | dimanche 02:30 | une fiche par espèce **et par forme** (PokéAPI), noms FR, types, chemin du sprite NAS, type de forme pour les labels |
 | `backup.sh` | 02:45 | `pg_dump` de toute la base `ptcg`, 14 jours gardés |
-| `catalogue.js` | 03:00 | séries, extensions et cartes TCGdex (FR, repli EN), prix des cartes suivies, liens Cardmarket, rangement des cartes par fiche |
+| `catalogue.js` | 03:00 | séries, extensions et cartes TCGdex (FR, repli EN), prix des cartes suivies, liens Cardmarket (calculés par la base), rangement des cartes par fiche |
 
 Options utiles : `--dry-run` partout ; pour le catalogue `--set=me02,me05`,
 `--en=<id>`, `--all`, `--refresh`, `--no-prices`.
@@ -23,8 +23,9 @@ sur l'espèce. Un label assigné à la main reste prioritaire, et
 
 ## Lien Cardmarket
 
-Calculé quand l'extension a un code Cardmarket (`sets.cardmarket_code`,
-proposé à partir de l'abréviation TCGdex à la création) :
+Calculé par la base (`v2.refresh_cardmarket_urls`) quand l'extension a un code
+Cardmarket (`sets.cardmarket_code`, proposé à partir de l'abréviation TCGdex à la
+création, modifiable sur la page de l'extension) :
 `…/Singles/Phantasmal-Flames/Mega-Charizard-X-ex-V1-PFL013?language=2`.
 Sans code : lien de recherche. Un lien corrigé à la main
 (`cardmarket_url_manual = true`) n'est jamais réécrit.
