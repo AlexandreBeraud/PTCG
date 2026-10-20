@@ -96,7 +96,7 @@ export default {
       </div>
       <section class="panel" id="sources"><h2>Images et liens</h2></section>
       <section class="panel" id="accessoires"><h2>Accessoires</h2></section>
-      <section class="panel" id="series"><h2>Séries</h2></section>
+      <section class="panel" id="series"><h2>Blocs</h2></section>
     `);
     const $ = s => main.querySelector(s);
 

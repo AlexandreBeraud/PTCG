@@ -6,13 +6,11 @@ import { toast, toastError } from '../../ui/toast.js';
 import { dropzone } from '../../ui/upload.js';
 import { cardPicker } from '../../shared/picker.js';
 import { store, ensureContact } from '../../shared/store.js';
+import { setOptions, setOptionsHtml } from '../../shared/sets.js';
 import {
   CONDITIONS, ITEM_CONDITIONS, VARIANTS, LANGS, VENTE_STATUS, KINDS,
   cardImage, today, fmtDate, commandeStatus,
 } from '../../shared/sales.js';
-
-let setsPromise = null;
-const sets = () => (setsPromise ||= api.list('sets', { select: 'id,name', order: 'release_date.desc.nullslast' }));
 
 // Formulaire d'une ligne de vente ou d'achat (création ou modification).
 // openLineForm({ direction, line, commande, kinds, onSaved })
@@ -29,7 +27,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     kind: line?.kind || preset.kind || 'carte',
     card: line?.card_id ? {
       id: line.card_id, name: line.title, set_name: line.set_name, number: line.number, image: line.card_image,
-      variants: line.card_variants || [], price_trend: line.price_trend, price_low: line.price_low, cardmarket_url: line.cardmarket_url,
+      variants: line.card_variants || [], price_low: line.price_low, price_low_holo: line.price_low_holo, cardmarket_url: line.cardmarket_url,
     } : preset.card || null,
     accessoireId: line?.accessoire_id || null,
     newAccessoire: null,
@@ -40,7 +38,8 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     price: line?.price ?? '',
     label: line?.label || '',
     setId: line?.set_id || '',
-    crop: line?.crop ?? null,
+    shipping: '',
+    shippingPaid: false,
     status: line?.status || preset.status || 'a_mettre',
     forAccount: line?.for_account || preset.forAccount || '',
     contactId: line?.contact_id || preset.contactId || '',
@@ -87,21 +86,20 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     if (st.kind === 'carte') {
       if (!st.card) return html`<div id="lf-picker"></div>`;
       const c = st.card;
+      const low = lowestPrice();
       return html`
         <div class="picked">
-          <span class="thumb thumb-md">${c.image ? html`<img src="${cardImage(c.image)}" alt="" style="--crop: ${st.crop ?? 50}%" data-hide-on-error>` : ''}</span>
+          <span class="thumb thumb-md">${c.image ? html`<img src="${cardImage(c.image)}" alt="" data-hide-on-error>` : ''}</span>
           <div class="grow">
             <strong>${c.name}</strong>
             <span class="muted small">${c.set_name} · ${c.number || '—'}</span>
-            ${c.price_trend != null || c.price_low != null ? html`
-              <p class="small" style="margin: 6px 0 0">Cardmarket : tendance <strong>${eur(c.price_trend)}</strong>, prix le plus bas <strong>${eur(c.price_low)}</strong></p>` : ''}
+            ${low.price != null ? html`
+              <p class="small" style="margin: 6px 0 0">Prix le plus bas sur Cardmarket${low.holo ? ' (holo/reverse)' : ''} : <strong>${eur(low.price)}</strong></p>` : ''}
             <div class="row-actions">
-              ${c.price_trend != null ? html`<button type="button" class="btn btn-sm" data-take="trend">Prendre la tendance</button>` : ''}
+              ${low.price != null ? html`<button type="button" class="btn btn-sm" data-take>Prendre ce prix</button>` : ''}
               ${c.cardmarket_url ? html`<a class="btn btn-sm btn-ghost" href="${c.cardmarket_url}" target="_blank" rel="noopener">Voir sur Cardmarket</a>` : ''}
               ${!editing ? html`<button type="button" class="btn btn-sm btn-ghost" data-change-card>Changer de carte</button>` : ''}
             </div>
-            ${c.image ? html`<label class="field small">Cadrage de la vignette
-              <input type="range" min="0" max="100" value="${st.crop ?? 50}" data-f="crop"></label>` : ''}
           </div>
         </div>`;
     }
@@ -140,9 +138,15 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
   function setField() {
     return html`
       <label class="field grow">Extension (facultatif)
-        <input class="input" list="lf-sets" data-f="setName" value="${st.setName || ''}" placeholder="Nuit Noire">
-        <datalist id="lf-sets"></datalist>
+        <select class="select" data-f="setId">${setOptionsHtml(sets, st.setId, { empty: 'Aucune' })}</select>
       </label>`;
+  }
+
+  // prix holo/reverse quand la variante choisie l'est et que Cardmarket le donne
+  function lowestPrice() {
+    const c = st.card;
+    if ((st.variant === 'holo' || st.variant === 'reverse') && c.price_low_holo != null) return { price: c.price_low_holo, holo: true };
+    return { price: c.price_low ?? null, holo: false };
   }
 
   function detailsHtml(conds) {
@@ -198,7 +202,8 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
                 ${contactCommandes.map(o => html`<option value="${o.id}" ${o.id === st.commandeId ? 'selected' : ''}>Commande du ${fmtDate(o.ordered_on || o.created_at)} · ${commandeStatus('vente', o.status).label}</option>`)}
               </select>
             </label>` : ''}
-        </div>` : ''}
+        </div>
+        ${st.contactId && !st.commandeId && !editing ? shippingHtml() : ''}` : ''}
       <label class="field">Pour le compte de
         <select class="select" data-f="forAccount">
           <option value="">Moi</option>
@@ -207,6 +212,16 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         </select>
       </label>
       ${st.forAccount === '__new' ? html`<label class="field">Nom<input class="input" data-f="newAccount" value="${st.newAccount || ''}"></label>` : ''}`;
+  }
+
+  function shippingHtml() {
+    return html`
+      <div class="form-row shipping-row">
+        <label class="field">Frais de port payés par l’acheteur
+          <input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-f="shipping" value="${st.shipping}" placeholder="0,00">
+        </label>
+        <label class="check-inline"><input type="checkbox" data-f="shippingPaid" ${st.shippingPaid ? 'checked' : ''}> J’ai payé l’envoi avec (ne compte pas dans le Bilan)</label>
+      </div>`;
   }
 
   async function mountItem() {
@@ -235,16 +250,6 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         onChange: p => { st.newAccessoire.image = p; },
       });
     }
-    const dl = root.querySelector('#lf-sets');
-    if (dl) {
-      const list = await sets();
-      setHtml(dl, html`${list.map(s => html`<option value="${s.name}"></option>`)}`);
-      if (st.setId && !st.setName) {
-        st.setName = list.find(s => s.id === st.setId)?.name || '';
-        const inp = root.querySelector('[data-f="setName"]');
-        if (inp) inp.value = st.setName;
-      }
-    }
   }
 
   async function loadCommandes() {
@@ -268,22 +273,20 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
   on(root, 'click', '[data-acc]', (_, b) => { st.accessoireId = b.dataset.acc; st.newAccessoire = null; render(); });
   on(root, 'click', '[data-acc-new]', () => { st.accessoireId = null; st.newAccessoire = { name: '', image: '' }; render(); });
   on(root, 'click', '[data-take]', () => {
-    st.price = st.card.price_trend;
+    st.price = lowestPrice().price;
     root.querySelector('[data-f="price"]').value = st.price;
   });
   root.addEventListener('input', e => {
     const f = e.target.dataset.f;
     if (!f) return;
     if (f === 'accName') st.newAccessoire.name = e.target.value;
-    else if (f === 'crop') {
-      st.crop = Number(e.target.value);
-      root.querySelector('.picked img')?.style.setProperty('--crop', `${st.crop}%`);
-    } else st[f] = e.target.value;
+    else if (f === 'shippingPaid') st.shippingPaid = e.target.checked;
+    else st[f] = e.target.value;
   });
   root.addEventListener('change', async e => {
     const f = e.target.dataset.f;
     if (f === 'contactId') { st.commandeId = ''; await loadCommandes(); render(); }
-    if (f === 'forAccount') render();
+    if (f === 'forAccount' || f === 'commandeId') render();
   });
 
   // ── enregistrement ──
@@ -299,8 +302,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
       card_id: st.kind === 'carte' ? st.card?.id : null,
       accessoire_id: st.kind === 'accessoire' ? st.accessoireId : null,
       label: st.kind === 'lot' || st.kind === 'produit' ? (st.label || '').trim() || null : null,
-      set_id: null,
-      crop: st.kind === 'carte' ? st.crop : null,
+      set_id: st.kind === 'lot' || st.kind === 'produit' ? st.setId || null : null,
     };
     if (st.kind === 'carte' && !row.card_id) throw new Error('Choisis une carte');
     if (st.kind === 'carte' && !row.variant) throw new Error('Choisis la variante');
@@ -308,19 +310,9 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     return row;
   }
 
-  async function resolveSet(row) {
-    if (row.kind !== 'lot' && row.kind !== 'produit') return;
-    const name = (st.setName || '').trim();
-    if (!name) return;
-    const found = (await sets()).find(s => s.name.toLowerCase() === name.toLowerCase());
-    if (!found) throw new Error(`Extension « ${name} » introuvable`);
-    row.set_id = found.id;
-  }
-
   async function save(again) {
     try {
       const row = readRow();
-      await resolveSet(row);
 
       if (st.kind === 'accessoire' && !row.accessoire_id) {
         const acc = await api.insert('accessoires', { name: st.newAccessoire.name.trim(), image: st.newAccessoire.image || null });
@@ -337,6 +329,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
           const contactId = await ensureContact(st.contactId === '__new' ? { newPseudo: st.newPseudo } : { contactId: st.contactId });
           row.commande_id = st.commandeId || (await api.insert('commandes', {
             contact_id: contactId, direction: 'vente', ordered_on: today(), status: 'a_envoyer',
+            shipping: Number(String(st.shipping || '').replace(',', '.')) || 0, shipping_paid: st.shippingPaid,
           })).id;
         } else if (st.status !== 'vendue') {
           // une vente remise en vente quitte sa commande
@@ -383,6 +376,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     } catch (err) { toastError(err); return false; }
   }
 
+  const sets = kindList.some(k => k === 'lot' || k === 'produit') ? await setOptions().catch(() => []) : [];
   if (st.contactId) await loadCommandes();
   render();
   return m;

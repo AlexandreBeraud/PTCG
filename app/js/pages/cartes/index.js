@@ -5,10 +5,15 @@ import { norm } from '../../shared/sales.js';
 import { FAMILLES, familleLabel, cardTile } from '../../shared/cards.js';
 
 const PAGE = 60;
+const NUM = 'number_sort.asc.nullslast,number';
 const SORTS = [
-  { id: 'recent', label: 'Plus récentes', order: 'release_date.desc.nullslast,set_id,number' },
-  { id: 'name', label: 'Nom', order: 'name,release_date.desc.nullslast,number' },
-  { id: 'stock', label: 'Stock', order: 'en_stock.desc,release_date.desc.nullslast,number' },
+  { id: 'recent', label: 'Date de sortie, récentes d’abord', order: `release_date.desc.nullslast,set_id,${NUM}` },
+  { id: 'old', label: 'Date de sortie, anciennes d’abord', order: `release_date.asc.nullslast,set_id,${NUM}` },
+  { id: 'name', label: 'Nom (A → Z)', order: `name,release_date.desc.nullslast,${NUM}` },
+  { id: 'name_desc', label: 'Nom (Z → A)', order: `name.desc,release_date.desc.nullslast,${NUM}` },
+  { id: 'stock', label: 'En stock d’abord', order: `en_stock.desc,release_date.desc.nullslast,${NUM}` },
+  { id: 'vendues', label: 'Les plus vendues', order: `vendues.desc,release_date.desc.nullslast,${NUM}` },
+  { id: 'price', label: 'Prix le plus bas, décroissant', order: `price_low.desc.nullslast,release_date.desc.nullslast,${NUM}` },
 ];
 
 const state = { q: '', famille: '', stock: false, vendues: false, serie: '', sort: 'recent', group: true };
@@ -42,7 +47,7 @@ export default {
 
     function params_() {
       const p = { order: SORTS.find(s => s.id === state.sort).order };
-      if (state.group) p.order = `name,${p.order}`;
+      if (state.group && !p.order.startsWith('name')) p.order = `name,${p.order}`;
       const words = norm(state.q).split(/\s+/).filter(Boolean).map(w => w.replace(/[*(),]/g, ''));
       if (words.length) p.and = `(${words.map(w => `search.ilike.*${w}*`).join(',')})`;
       if (state.famille) p.famille = `eq.${state.famille}`;
@@ -64,8 +69,8 @@ export default {
         <div class="chips" role="group" aria-label="Mes cartes">
           <button type="button" class="chip" data-mine="stock" aria-pressed="${state.stock}">En stock<span class="n">${f.en_stock}</span></button>
           <button type="button" class="chip" data-mine="vendues" aria-pressed="${state.vendues}">Déjà vendues<span class="n">${f.vendues}</span></button>
-          <select class="select select-auto" id="serie" aria-label="Série">
-            <option value="">Toutes les séries</option>
+          <select class="select select-auto" id="serie" aria-label="Bloc">
+            <option value="">Tous les blocs</option>
             ${f.series.filter(s => s.id).map(s => html`<option value="${s.id}" ${s.id === state.serie ? 'selected' : ''}>${s.name} (${s.n})</option>`)}
           </select>
         </div>`);

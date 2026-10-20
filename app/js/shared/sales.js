@@ -110,21 +110,33 @@ export function spriteHtml(t, cls = 'sprite') {
   const official = t.pokeapi_id
     ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${t.pokeapi_id}.png`
     : '';
-  const src = t.sprite ? imageUrl(`${config.spritesRoot}/${t.sprite}`, 'thumb') : official;
+  // « big » garde le PNG transparent (« thumb » le recadre en JPEG)
+  const src = t.sprite ? imageUrl(`${config.spritesRoot}/${t.sprite}`, 'big') : official;
   return html`<img class="${cls}" src="${src}" alt="" loading="lazy" data-fallback="${t.sprite ? official : ''}" data-hide-on-error>`;
 }
 
 export const foilClass = variant => variant === 'reverse' ? 'foil foil-reverse' : variant === 'holo' ? 'foil foil-holo' : '';
 
-// Vignette : image de la carte (ou de l'accessoire, du lot), reflet holo/reverse, sprite en coin
+// Vignette : image de la carte (ou de l'accessoire, du lot), reflet holo/reverse
 export function thumbHtml(t, { lotImage, size = 'sm' } = {}) {
   const src = lineImage(t, lotImage);
-  const crop = t.crop == null ? '' : `--crop: ${Number(t.crop)}%`;
   return html`
     <span class="thumb thumb-${size} ${foilClass(t.variant)}">
-      ${src ? html`<img src="${src}" alt="" loading="lazy" style="${crop}" data-hide-on-error>` : html`<span class="thumb-empty">${t.kind === 'lot' ? 'Lot' : ''}</span>`}
+      ${src ? html`<img src="${src}" alt="" loading="lazy" data-hide-on-error>` : html`<span class="thumb-empty">${t.kind === 'lot' ? 'Lot' : ''}</span>`}
     </span>`;
 }
+
+// Petite icône officielle de l'extension (TCGdex), sinon son code
+export function setSymbolHtml(t) {
+  const id = t.set_key || t.set_id;
+  if (!id) return html`<span class="set-sym" aria-hidden="true"></span>`;
+  return html`<span class="set-sym" title="${t.set_name || ''}">${t.set_symbol
+    ? html`<img src="${t.set_symbol}" alt="${t.set_name || id}" loading="lazy" data-hide-on-error>`
+    : html`<span>${String(id).toUpperCase().slice(0, 5)}</span>`}</span>`;
+}
+
+// Couleur de l'extension (ou de son bloc) pour le fond des lignes
+export const setColorStyle = t => (t.set_color && /^#[0-9a-f]{3,8}$/i.test(t.set_color) ? `--set-color: ${t.set_color}` : '');
 
 export function subtitle(t) {
   if (t.kind === 'lot') return [t.label, t.qty > 1 ? `${t.qty} cartes` : '', t.set_name].filter(Boolean).join(' · ');
@@ -146,12 +158,25 @@ export const initials = name => String(name || '?').replace(/[^\p{L}\p{N} _-]/gu
   .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2').split(/[\s_-]+/).filter(Boolean)
   .slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 
+// Pays proposés pour l'icône d'un contact (ceux de Cardmarket d'abord)
+export const COUNTRIES = [
+  ['fr', 'France'], ['be', 'Belgique'], ['ch', 'Suisse'], ['lu', 'Luxembourg'], ['de', 'Allemagne'],
+  ['it', 'Italie'], ['es', 'Espagne'], ['pt', 'Portugal'], ['nl', 'Pays-Bas'], ['at', 'Autriche'],
+  ['gb', 'Royaume-Uni'], ['ie', 'Irlande'], ['dk', 'Danemark'], ['se', 'Suède'], ['no', 'Norvège'],
+  ['fi', 'Finlande'], ['is', 'Islande'], ['pl', 'Pologne'], ['cz', 'Tchéquie'], ['sk', 'Slovaquie'],
+  ['hu', 'Hongrie'], ['si', 'Slovénie'], ['hr', 'Croatie'], ['ro', 'Roumanie'], ['bg', 'Bulgarie'],
+  ['gr', 'Grèce'], ['cy', 'Chypre'], ['mt', 'Malte'], ['ee', 'Estonie'], ['lv', 'Lettonie'],
+  ['lt', 'Lituanie'], ['li', 'Liechtenstein'], ['mc', 'Monaco'], ['ca', 'Canada'], ['us', 'États-Unis'],
+  ['jp', 'Japon'],
+];
+export const flag = code => (/^[a-z]{2}$/.test(code || '') ? String.fromCodePoint(...[...code].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 97)) : '');
+
 // Icône d'un contact : code pays (fr, be…) → drapeau, sinon initiales
 export function contactAvatar(c, size = 40) {
   const code = String(c?.icon || c?.contact_icon || '').trim().toLowerCase();
-  const flag = /^[a-z]{2}$/.test(code) ? String.fromCodePoint(...[...code].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 97)) : '';
-  const emoji = !flag && code && !/^https?:/.test(code) && [...code].length <= 2 ? code : '';
-  return html`<span class="avatar" style="--size: ${size}px">${flag || emoji || initials(c?.pseudo || c?.contact)}</span>`;
+  const drapeau = flag(code);
+  const emoji = !drapeau && code && !/^https?:/.test(code) && [...code].length <= 2 ? code : '';
+  return html`<span class="avatar" style="--size: ${size}px">${drapeau || emoji || initials(c?.pseudo || c?.contact)}</span>`;
 }
 
 // Filtre PostgREST « id dans la liste », valeurs entre guillemets

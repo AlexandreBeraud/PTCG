@@ -3,7 +3,7 @@ import { html, setHtml, on, eur, reloadPage as reload } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { toastError } from '../ui/toast.js';
 import { store } from '../shared/store.js';
-import { thumbHtml, spriteHtml, subtitle, fmtDate } from '../shared/sales.js';
+import { thumbHtml, spriteHtml, subtitle, fmtDate, setSymbolHtml } from '../shared/sales.js';
 
 const JOBS = { catalogue: 'Catalogue TCGdex', pokemon: 'Référentiel Pokémon', sauvegarde: 'Sauvegarde de la base' };
 
@@ -119,7 +119,7 @@ export default {
           <div class="panel-head"><h2>Dernières ventes</h2><a class="small" href="#/ventes/vendue">Toutes les ventes</a></div>
           ${rows.length ? html`<div class="mini-list">${rows.map(t => html`
             <div class="mini-row">
-              <span class="tx-media">${thumbHtml(t, { lotImage: settings?.lot_image, size: 'xs' })}${spriteHtml(t)}</span>
+              <span class="tx-media">${setSymbolHtml(t)}${thumbHtml(t, { lotImage: settings?.lot_image, size: 'xs' })}<span class="tx-sprite">${spriteHtml(t, 'sprite-inline')}</span></span>
               <span class="grow"><strong>${t.title}</strong><span class="muted small">${[t.contact, fmtDate(t.day), subtitle(t)].filter(Boolean).join(' · ')}</span></span>
               <span class="price">${eur(t.total)}</span>
             </div>`)}</div>` : html`<p class="muted small">Aucune vente pour l’instant.</p>`}

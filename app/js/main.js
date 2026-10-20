@@ -62,11 +62,17 @@ async function route() {
   }
 }
 
-// Image cassée : on tente l'adresse de repli (data-fallback), sinon on la masque
+// Image cassée : une image du NAS est retentée une fois (le Pi traîne quand
+// beaucoup d'images arrivent d'un coup), puis l'adresse de repli (data-fallback),
+// sinon on la masque
 document.addEventListener('error', e => {
   const img = e.target;
   if (!(img instanceof HTMLImageElement)) return;
-  if (img.dataset.fallback) {
+  if (img.src.includes('/nas/api/') && !img.dataset.retried) {
+    img.dataset.retried = '1';
+    const src = img.src;
+    setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + 'r=' + Date.now(); }, 800 + Math.random() * 600);
+  } else if (img.dataset.fallback) {
     img.src = img.dataset.fallback;
     img.removeAttribute('data-fallback');
   } else if (img.hasAttribute('data-hide-on-error') || img.classList.contains('sprite')) {
@@ -85,17 +91,21 @@ window.addEventListener('pi-status', e => {
   if (box) setHtml(box, e.detail.ok ? '' : html`<strong>Le Pi ne répond pas</strong><span class="muted">Vérifie Tailscale et que le Pi est allumé. Rien de ce que tu as saisi n’est perdu.</span>`);
 });
 
-async function boot() {
-  window.addEventListener('hashchange', route);
-  route();
-
+async function loadAppearance() {
   try {
     const settings = await api.one('settings', { id: 'eq.1' });
     if (settings) applyAppearance(settings);
   } catch (err) {
-    toastError(err, { label: 'Réessayer', run: boot });
+    toastError(err, { label: 'Réessayer', run: loadAppearance });
   }
-  ensureLogin();
+}
+
+async function boot() {
+  window.addEventListener('hashchange', route);
+  // les images du NAS ont besoin du jeton FileBrowser : on l'attend un peu avant le premier affichage
+  await Promise.race([ensureLogin(), new Promise(r => setTimeout(r, 2500))]);
+  route();
+  loadAppearance();
 }
 
 boot();

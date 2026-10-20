@@ -28,7 +28,7 @@ export async function renderBackups(box) {
 
 // Tout ce que j'ai saisi (pas le référentiel, que les jobs recréent)
 const MY_TABLES = ['transactions', 'commandes', 'contacts', 'accessoires', 'classeurs', 'classeur_sets', 'produits',
-  'set_prefs', 'labels', 'label_categories', 'pokemon_labels', 'card_overrides', 'settings'];
+  'set_prefs', 'labels', 'label_categories', 'pokemon_labels', 'card_overrides', 'entites', 'settings'];
 
 async function exportJson(btn) {
   btn.disabled = true;
@@ -83,7 +83,11 @@ export async function renderSources(box) {
 }
 
 // Articles qui ne sont pas des cartes (protège-cartes, classeurs…), à choisir dans une vente
-export async function renderAccessoires(box) {
+export async function renderAccessoires(panel) {
+  // contenu neuf à chaque affichage : sinon les clics ouvraient une fiche de plus à chaque fois
+  const box = document.createElement('div');
+  box.className = 'contents';
+  panel.replaceChildren(box);
   let items = [], used = [];
   try {
     [items, used] = await Promise.all([
@@ -114,7 +118,7 @@ export async function renderAccessoires(box) {
         ...(a ? [{ label: 'Supprimer', danger: true, run: async () => {
           if (count(a.id)) { toastError(new Error('Utilisé dans des ventes ou achats : impossible de le supprimer')); return false; }
           if (!await confirmModal({ title: `Supprimer « ${a.name} » ?`, message: 'Cette suppression est définitive.', confirmLabel: 'Supprimer', danger: true })) return false;
-          try { await api.remove('accessoires', { id: `eq.${a.id}` }); store.forget('accessoires'); renderAccessoires(box); } catch (err) { toastError(err); return false; }
+          try { await api.remove('accessoires', { id: `eq.${a.id}` }); store.forget('accessoires'); renderAccessoires(panel); } catch (err) { toastError(err); return false; }
         } }] : []),
         { label: 'Annuler' },
         { label: 'Enregistrer', primary: true, run: async el => {
@@ -125,7 +129,7 @@ export async function renderAccessoires(box) {
             else await api.insert('accessoires', { name, image: image || null });
             store.forget('accessoires');
             toast('Accessoire enregistré');
-            renderAccessoires(box);
+            renderAccessoires(panel);
           } catch (err) { toastError(err); return false; }
         } },
       ],
@@ -136,7 +140,7 @@ export async function renderAccessoires(box) {
   on(box, 'click', '[data-acc-edit]', (_, b) => edit(items.find(x => x.id === b.dataset.accEdit)));
 }
 
-// Séries créées par le catalogue : je choisis seulement couleur et visibilité
+// Blocs (séries TCGdex) créés par le catalogue : je choisis seulement couleur et visibilité
 export async function renderSeries(box) {
   let series = [], prefs = [], counts = [];
   try {
@@ -146,7 +150,7 @@ export async function renderSeries(box) {
       api.list('set_list', { select: 'serie_id,release_date' }),
     ]);
   } catch (err) {
-    return setHtml(box, html`<h2>Séries</h2><p class="muted">${err.message}</p>`);
+    return setHtml(box, html`<h2>Blocs</h2><p class="muted">${err.message}</p>`);
   }
   const pref = id => prefs.find(p => p.target_id === id) || {};
   const recent = id => counts.filter(c => c.serie_id === id).map(c => c.release_date || '').sort().pop() || '';
@@ -154,7 +158,7 @@ export async function renderSeries(box) {
   series.sort((a, b) => recent(b.id).localeCompare(recent(a.id)));
 
   setHtml(box, html`
-    <div class="panel-head"><h2>Séries</h2><span class="muted small">Créées par le catalogue · tu choisis seulement couleur et visibilité</span></div>
+    <div class="panel-head"><h2>Blocs</h2><span class="muted small">Créés par le catalogue · tu choisis la couleur (reprise par les extensions qui n’en ont pas) et la visibilité</span></div>
     <div class="series-list">${series.map(s => html`
       <div class="serie-row">
         <input class="input input-color" type="color" data-serie-color="${s.id}" value="${pref(s.id).color || '#8C95A8'}" aria-label="Couleur de ${s.name}">

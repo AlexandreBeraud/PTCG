@@ -4,11 +4,27 @@ import { icon } from '../../ui/icons.js';
 import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { store } from '../../shared/store.js';
-import { contactAvatar, commandeStatusTag, fmtDate, norm, today } from '../../shared/sales.js';
+import { contactAvatar, commandeStatusTag, fmtDate, norm, today, COUNTRIES, flag } from '../../shared/sales.js';
 
 const ROLE = { all: 'Tous', vente: 'Acheteurs', achat: 'Vendeurs' };
+// statut d'au moins une de ses commandes
+const STATUTS = [
+  { id: '', label: 'Toutes les commandes' },
+  { id: 'a_envoyer', label: 'À envoyer' },
+  { id: 'envoye', label: 'Envoyées' },
+  { id: 'a_payer', label: 'À payer' },
+  { id: 'paye', label: 'Payées, en attente' },
+  { id: 'arrive', label: 'Reçues' },
+];
+const SORTS = [
+  { id: 'name', label: 'Nom (A → Z)', cmp: (a, b) => a.pseudo.localeCompare(b.pseudo, 'fr') },
+  { id: 'recent', label: 'Dernière commande', cmp: (a, b) => String(b.derniere || '').localeCompare(String(a.derniere || '')) },
+  { id: 'vendu', label: 'Total vendu', cmp: (a, b) => Number(b.total_vente) - Number(a.total_vente) },
+  { id: 'achete', label: 'Total acheté', cmp: (a, b) => Number(b.total_achat) - Number(a.total_achat) },
+  { id: 'commandes', label: 'Nombre de commandes', cmp: (a, b) => (Number(b.commandes_vente) + Number(b.commandes_achat)) - (Number(a.commandes_vente) + Number(a.commandes_achat)) },
+];
 
-const state = { q: '', role: 'all' };
+const state = { q: '', role: 'all', statut: '', sort: 'name' };
 
 function roleLabel(c) {
   const a = c.commandes_vente > 0, v = c.commandes_achat > 0;
@@ -36,6 +52,10 @@ export default {
         <aside class="split-list" aria-label="Contacts">
           <label class="search">${icon('search')}<input type="search" id="cq" placeholder="Rechercher un contact" value="${state.q}" aria-label="Rechercher un contact"></label>
           <div class="chips" id="roles"></div>
+          <div class="form-row">
+            <label class="field">Commandes<select class="select" id="cstatut" aria-label="Statut des commandes"></select></label>
+            <label class="field">Tri<select class="select" id="csort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select></label>
+          </div>
           <div id="clist" class="contact-list"></div>
         </aside>
         <section class="split-detail" id="detail" aria-live="polite"></section>
@@ -57,9 +77,14 @@ export default {
     function renderList() {
       setHtml($('#roles'), html`${Object.entries(ROLE).map(([id, label]) => html`<button type="button" class="chip" data-role="${id}" aria-pressed="${state.role === id}">${label}</button>`)}`);
       const q = norm(state.q);
-      const list = contacts.filter(c =>
+      const byRole = contacts.filter(c =>
         (!q || norm(c.pseudo).includes(q))
         && (state.role === 'all' || (state.role === 'vente' ? c.commandes_vente > 0 : c.commandes_achat > 0)));
+      const n = id => byRole.filter(c => (c.statuts || []).includes(id)).length;
+      setHtml($('#cstatut'), html`${STATUTS.map(o => html`<option value="${o.id}" ${o.id === state.statut ? 'selected' : ''}>${o.label}${o.id ? ` (${n(o.id)})` : ''}</option>`)}`);
+      const list = byRole
+        .filter(c => !state.statut || (c.statuts || []).includes(state.statut))
+        .sort(SORTS.find(o => o.id === state.sort).cmp);
       if (!currentId && list.length && matchMedia('(min-width: 861px)').matches) currentId = list[0].id;
       setHtml($('#clist'), list.length ? html`${list.map(c => html`
         <a class="contact-item" href="#/contacts/${encodeURIComponent(c.id)}" ${c.id === currentId ? html`aria-current="true"` : ''} data-contact="${c.id}">
@@ -97,9 +122,13 @@ export default {
       `);
 
       try {
-        const orders = await api.list('commande_list', { contact_id: `eq.${c.id}`, order: 'ordered_on.desc.nullslast,created_at.desc' });
+        const all = await api.list('commande_list', { contact_id: `eq.${c.id}`, order: 'ordered_on.desc.nullslast,created_at.desc' });
         if (currentId !== c.id) return;
-        setHtml(box.querySelector('#orders'), orders.length ? html`<div class="orders">${orders.map(o => html`
+        const orders = state.statut ? all.filter(o => o.status === state.statut) : all;
+        const filtre = state.statut && orders.length < all.length
+          ? html`<p class="muted small" style="margin: 0">${orders.length} commande${orders.length > 1 ? 's' : ''} « ${STATUTS.find(o => o.id === state.statut).label} » sur ${all.length} · <button type="button" class="link" data-statut-all>Tout afficher</button></p>`
+          : '';
+        setHtml(box.querySelector('#orders'), orders.length ? html`${filtre}<div class="orders">${orders.map(o => html`
           <div class="order">
             <div class="grow">
               <strong>${o.direction === 'vente' ? 'Vente' : 'Achat'} du ${fmtDate(o.ordered_on || o.created_at)}</strong>
@@ -118,10 +147,21 @@ export default {
     function contactForm(c = null) {
       openModal({
         title: c ? 'Modifier le contact' : 'Nouveau contact',
-        width: 480,
+        width: 540,
         body: html`
           <label class="field">Pseudo<input class="input" id="cf-pseudo" value="${c?.pseudo || ''}" required></label>
-          <label class="field">Icône (facultatif)<input class="input" id="cf-icon" value="${c?.icon || ''}" placeholder="fr, be, de… ou un emoji"></label>`,
+          <div class="field"><span>Pays</span>
+            <input type="hidden" id="cf-icon" value="${c?.icon || ''}">
+            <div class="flag-grid" role="radiogroup" aria-label="Pays">
+              <button type="button" class="flag-btn flag-none" role="radio" data-flag="" aria-checked="${!c?.icon}" title="Aucun">—</button>
+              ${COUNTRIES.map(([code, name]) => html`<button type="button" class="flag-btn" role="radio" data-flag="${code}" aria-checked="${c?.icon === code}" title="${name}" aria-label="${name}">${flag(code)}</button>`)}
+              ${c?.icon && !COUNTRIES.some(([code]) => code === c.icon) ? html`<button type="button" class="flag-btn" role="radio" data-flag="${c.icon}" aria-checked="true" title="Icône actuelle">${flag(c.icon) || c.icon}</button>` : ''}
+            </div>
+          </div>`,
+        onOpen: el => on(el, 'click', '[data-flag]', (_, b) => {
+          el.querySelector('#cf-icon').value = b.dataset.flag;
+          el.querySelectorAll('[data-flag]').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+        }),
         actions: [
           ...(c ? [{ label: 'Supprimer', danger: true, run: async () => {
             const ok = await confirmModal({ title: `Supprimer ${c.pseudo} ?`, message: 'Ses commandes restent, sans contact.', confirmLabel: 'Supprimer', danger: true });
@@ -180,6 +220,9 @@ export default {
     }
 
     $('#cq').addEventListener('input', e => { state.q = e.target.value; renderList(); });
+    $('#cstatut').addEventListener('change', e => { state.statut = e.target.value; renderList(); });
+    $('#csort').addEventListener('change', e => { state.sort = e.target.value; renderList(); });
+    on(main, 'click', '[data-statut-all]', () => { state.statut = ''; renderList(); });
     on(main, 'click', '[data-role]', (_, b) => { state.role = b.dataset.role; renderList(); });
     on(main, 'click', '[data-new-contact]', () => contactForm());
     on(main, 'click', '[data-edit-contact]', () => contactForm(contacts.find(x => x.id === currentId)));

@@ -86,7 +86,10 @@ export default {
     }
 
     async function renderEditor() {
-      const box = $('#editor');
+      // un contenu neuf à chaque affichage : les écouteurs du label d'avant partent avec l'ancien
+      const box = document.createElement('div');
+      box.className = 'label-editor-body';
+      $('#editor').replaceChildren(box);
       const l = labels.find(x => x.type === selected);
       if (!l) return setHtml(box, html`<p class="muted small">Choisis un label pour le modifier.</p>`);
 

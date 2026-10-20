@@ -3,7 +3,15 @@ import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { fmtDate, norm } from '../../shared/sales.js';
 
-const state = { q: '', stockOnly: false, showHidden: false };
+const state = { q: '', stockOnly: false, showHidden: false, sort: 'date_desc' };
+const byDate = (a, b) => String(a.release_date || '9999').localeCompare(String(b.release_date || '9999'));
+const SORTS = [
+  { id: 'date_desc', label: 'Date de sortie, récentes d’abord', group: true },
+  { id: 'date_asc', label: 'Date de sortie, anciennes d’abord', group: true },
+  { id: 'name', label: 'Nom (A → Z)', cmp: (a, b) => a.name.localeCompare(b.name, 'fr') },
+  { id: 'stock', label: 'Cartes en stock', cmp: (a, b) => Number(b.en_stock) - Number(a.en_stock) || byDate(b, a) },
+  { id: 'vendues', label: 'Cartes vendues', cmp: (a, b) => Number(b.vendues) - Number(a.vendues) || byDate(b, a) },
+];
 
 const releaseText = d => {
   if (!d) return 'date inconnue';
@@ -26,6 +34,7 @@ export default {
       </header>
       <div class="toolbar">
         <label class="search grow">${icon('search')}<input type="search" id="q" placeholder="Rechercher une extension" value="${state.q}" aria-label="Rechercher une extension"></label>
+        <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
         <label class="check-inline"><input type="checkbox" id="stock" ${state.stockOnly ? 'checked' : ''}> Seulement celles où j’ai du stock</label>
         <label class="check-inline"><input type="checkbox" id="hidden" ${state.showHidden ? 'checked' : ''}> Afficher les masquées</label>
       </div>
@@ -36,7 +45,7 @@ export default {
     let sets = [];
     try {
       sets = await api.list('set_list', {
-        select: 'id,name,name_en,serie_id,serie_name,symbol,logo,release_date,card_count,card_count_total,cartes,en_stock,vendues,lang,source,color,hidden,serie_hidden,sort_order,serie_sort,serie_release',
+        select: 'id,name,name_en,serie_id,serie_name,symbol,logo,release_date,card_count,card_count_total,cartes,en_stock,vendues,lang,source,color,serie_color,hidden,serie_hidden,sort_order,serie_sort,serie_release',
         order: 'serie_sort.asc.nullslast,serie_release.desc.nullslast,sort_order.asc.nullslast,release_date.desc.nullslast,id',
       });
     } catch (err) {
@@ -50,12 +59,22 @@ export default {
         && (!state.stockOnly || Number(s.en_stock) > 0)
         && (!q || norm(`${s.name} ${s.name_en || ''} ${s.id} ${s.serie_name || ''}`).includes(q)));
 
+      const sort = SORTS.find(o => o.id === state.sort);
+      if (!sort.group) {
+        return setHtml($('#list'), shown.length
+          ? html`<div class="set-grid">${[...shown].sort(sort.cmp).map(s => setCard(s, true))}</div>`
+          : html`<div class="empty"><h2>Aucune extension ne correspond</h2></div>`);
+      }
+      // rangées par bloc ; « anciennes d'abord » retourne blocs et extensions
+      const list = state.sort === 'date_asc' ? [...shown].reverse() : shown;
       const series = [];
-      for (const s of shown) {
+      for (const s of list) {
         let g = series.find(x => x.id === (s.serie_id || ''));
-        if (!g) series.push(g = { id: s.serie_id || '', name: s.serie_name || 'Hors série', sets: [] });
+        if (!g) series.push(g = { id: s.serie_id || '', name: s.serie_name || 'Hors bloc', sets: [] });
         g.sets.push(s);
       }
+      // les extensions sans bloc toujours à la fin
+      series.sort((a, b) => (a.id === '') - (b.id === ''));
 
       setHtml($('#list'), series.length ? html`${series.map(g => {
         const stock = g.sets.reduce((n, s) => n + Number(s.en_stock), 0);
@@ -65,27 +84,32 @@ export default {
               <h2>${g.name}</h2>
               <span class="muted small">${g.sets.length} extension${g.sets.length > 1 ? 's' : ''}${stock ? ` · ${stock} carte${stock > 1 ? 's' : ''} en stock` : ''}</span>
             </div>
-            <div class="set-grid">
-              ${g.sets.map(s => html`
-                <a class="set-card ${s.hidden || s.serie_hidden ? 'is-hidden' : ''}" href="#/extensions/${encodeURIComponent(s.id)}" style="${s.color ? `--set-color: ${s.color}` : ''}">
-                  <span class="set-logo">${s.logo ? html`<img src="${s.logo}" alt="" loading="lazy" data-hide-on-error>` : html`<span class="set-code">${s.id.toUpperCase()}</span>`}</span>
-                  <span class="set-info">
-                    <strong>${s.name}</strong>
-                    <span class="muted small">${s.id.toUpperCase()} · ${releaseText(s.release_date)}</span>
-                    <span class="small">
-                      ${s.card_count_total || s.cartes} cartes
-                      ${s.lang === 'en' ? html` <span class="tag tag-warn">EN</span>` : ''}
-                      ${s.source === 'manual' ? html` <span class="tag">À la main</span>` : ''}
-                      ${Number(s.en_stock) ? html` · <span class="pos">${s.en_stock} en stock</span>` : ''}
-                    </span>
-                  </span>
-                </a>`)}
-            </div>
+            <div class="set-grid">${g.sets.map(s => setCard(s))}</div>
           </section>`;
       })}` : html`<div class="empty"><h2>Aucune extension ne correspond</h2></div>`);
     }
 
+    function setCard(s, withBloc = false) {
+      const color = s.color || s.serie_color;
+      return html`
+        <a class="set-card ${s.hidden || s.serie_hidden ? 'is-hidden' : ''}" href="#/extensions/${encodeURIComponent(s.id)}" style="${color ? `--set-color: ${color}` : ''}">
+          <span class="set-logo">${s.logo ? html`<img src="${s.logo}" alt="" loading="lazy" data-hide-on-error>` : html`<span class="set-code">${s.id.toUpperCase()}</span>`}</span>
+          <span class="set-info">
+            <strong>${s.name}</strong>
+            <span class="muted small">${withBloc && s.serie_name ? `${s.serie_name} · ` : ''}${s.id.toUpperCase()} · ${releaseText(s.release_date)}</span>
+            <span class="small">
+              ${s.card_count_total || s.cartes} cartes
+              ${s.lang === 'en' ? html` <span class="tag tag-warn">EN</span>` : ''}
+              ${s.source === 'manual' ? html` <span class="tag">À la main</span>` : ''}
+              ${Number(s.en_stock) ? html` · <span class="pos">${s.en_stock} en stock</span>` : ''}
+              ${state.sort === 'vendues' && Number(s.vendues) ? html` · ${s.vendues} vendues` : ''}
+            </span>
+          </span>
+        </a>`;
+    }
+
     $('#q').addEventListener('input', e => { state.q = e.target.value; render(); });
+    $('#sort').addEventListener('change', e => { state.sort = e.target.value; render(); });
     on(main, 'change', '#stock', (_, c) => { state.stockOnly = c.checked; render(); });
     on(main, 'change', '#hidden', (_, c) => { state.showHidden = c.checked; render(); });
     render();

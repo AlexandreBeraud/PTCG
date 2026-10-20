@@ -6,16 +6,23 @@ import { store } from '../../shared/store.js';
 import {
   CONDITIONS, ITEM_CONDITIONS, LANGS, VENTE_STATUS, COMMANDE_STATUS,
   thumbHtml, spriteHtml, subtitle, formBadge, conditionTag, venteStatusTag, commandeStatusTag, variantLabel, fmtDate, norm, priceText,
+  setSymbolHtml, setColorStyle,
 } from '../../shared/sales.js';
+import { setOptionsHtml } from '../../shared/sets.js';
 
 const PAGE = 60;
+const BY_NUMBER = 'number_sort.asc.nullslast,number.asc';
 const SORTS = [
   { id: 'date_desc', label: 'Plus récentes', order: 'day.desc,created_at.desc' },
   { id: 'date_asc', label: 'Plus anciennes', order: 'day.asc,created_at.asc' },
   { id: 'price_desc', label: 'Prix décroissant', order: 'total.desc,day.desc' },
   { id: 'price_asc', label: 'Prix croissant', order: 'total.asc,day.desc' },
-  { id: 'name', label: 'Nom', order: 'title.asc,day.desc' },
-  { id: 'set', label: 'Extension et numéro', order: 'set_name.asc.nullslast,number.asc,day.desc' },
+  { id: 'name', label: 'Nom (A → Z)', order: 'title.asc,day.desc' },
+  { id: 'name_desc', label: 'Nom (Z → A)', order: 'title.desc,day.desc' },
+  { id: 'set_new', label: 'Extension, de la plus récente', order: `set_release.desc.nullslast,set_key,${BY_NUMBER}` },
+  { id: 'set_old', label: 'Extension, de la plus ancienne', order: `set_release.asc.nullslast,set_key,${BY_NUMBER}` },
+  { id: 'set', label: 'Extension (A → Z)', order: `set_name.asc.nullslast,${BY_NUMBER}` },
+  { id: 'qty', label: 'Quantité', order: 'qty.desc,day.desc' },
 ];
 
 // Filtres gardés le temps de la session, un jeu par onglet
@@ -73,14 +80,14 @@ export default {
     // ── filtres ──
     async function renderFilters() {
       const [setsList, accounts] = await Promise.all([
-        api.list('transaction_sets', { direction: `eq.${dir}`, order: 'set_name' }).catch(() => []),
+        api.list('transaction_sets', { direction: `eq.${dir}`, order: 'set_release.desc.nullslast,set_name' }).catch(() => []),
         dir === 'vente' ? store.forAccounts().catch(() => []) : [],
       ]);
       const opt = (val, label, cur) => html`<option value="${val}" ${val === (cur || '') ? 'selected' : ''}>${label}</option>`;
       setHtml($('#filters'), html`
         <label class="field">État<select class="select" data-filter="condition">${opt('', 'Tous')}${[...CONDITIONS, ...ITEM_CONDITIONS].map(c => opt(c.id, c.id, f.condition))}</select></label>
         <label class="field">Langue<select class="select" data-filter="lang">${opt('', 'Toutes')}${LANGS.map(l => opt(l.id, l.label, f.lang))}</select></label>
-        <label class="field">Extension<select class="select" data-filter="set">${opt('', 'Toutes')}${setsList.map(s => opt(s.set_key, `${s.set_name} (${s.lignes})`, f.set))}</select></label>
+        <label class="field">Extension<select class="select" data-filter="set">${setOptionsHtml(setsList, f.set || '', { empty: 'Toutes', label: s => `${s.set_name} (${s.lignes})` })}</select></label>
         ${dir === 'vente' ? html`<label class="field">Pour le compte de<select class="select" data-filter="account">${opt('', 'Tout le monde')}${opt('__moi', 'Moi', f.account)}${accounts.map(a => opt(a.name, a.name, f.account))}</select></label>` : ''}
         <label class="field">Du<input class="input" type="date" data-filter="from" value="${f.from || ''}"></label>
         <label class="field">Au<input class="input" type="date" data-filter="to" value="${f.to || ''}"></label>
@@ -154,10 +161,10 @@ export default {
     function rowHtml(t) {
       const sel = selected.has(t.id);
       return html`
-        <div class="tx-row ${sel ? 'is-selected' : ''}" data-id="${t.id}">
+        <div class="tx-row ${sel ? 'is-selected' : ''} ${t.set_color ? 'has-set-color' : ''}" data-id="${t.id}" style="${setColorStyle(t)}">
           <label class="tx-check"><input type="checkbox" data-select="${t.id}" ${sel ? 'checked' : ''} aria-label="Sélectionner ${t.title}"></label>
           <button type="button" class="tx-open" data-open="${t.id}">
-            <span class="tx-media">${thumbHtml(t, { lotImage: lotImage() })}${spriteHtml(t)}</span>
+            <span class="tx-media">${setSymbolHtml(t)}${thumbHtml(t, { lotImage: lotImage() })}<span class="tx-sprite">${spriteHtml(t, 'sprite-inline')}</span></span>
             <span class="tx-name">
               <span class="tx-title">${t.title}${t.qty > 1 && t.kind !== 'lot' ? html` <span class="tag">×${t.qty}</span>` : ''} ${formBadge(t)}${t.for_account ? html` <span class="tag tag-owner">Pour ${t.for_account}</span>` : ''}</span>
               <span class="muted small">${subtitle(t)}</span>
@@ -176,11 +183,11 @@ export default {
     function cardHtml(t) {
       const sel = selected.has(t.id);
       return html`
-        <article class="tx-card ${sel ? 'is-selected' : ''}" data-id="${t.id}">
+        <article class="tx-card ${sel ? 'is-selected' : ''} ${t.set_color ? 'has-set-color' : ''}" data-id="${t.id}" style="${setColorStyle(t)}">
           <label class="tx-card-check"><input type="checkbox" data-select="${t.id}" ${sel ? 'checked' : ''} aria-label="Sélectionner ${t.title}"></label>
           <button type="button" class="tx-card-open" data-open="${t.id}">
             <span class="tx-card-media">${thumbHtml(t, { lotImage: lotImage(), size: 'lg' })}${spriteHtml(t, 'sprite sprite-lg')}</span>
-            <span class="tx-title">${t.title} ${formBadge(t)}</span>
+            <span class="tx-title">${setSymbolHtml(t)} ${t.title} ${formBadge(t)}</span>
             <span class="muted small">${subtitle(t)}</span>
           </button>
           <div class="tx-card-foot">

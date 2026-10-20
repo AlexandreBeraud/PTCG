@@ -38,7 +38,7 @@ export default {
       <header class="page-header">
         <div>
           <h1>Bilan</h1>
-          <p>Ventes vendues et achats reçus · les ventes pour le compte d’autres sont à part</p>
+          <p>Ventes vendues dont la commande est reçue, au mois de réception · achats reçus · les ventes pour le compte d’autres sont à part</p>
         </div>
         <div class="page-actions">
           <select class="select select-auto" id="scope" aria-label="Périmètre"><option value="">Mon bilan</option></select>
@@ -64,30 +64,46 @@ export default {
 
     async function draw() {
       const self = !state.scope;
-      let months;
+      let months, waiting;
       try {
-        months = await api.rpc('bilan_mensuel', { scope: state.scope || null });
+        [months, waiting] = await Promise.all([
+          api.rpc('bilan_mensuel', { scope: state.scope || null }),
+          api.rpc('bilan_en_attente', { scope: state.scope || null }).catch(() => []),
+        ]);
       } catch (err) {
         return setHtml($('#table'), html`<p class="muted">${err.message}</p>`);
       }
+      // ventes vendues pas encore comptées : leur commande n'est pas encore reçue
+      const pending = new Map(waiting.map(w => [w.mois, w]));
+      for (const w of waiting) {
+        if (!months.some(m => m.mois === w.mois)) months.push({ mois: w.mois, ventes: 0, achats: 0, cartes_vendues: 0, cartes_achetees: 0 });
+      }
+      months.sort((a, b) => a.mois.localeCompare(b.mois));
 
       const years = [...new Set(months.map(m => m.mois.slice(0, 4)))].sort().reverse();
       if (!years.includes(state.year) && state.year !== 'all') state.year = years[0] || String(new Date().getFullYear());
       setHtml($('#year'), html`${years.map(y => html`<option value="${y}" ${y === state.year ? 'selected' : ''}>${y}</option>`)}<option value="all" ${state.year === 'all' ? 'selected' : ''}>Depuis le début</option>`);
 
       const rows = (state.year === 'all' ? months : months.filter(m => m.mois.startsWith(state.year)))
-        .map(m => ({ ...m, ventes: Number(m.ventes), achats: Number(m.achats), solde: Number(m.ventes) - Number(m.achats) }));
+        .map(m => ({ ...m, ventes: Number(m.ventes), achats: Number(m.achats), solde: Number(m.ventes) - Number(m.achats),
+          attente: Number(pending.get(m.mois)?.montant || 0), attente_n: Number(pending.get(m.mois)?.lignes || 0) }));
       const sum = k => rows.reduce((n, r) => n + Number(r[k]), 0);
       const label = state.year === 'all' ? 'depuis le début' : state.year;
       const solde = sum('ventes') - sum('achats');
+      const attente = sum('attente');
+      const attenteKpi = attente ? html`
+        <div class="kpi" title="Ventes « Vendue » dont la commande n’est pas encore reçue : elles comptent au mois de réception">
+          <span class="muted small">En attente de réception</span><strong>${eur(attente)}</strong>
+          <span class="muted small">${sum('attente_n')} vente${sum('attente_n') > 1 ? 's' : ''}, comptée${sum('attente_n') > 1 ? 's' : ''} à la réception</span>
+        </div>` : '';
 
       setHtml($('#kpis'), self ? html`
         <div class="kpi"><span class="muted small">Ventes ${label}</span><strong>${eur(sum('ventes'))}</strong></div>
         <div class="kpi"><span class="muted small">Achats ${label}</span><strong>${eur(sum('achats'))}</strong></div>
         <div class="kpi"><span class="muted small">Bénéfice ${label}</span><strong class="${solde >= 0 ? 'pos' : 'neg'}">${signed(solde)}</strong></div>
-        <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${sum('cartes_vendues')}</strong></div>` : html`
+        <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${sum('cartes_vendues')}</strong></div>${attenteKpi}` : html`
         <div class="kpi"><span class="muted small">Ventes pour ${state.scope} · ${label}</span><strong>${eur(sum('ventes'))}</strong></div>
-        <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${sum('cartes_vendues')}</strong></div>`);
+        <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${sum('cartes_vendues')}</strong></div>${attenteKpi}`);
 
       const name = m => {
         const [y, mo] = m.mois.split('-').map(Number);
@@ -96,16 +112,17 @@ export default {
       setHtml($('#table'), rows.length ? html`
         <div class="table-scroll">
           <table class="table">
-            <thead><tr><th>Mois</th><th class="num">Ventes</th>${self ? html`<th class="num">Achats</th><th class="num">Bénéfice</th>` : ''}<th class="num">Cartes vendues</th></tr></thead>
+            <thead><tr><th>Mois</th><th class="num">Ventes</th>${self ? html`<th class="num">Achats</th><th class="num">Bénéfice</th>` : ''}<th class="num">Cartes vendues</th>${attente ? html`<th class="num">En attente</th>` : ''}</tr></thead>
             <tbody>
               ${[...rows].reverse().map(r => html`<tr>
                 <td>${name(r)}</td>
                 <td class="num">${eur(r.ventes)}</td>
                 ${self ? html`<td class="num">${eur(r.achats)}</td><td class="num ${r.solde >= 0 ? 'pos' : 'neg'}">${signed(r.solde)}</td>` : ''}
                 <td class="num">${r.cartes_vendues}</td>
+                ${attente ? html`<td class="num muted">${r.attente ? eur(r.attente) : '—'}</td>` : ''}
               </tr>`)}
             </tbody>
-            <tfoot><tr><th>Total</th><th class="num">${eur(sum('ventes'))}</th>${self ? html`<th class="num">${eur(sum('achats'))}</th><th class="num ${solde >= 0 ? 'pos' : 'neg'}">${signed(solde)}</th>` : ''}<th class="num">${sum('cartes_vendues')}</th></tr></tfoot>
+            <tfoot><tr><th>Total</th><th class="num">${eur(sum('ventes'))}</th>${self ? html`<th class="num">${eur(sum('achats'))}</th><th class="num ${solde >= 0 ? 'pos' : 'neg'}">${signed(solde)}</th>` : ''}<th class="num">${sum('cartes_vendues')}</th>${attente ? html`<th class="num">${eur(attente)}</th>` : ''}</tr></tfoot>
           </table>
         </div>` : html`<p class="muted">Rien sur cette période.</p>`);
 

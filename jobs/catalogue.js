@@ -10,6 +10,7 @@
 //   node catalogue.js --all         passe en revue toutes les extensions
 //   node catalogue.js --refresh     relit le détail de toutes les cartes des extensions traitées
 //   node catalogue.js --no-prices   saute la mise à jour des prix
+//   node catalogue.js --no-images   ne cherche pas d'image pour les cartes qui n'en ont pas
 //
 // FR d'abord. Une carte pas encore traduite est importée en anglais (nom du
 // Pokémon traduit) avec lang='en', puis remplacée en place quand la version FR
@@ -19,7 +20,7 @@
 
 const env = require('./lib/env');
 const db = require('./lib/db');
-const { getJson, mapLimit } = require('./lib/http');
+const { getJson, mapLimit, sleep } = require('./lib/http');
 const runlog = require('./lib/runlog');
 
 const TCGDEX = env.TCGDEX_URL;
@@ -28,12 +29,15 @@ const FORCE_EN = new Set(env.list('en'));
 const ALL = env.flag('all');
 const REFRESH = env.flag('refresh');
 const PRICES = !env.flag('no-prices');
+const IMAGES = !env.flag('no-images');
 
 const POCKET_SERIE = 'tcgp';          // TCG Pocket (jeu mobile) : jamais importé
 const EN_ONLY_MAX_AGE_DAYS = 365;     // au-delà, une extension seulement en anglais est ignorée
 const RECENT_DAYS = 45;               // extensions récentes revues chaque nuit (cartes ajoutées tard)
 const SET_CONCURRENCY = 2;
 const CARD_CONCURRENCY = 6;
+const IMAGE_MAX = 60;                 // cartes sans image cherchées par nuit sur pokemontcg.io
+const IMAGE_RETRY_DAYS = 7;           // une carte sans résultat est recherchée de nouveau une semaine plus tard
 
 const CATEGORIES = { 'Pokémon': 'pokemon', Pokemon: 'pokemon', Dresseur: 'trainer', Trainer: 'trainer', 'Énergie': 'energy', Energy: 'energy' };
 const VARIANTS = { normal: 'normale', reverse: 'reverse', holo: 'holo', firstEdition: '1ere_edition' };
@@ -299,6 +303,49 @@ async function refreshPrices(ctx) {
   return { suivies: ids.length, maj: rows.length };
 }
 
+// ── Images manquantes ──────────────────────────────────────────────────────
+// TCGdex n'a pas toujours l'image d'une carte, même en anglais. On la cherche
+// sur pokemontcg.io (code de l'extension = code Cardmarket, sinon nom anglais)
+// et on la garde à part (image_fallback) : TCGdex reprend la main dès qu'il
+// en a une, et une image ajoutée à la main dans l'appli passe avant tout.
+
+async function fillImages(ctx) {
+  const since = new Date(Date.now() - IMAGE_RETRY_DAYS * 864e5).toISOString();
+  const missing = await db.select('cards',
+    `select=id,set_id,number,name,name_en&image=is.null&image_fallback=is.null&image_manual=is.null&source=eq.tcgdex`
+    + `&or=(image_checked_at.is.null,image_checked_at.lt.${since})&order=id`);
+  // d'abord les cartes de mes ventes et achats, puis les extensions récentes
+  const mine = new Set((await db.select('transactions', 'select=card_id&card_id=not.is.null')).map(t => t.card_id));
+  const released = c => (ctx.dbSets.get(c.set_id) || {}).release_date || '';
+  missing.sort((a, b) => mine.has(b.id) - mine.has(a.id) || released(b).localeCompare(released(a)));
+  const todo = missing.slice(0, IMAGE_MAX);
+  const headers = env.POKEMONTCG_KEY ? { 'X-Api-Key': env.POKEMONTCG_KEY } : undefined;
+  let found = 0;
+
+  for (const c of todo) {
+    const set = ctx.dbSets.get(c.set_id) || {};
+    const where = set.cardmarket_code ? `set.ptcgoCode:${set.cardmarket_code}`
+      : set.name_en || set.name ? `set.name:"${(set.name_en || set.name).replace(/"/g, '')}"` : null;
+    const number = /^\d+$/.test(c.number || '') ? String(Number(c.number)) : c.number;
+    let image = null;
+    if (where && number) {
+      const q = encodeURIComponent(`${where} number:${number}`);
+      const res = await getJson(`${env.POKEMONTCG_URL}/cards?q=${q}&select=id,name,number,images`, { headers, retries: 1, timeout: 20000 })
+        .catch(() => null);
+      const hits = (res && res.data) || [];
+      // même nom anglais si possible, sinon le seul résultat
+      const same = hits.find(h => c.name_en && h.name && h.name.toLowerCase() === c.name_en.toLowerCase());
+      const hit = same || (hits.length === 1 ? hits[0] : null);
+      image = (hit && hit.images && (hit.images.large || hit.images.small)) || null;
+    }
+    if (image) found++;
+    await db.patch('cards', `id=eq.${encodeURIComponent(c.id)}`, { image_fallback: image, image_checked_at: new Date().toISOString() });
+    await sleep(2100);   // sans clé : 30 requêtes par minute au plus
+  }
+  if (todo.length) console.log(`Images : ${found} trouvée(s) sur pokemontcg.io pour ${todo.length} carte(s) sans image${missing.length > todo.length ? ` (${missing.length - todo.length} pour les nuits suivantes)` : ''}.`);
+  return { cherchees: todo.length, trouvees: found, restantes: missing.length - todo.length };
+}
+
 // ── Liens Cardmarket ───────────────────────────────────────────────────────
 // Calculés par la base (v2.refresh_cardmarket_urls), comme quand on change
 // le code Cardmarket d'une extension dans l'appli.
@@ -395,6 +442,7 @@ runlog.run('catalogue', async () => {
   const prices = PRICES ? await refreshPrices(ctx) : null;
   const links = await refreshCardmarket();
   await db.rpc('refresh_card_forms');
+  const images = IMAGES && !env.DRY_RUN ? await fillImages(ctx).catch(e => ({ erreur: e.message })) : null;
 
   const sum = key => results.reduce((n, r) => n + (r[key] || 0), 0);
   const errors = results.filter(r => r.error);
@@ -410,6 +458,7 @@ runlog.run('catalogue', async () => {
     sous_extensions: parents,
     prix: prices,
     liens_cardmarket: links,
+    images,
     erreurs: errors.map(r => `${r.id} : ${r.error}`),
   };
 

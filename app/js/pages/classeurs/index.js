@@ -5,8 +5,18 @@ import { icon } from '../../ui/icons.js';
 import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { dropzone } from '../../ui/upload.js';
+import { setOptions, setOptionsHtml } from '../../shared/sets.js';
 
 const SLOTS = [4, 9, 12, 16, 18];
+const fill = b => (b.places ? b.remplies / b.places : 0);
+const SORTS = [
+  { id: 'order', label: 'Mon ordre', cmp: () => 0 },
+  { id: 'name', label: 'Nom (A → Z)', cmp: (a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }) },
+  { id: 'fill', label: 'Les plus remplis', cmp: (a, b) => fill(b) - fill(a) },
+  { id: 'empty', label: 'Les moins remplis', cmp: (a, b) => fill(a) - fill(b) },
+  { id: 'recent', label: 'Créés récemment', cmp: (a, b) => String(b.created_at).localeCompare(String(a.created_at)) },
+];
+let sortId = 'order';
 
 // « p. 1 à 21 » pour chaque extension, dans l'ordre du classeur
 function pageRanges(exts) {
@@ -26,7 +36,10 @@ export default {
     setHtml(main, html`
       <header class="page-header">
         <div><h1>Classeurs</h1><p id="sub">Tes classeurs physiques et ce qui est rangé dedans</p></div>
-        <div class="page-actions"><button type="button" class="btn btn-primary" data-new>${icon('plus')}Nouveau classeur</button></div>
+        <div class="page-actions">
+          <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === sortId ? 'selected' : ''}>${o.label}</option>`)}</select>
+          <button type="button" class="btn btn-primary" data-new>${icon('plus')}Nouveau classeur</button>
+        </div>
       </header>
       <section id="list" aria-live="polite"><p class="muted">Chargement…</p></section>
     `);
@@ -40,7 +53,7 @@ export default {
     }
     setHtml($('#sub'), `${binders.length} classeur${binders.length > 1 ? 's' : ''} · tes classeurs physiques et ce qui est rangé dedans`);
 
-    setHtml($('#list'), binders.length ? html`<div class="binder-grid">${binders.map(b => {
+    const draw = () => setHtml($('#list'), binders.length ? html`<div class="binder-grid">${[...binders].sort(SORTS.find(o => o.id === sortId).cmp).map(b => {
       const pct = b.places ? Math.min(100, Math.round(b.remplies / b.places * 100)) : 0;
       const done = b.status === 'complete';
       return html`
@@ -62,14 +75,16 @@ export default {
           </div>
         </article>`;
     })}</div>` : html`<div class="empty"><h2>Aucun classeur</h2><button type="button" class="btn" data-new>Créer le premier</button></div>`);
+    draw();
 
+    $('#sort').addEventListener('change', e => { sortId = e.target.value; draw(); });
     on(main, 'click', '[data-new]', () => editBinder(null));
     on(main, 'click', '[data-edit]', (_, b) => editBinder(binders.find(x => x.id === b.dataset.edit)));
   },
 };
 
 async function editBinder(b) {
-  const sets = await api.list('sets', { select: 'id,name,card_count_total,card_count', order: 'release_date.desc.nullslast' });
+  const sets = await setOptions();
   const st = {
     name: b?.name || '',
     pages: b?.pages ?? 40,
@@ -128,18 +143,15 @@ async function editBinder(b) {
             </span>
           </div>`)}</div>` : html`<p class="muted small" style="margin: 0">Aucune extension rangée.</p>`}
       </div>
-      <div class="input-group">
-        <input class="input" list="bf-sets" id="bf-add" placeholder="+ Ranger une extension (nom)" aria-label="Ranger une extension">
-        <datalist id="bf-sets">${sets.map(s => html`<option value="${s.name}"></option>`)}</datalist>
-        <button type="button" class="btn" data-add>Ajouter</button>
-      </div>
+      <label class="field">Ranger une extension
+        <select class="select" id="bf-add">${setOptionsHtml(sets.filter(s => !st.rows.some(r => r.set_id === s.id)), '', { empty: '+ Choisir l’extension à ajouter' })}</select>
+      </label>
     `);
   }
 
   function addSet() {
-    const input = root.querySelector('#bf-add');
-    const s = sets.find(x => x.name.toLowerCase() === input.value.trim().toLowerCase());
-    if (!s) return toastError(new Error('Choisis une extension de la liste'));
+    const s = sets.find(x => x.id === root.querySelector('#bf-add').value);
+    if (!s) return;
     if (st.rows.some(r => r.set_id === s.id)) return toastError(new Error('Déjà rangée dans ce classeur'));
     // pages proposées d'après le nombre de cartes
     const pages = Number(st.slots) ? Math.ceil((s.card_count_total || s.card_count || 0) / Number(st.slots)) || '' : '';
@@ -155,9 +167,10 @@ async function editBinder(b) {
     if (row != null) st.rows[Number(row)][k] = e.target.value;
     if (f === 'slots') root.querySelectorAll('[data-slots]').forEach(c => c.setAttribute('aria-pressed', String(Number(c.dataset.slots) === Number(st.slots))));
   });
-  root.addEventListener('change', e => { if (e.target.dataset.row != null || e.target.dataset.f === 'pages') render(); });
-  root.addEventListener('keydown', e => { if (e.target.id === 'bf-add' && e.key === 'Enter') { e.preventDefault(); addSet(); } });
-  on(root, 'click', '[data-add]', addSet);
+  root.addEventListener('change', e => {
+    if (e.target.id === 'bf-add') return addSet();
+    if (e.target.dataset.row != null || e.target.dataset.f === 'pages') render();
+  });
   on(root, 'click', '[data-slots]', (_, c) => { st.slots = Number(c.dataset.slots); render(); });
   on(root, 'click', '[data-del]', (_, c) => { st.rows.splice(Number(c.dataset.del), 1); render(); });
   on(root, 'click', '[data-move]', (_, c) => {

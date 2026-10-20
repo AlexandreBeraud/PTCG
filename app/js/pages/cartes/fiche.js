@@ -3,6 +3,7 @@ import { html, setHtml, on, eur, reloadPage, errorHtml } from '../../ui/dom.js';
 import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { cardPicker } from '../../shared/picker.js';
+import { dropzone } from '../../ui/upload.js';
 import { store } from '../../shared/store.js';
 import {
   cardImage, spriteHtml, formBadge, variantLabel, conditionShort, venteStatusTag, fmtDate, norm, priceText, inList,
@@ -39,17 +40,16 @@ export async function renderCard(main, id) {
   const manual = c.source === 'manual';
   const big = c.image && /assets\.tcgdex\.net/.test(c.image) ? cardImage(c.image, 'high') : cardImage(c.image, 'big');
 
-  const priceRows = [
-    ['Tendance', c.price_trend], ['Prix le plus bas', c.price_low], ['Moyenne 30 jours', c.price_avg30],
-    ['Tendance holo/reverse', c.price_trend_holo], ['Plus bas holo/reverse', c.price_low_holo],
-  ].filter(([, v]) => v != null);
+  const priceRows = [['Prix le plus bas', c.price_low], ['Plus bas holo/reverse', c.price_low_holo]].filter(([, v]) => v != null);
+  const imageNote = { manuelle: 'Image ajoutée à la main', secours: 'Image de pokemontcg.io (TCGdex n’en a pas)' }[c.image_source] || '';
 
   setHtml(main, html`
     <a class="back-crumb" href="#/extensions/${encodeURIComponent(c.set_id)}">← ${c.set_name}</a>
     <div class="card-page">
       <div class="card-visual">
         <span class="card-big ${cardFoil(c)}">${big ? html`<img src="${big}" alt="${c.name}" data-hide-on-error>` : html`<span class="thumb-empty">Pas d’image</span>`}</span>
-        <p class="muted small">Reflet blanc pour les holo, arc-en-ciel pour les reverse, au survol</p>
+        <p class="muted small">${imageNote ? `${imageNote} · ` : ''}Reflet blanc pour les holo, arc-en-ciel pour les reverse, au survol</p>
+        ${!c.image || c.image_source !== 'tcgdex' ? html`<button type="button" class="btn btn-sm" data-image>${c.image_source === 'manuelle' ? 'Changer l’image' : 'Ajouter une image'}</button>` : ''}
       </div>
       <div class="card-info">
         <p class="muted" style="margin: 0"><a href="#/extensions/${encodeURIComponent(c.set_id)}">${c.set_name}</a> · ${cardNumber(c)}</p>
@@ -86,7 +86,7 @@ export async function renderCard(main, id) {
           <p class="muted small" style="margin: 0">${c.cardmarket_url_manual ? 'Lien corrigé à la main' : /\/Search\?/.test(c.cardmarket_url || '') ? 'Lien de recherche : ajoute le code Cardmarket de l’extension pour un lien direct' : 'Lien généré automatiquement'}</p>
           <div><button type="button" class="btn btn-sm btn-ghost" data-cm>Modifier le lien</button></div>
           ${priceRows.length ? html`
-            <div class="kpis kpis-3">${priceRows.map(([label, v]) => html`<div class="kpi"><span class="muted small">${label}</span><strong>${eur(v)}</strong></div>`)}</div>
+            <div class="kpis kpis-2">${priceRows.map(([label, v]) => html`<div class="kpi"><span class="muted small">${label}</span><strong>${eur(v)}</strong></div>`)}</div>
             <p class="muted small" style="margin: 0">Prix fournis par TCGdex${c.prices_updated_at ? `, relevés le ${fmtDate(c.prices_updated_at)}` : ''}</p>` : html`
             <p class="muted small" style="margin: 0">Prix relevés chaque nuit dès que la carte est dans tes ventes ou tes achats.</p>`}
         </section>
@@ -143,6 +143,7 @@ export async function renderCard(main, id) {
     openLineForm({ direction: line.direction, line, onSaved: reloadPage }).catch(toastError);
   });
   on(main, 'click', '[data-cm]', () => editCardmarket(c));
+  on(main, 'click', '[data-image]', () => editImage(c));
   on(main, 'click', '[data-fix]', () => fixFiche(c, fiches));
   on(main, 'click', '[data-edit-manual]', async () => {
     const { openManualCard } = await import('./manual.js');
@@ -202,6 +203,39 @@ function editCardmarket(c) {
       } },
     ],
   });
+}
+
+// Image d'une carte que TCGdex n'a pas : photo envoyée sur le NAS, ou adresse d'une image
+// (clic droit sur l'image de la carte sur Cardmarket → « Copier l'adresse de l'image »)
+function editImage(c) {
+  let path = c.image_source === 'manuelle' ? c.image : '';
+  openModal({
+    title: 'Image de la carte',
+    width: 560,
+    body: html`
+      <div id="ci-drop"></div>
+      <label class="field">ou l’adresse d’une image
+        <input class="input" type="url" id="ci-url" value="${/^https?:/.test(path) ? path : ''}" placeholder="https://product-images.s3.cardmarket.com/…">
+        <span class="muted small">Sur Cardmarket : clic droit sur l’image de la carte, « Copier l’adresse de l’image ».</span>
+      </label>`,
+    onOpen: el => dropzone(el.querySelector('#ci-drop'), {
+      value: /^https?:/.test(path) ? '' : path, folder: 'Cartes', label: 'Glisse la photo ou le scan de la carte',
+      onChange: p => { path = p; el.querySelector('#ci-url').value = ''; },
+    }),
+    actions: [
+      ...(c.image_source === 'manuelle' ? [{ label: 'Retirer l’image', danger: true, run: () => saveImage(c, '') }] : []),
+      { label: 'Annuler' },
+      { label: 'Enregistrer', primary: true, run: el => saveImage(c, el.querySelector('#ci-url').value.trim() || path) },
+    ],
+  });
+}
+
+async function saveImage(c, image) {
+  try {
+    await api.rpc('set_card_image', { card_id: c.id, image });
+    toast(image ? 'Image enregistrée' : 'Image retirée');
+    reloadPage();
+  } catch (err) { toastError(err); return false; }
 }
 
 // Correction rare : la carte va sur une autre fiche que celle choisie par les labels

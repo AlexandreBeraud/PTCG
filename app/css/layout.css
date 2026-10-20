@@ -171,3 +171,5 @@ button, input, select, textarea { font: inherit; color: inherit; }
     place-items: center;
   }
 }
+
+.contents { display: contents; }

@@ -16,6 +16,13 @@ const FILTERS = [
 ];
 
 const byNumber = (a, b) => String(a.number ?? '').localeCompare(String(b.number ?? ''), 'fr', { numeric: true });
+const SORTS = [
+  { id: 'number', label: 'Numéro', cmp: byNumber },
+  { id: 'name', label: 'Nom (A → Z)', cmp: (a, b) => a.name.localeCompare(b.name, 'fr') || byNumber(a, b) },
+  { id: 'stock', label: 'En stock d’abord', cmp: (a, b) => Number(b.en_stock) - Number(a.en_stock) || byNumber(a, b) },
+  { id: 'price', label: 'Prix le plus bas, décroissant', cmp: (a, b) => Number(b.price_low ?? -1) - Number(a.price_low ?? -1) || byNumber(a, b) },
+];
+let sortId = 'number';
 
 export async function renderSet(main, id) {
   let filter = 'all';
@@ -48,7 +55,7 @@ export async function renderSet(main, id) {
 
   setHtml(main, html`
     <a class="back-crumb" href="#/extensions">← Extensions</a>
-    <header class="set-header" style="${set.color ? `--set-color: ${set.color}` : ''}">
+    <header class="set-header" style="${set.color || set.serie_color ? `--set-color: ${set.color || set.serie_color}` : ''}">
       <span class="set-logo set-logo-lg">${set.logo ? html`<img src="${set.logo}" alt="" data-hide-on-error>` : html`<span class="set-code">${set.id.toUpperCase()}</span>`}</span>
       <div class="grow">
         <p class="muted small" style="margin: 0">${set.id.toUpperCase()}${set.parent_id ? html` · fait partie de <a href="#/extensions/${encodeURIComponent(set.parent_id)}">${set.parent_id.toUpperCase()}</a>` : ''}</p>
@@ -67,7 +74,10 @@ export async function renderSet(main, id) {
         <span class="small">Les noms des Pokémon sont déjà traduits, les Dresseurs restent en anglais. Le catalogue vérifie chaque nuit et passe tout en VF dès que possible, sans casser tes ventes.</span>
       </div>` : ''}
     ${set.source === 'manual' ? html`<div class="banner"><span class="small">Extension créée à la main pour des cartes absentes de TCGdex.</span></div>` : ''}
-    <div class="chips" id="filters" role="group" aria-label="Filtre"></div>
+    <div class="toolbar">
+      <div class="chips grow" id="filters" role="group" aria-label="Filtre"></div>
+      <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === sortId ? 'selected' : ''}>${o.label}</option>`)}</select>
+    </div>
     <div id="cards"></div>
   `);
   const $ = s => main.querySelector(s);
@@ -78,7 +88,8 @@ export async function renderSet(main, id) {
       const n = all.filter(f.test).length;
       return f.id === 'all' || n ? html`<button type="button" class="chip" data-filter="${f.id}" aria-pressed="${filter === f.id}">${f.label}<span class="n">${n}</span></button>` : '';
     })}`);
-    const blocks = sections.map(s => ({ ...s, shown: s.cards.filter(test) })).filter(s => s.shown.length);
+    const cmp = SORTS.find(o => o.id === sortId).cmp;
+    const blocks = sections.map(s => ({ ...s, shown: s.cards.filter(test).sort(cmp) })).filter(s => s.shown.length);
     setHtml($('#cards'), blocks.length ? html`${blocks.map(s => html`
       ${sections.length > 1 ? html`<div class="serie-head"><h2>${s.name}</h2><span class="muted small">${s.shown.length} cartes</span></div>` : ''}
       <div class="card-grid">${s.shown.map(c => cardTile(c))}</div>`)}`
@@ -86,6 +97,7 @@ export async function renderSet(main, id) {
   }
 
   on(main, 'click', '[data-filter]', (_, b) => { filter = b.dataset.filter; render(); });
+  on(main, 'change', '#sort', (_, el) => { sortId = el.value; render(); });
   on(main, 'click', '[data-custom]', () => customize(set, reloadPage));
   render();
 }

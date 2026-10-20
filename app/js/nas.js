@@ -3,6 +3,9 @@ import { uid } from './ui/dom.js';
 
 // FileBrowser, joint via Caddy sur /nas (même origine que l'appli)
 let token = null;
+let pending = null;
+// le jeton FileBrowser expire au bout de 2 h : on le renouvelle avant
+const RENEW = 90 * 60 * 1000;
 
 const encodePath = p => p.split('/').map(encodeURIComponent).join('/');
 
@@ -14,13 +17,16 @@ async function login() {
   });
   if (!res.ok) throw new Error(res.status === 403 ? 'Identifiants FileBrowser refusés (config.local.js)' : `FileBrowser injoignable (${res.status})`);
   token = (await res.text()).trim();
+  setTimeout(() => { token = null; ensureLogin(); }, RENEW);
   return token;
 }
 
-export async function ensureLogin() {
-  if (token) return token;
-  if (!config.nasUser) return null;
-  try { return await login(); } catch (_) { return null; }
+// Une seule connexion à la fois ; null si le NAS ne répond pas (les images retombent alors sur leur repli)
+export function ensureLogin() {
+  if (token) return Promise.resolve(token);
+  if (!config.nasUser) return Promise.resolve(null);
+  pending ||= login().catch(() => null).finally(() => { pending = null; });
+  return pending;
 }
 
 function send(path, file) {

@@ -61,8 +61,11 @@ export async function openCommande(id, { onChanged } = {}) {
             ${o.link ? html`<a class="btn btn-sm" href="${o.link}" target="_blank" rel="noopener">Ouvrir</a>` : ''}
           </span>
         </label>
-        ${o.direction === 'achat' ? html`<label class="field">Frais de port<input class="input" type="number" min="0" step="0.01" data-f="shipping" value="${o.shipping || ''}" placeholder="0,00"></label>` : ''}
+        <label class="field">${o.direction === 'vente' ? 'Frais de port payés par l’acheteur' : 'Frais de port'}<input class="input" type="number" min="0" step="0.01" data-f="shipping" value="${o.shipping || ''}" placeholder="0,00"></label>
       </div>
+      ${o.direction === 'vente' ? html`
+        <label class="check-inline"><input type="checkbox" data-f="shipping_paid" ${o.shipping_paid ? 'checked' : ''}>
+          J’ai payé l’envoi avec : le port ne compte pas dans le Bilan (sinon il compte dans les revenus)</label>` : ''}
 
       <div class="field"><span>${lines.length} article${lines.length > 1 ? 's' : ''}</span>
         <div class="lines">
@@ -83,7 +86,7 @@ export async function openCommande(id, { onChanged } = {}) {
         ${o.direction === 'vente' ? html`<button type="button" class="btn btn-sm" data-attach>+ Rattacher une vente</button>` : ''}
         <button type="button" class="btn btn-sm btn-ghost" data-add>${o.direction === 'vente' ? '+ Nouvelle vente dans cette commande' : '+ Ajouter un article'}</button>
         <span class="grow"></span>
-        <strong>Total ${eur(o.total)}</strong>
+        <strong>Total ${eur(o.total)}${Number(o.shipping) ? html` <span class="muted small">dont ${eur(o.shipping)} de port</span>` : ''}</strong>
       </div>
     `);
     setHtml(foot, html`
@@ -118,6 +121,7 @@ export async function openCommande(id, { onChanged } = {}) {
   root.addEventListener('change', e => {
     const f = e.target.dataset.f;
     if (!f) return;
+    if (f === 'shipping_paid') return patch({ shipping_paid: e.target.checked });
     const v = e.target.value.trim();
     patch({ [f]: f === 'shipping' ? Number(v.replace(',', '.')) || 0 : v || null });
   });

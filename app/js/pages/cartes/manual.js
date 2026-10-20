@@ -5,6 +5,7 @@ import { toast, toastError } from '../../ui/toast.js';
 import { dropzone } from '../../ui/upload.js';
 import { VARIANTS, norm, spriteHtml, formBadge } from '../../shared/sales.js';
 import { CATEGORIES } from '../../shared/cards.js';
+import { setOptions, setOptionsHtml, forgetSets } from '../../shared/sets.js';
 
 // Fiche Pokémon la plus probable d'après le nom de la carte : le nom de
 // Pokémon le plus long contenu dans le nom (« Méga-Dracaufeu X » avant « Dracaufeu »)
@@ -21,7 +22,7 @@ async function guessPokemon(cardName) {
 
 // Carte absente de TCGdex (promo, carte japonaise…). card = carte manuelle existante à modifier
 export async function openManualCard({ card = null, name = '', onSaved } = {}) {
-  const sets = await api.list('sets', { select: 'id,name,source', order: 'release_date.desc.nullslast' });
+  const sets = await setOptions();
   const st = {
     image: card?.image || '',
     name: card?.name || name,
@@ -63,7 +64,7 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
           <select class="select" data-f="set_id">
             <option value="">Choisir…</option>
             <option value="__new" ${st.set_id === '__new' ? 'selected' : ''}>+ Nouvelle extension…</option>
-            ${sets.map(s => html`<option value="${s.id}" ${s.id === st.set_id ? 'selected' : ''}>${s.name}${s.source === 'manual' ? ' (à la main)' : ''}</option>`)}
+            ${setOptionsHtml(sets, st.set_id, { label: s => `${s.name}${s.source === 'manual' ? ' (à la main)' : ''}` })}
           </select>
         </label>
         ${st.set_id === '__new' ? html`<label class="field grow">Nom de l’extension<input class="input" data-f="new_set_name" value="${st.new_set_name}" placeholder="Promos — tournoi local"></label>` : ''}
@@ -161,6 +162,7 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
           pokemon_key: st.category === 'pokemon' ? st.pokemon?.key || null : null,
         },
       });
+      if (st.set_id === '__new') forgetSets();
       toast(card ? 'Carte enregistrée' : 'Carte créée');
       onSaved?.(id);
     } catch (err) {

@@ -18,6 +18,8 @@ module.exports = {
   API_URL: (process.env.API_URL || 'http://localhost:8085/api').replace(/\/$/, ''),
   JWT_SECRET: process.env.JWT_SECRET || '',
   TCGDEX_URL: (process.env.TCGDEX_URL || 'https://api.tcgdex.net/v2').replace(/\/$/, ''),
+  POKEMONTCG_URL: (process.env.POKEMONTCG_URL || 'https://api.pokemontcg.io/v2').replace(/\/$/, ''),
+  POKEMONTCG_KEY: process.env.POKEMONTCG_KEY || '',
   POKEAPI_CSV_URL: (process.env.POKEAPI_CSV_URL || 'https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv').replace(/\/$/, ''),
   DRY_RUN: args.includes('--dry-run'),
   flag: name => args.includes(`--${name}`),
