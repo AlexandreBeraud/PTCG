@@ -3,6 +3,16 @@
 -- Tant que la bascule n'est pas faite, l'ancienne appli reste la référence.
 
 set search_path = v2, public;
+\set ON_ERROR_STOP on
+
+-- Après la bascule, la v2 est la référence : une reprise effacerait ce qui y a été saisi
+create table if not exists v2.bascule (done_at timestamptz primary key default now());
+do $$
+begin
+  if exists (select 1 from v2.bascule) then
+    raise exception 'La bascule est faite : cette reprise effacerait ce que tu as saisi dans la nouvelle appli. Rien n''a été modifié.';
+  end if;
+end $$;
 
 begin;
 

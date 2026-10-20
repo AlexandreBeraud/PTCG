@@ -24,3 +24,6 @@ migration/venv/
 
 # Identifiants FileBrowser de la nouvelle appli
 app/config.local.js
+
+# Python
+__pycache__/
