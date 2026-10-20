@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { ensureLogin } from './nas.js';
 import { renderNav } from './nav.js';
-import { html, setHtml } from './ui/dom.js';
+import { html, setHtml, errorHtml, reloadPage } from './ui/dom.js';
 import { toastError } from './ui/toast.js';
 import { applyAppearance } from './appearance.js';
 
@@ -19,9 +19,12 @@ const PAGES = {
   labels: () => import('./pages/labels/index.js'),
   contacts: () => import('./pages/contacts/index.js'),
   bilan: () => import('./pages/bilan/index.js'),
-  reglages: () => import('./pages/reglages.js'),
+  classeurs: () => import('./pages/classeurs/index.js'),
+  produits: () => import('./pages/produits/index.js'),
+  reglages: () => import('./pages/reglages/index.js'),
+  plus: () => import('./pages/plus.js'),
 };
-const LOTS = { classeurs: 4, produits: 4 };
+const LOTS = {};
 
 const main = document.getElementById('main');
 let current = null;
@@ -55,7 +58,7 @@ async function route() {
     window.scrollTo(0, 0);
   } catch (err) {
     console.error(err);
-    setHtml(main, html`<div class="empty"><h2>Cette page n’a pas pu s’afficher</h2><p>${err.message}</p></div>`);
+    setHtml(main, errorHtml('Cette page n’a pas pu s’afficher', err));
   }
 }
 
@@ -70,6 +73,17 @@ document.addEventListener('error', e => {
     img.hidden = true;
   }
 }, true);
+
+// « Réessayer » sur un écran d'erreur : on réaffiche la page
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-retry-page]')) reloadPage();
+});
+
+// Pi injoignable : un rappel discret dans le menu tant que ça dure
+window.addEventListener('pi-status', e => {
+  const box = document.getElementById('sidebar-status');
+  if (box) setHtml(box, e.detail.ok ? '' : html`<strong>Le Pi ne répond pas</strong><span class="muted">Vérifie Tailscale et que le Pi est allumé. Rien de ce que tu as saisi n’est perdu.</span>`);
+});
 
 async function boot() {
   window.addEventListener('hashchange', route);

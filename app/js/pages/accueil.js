@@ -37,6 +37,7 @@ export default {
           <button type="button" class="btn btn-primary" data-new-sale>${icon('plus')}Nouvelle vente</button>
         </div>
       </header>
+      <div id="alerts" class="alerts"></div>
       <div class="kpis" id="kpis"><div class="kpi"><span class="muted small">Chargement…</span></div></div>
       <div class="home-grid">
         <section class="panel" id="todo"><h2>À faire</h2></section>
@@ -150,6 +151,7 @@ export default {
     (async () => {
       try {
         const runs = await api.list('job_runs', { order: 'started_at.desc', limit: 50 });
+        alertJobs(runs);
         setHtml($('#jobs'), html`
           <div class="panel-head"><h2>Automatisations</h2><a class="small" href="#/reglages">Historique</a></div>
           <div class="mini-list">${Object.entries(JOBS).map(([job, label]) => {
@@ -163,6 +165,32 @@ export default {
           })}</div>
         `);
       } catch (err) { fail($('#jobs'), 'Automatisations', err); }
+    })();
+
+    // le catalogue en erreur ou absent depuis plus d'un jour et demi
+    function alertJobs(runs) {
+      const last = runs.find(r => r.job === 'catalogue');
+      const old = last && Date.now() - new Date(last.started_at) > 36 * 3600e3;
+      if (last && last.ok !== false && !old) return;
+      $('#alerts').insertAdjacentHTML('beforeend', String(html`
+        <div class="banner banner-warn">
+          <strong>${!last ? 'Le catalogue n’a encore jamais tourné' : old ? 'Le catalogue n’a pas tourné depuis le ' + new Date(last.started_at).toLocaleDateString('fr-FR') : 'Le catalogue a échoué cette nuit'}</strong>
+          <span class="small">${last && last.error ? `${last.error}. ` : ''}Nouvel essai automatique la nuit prochaine ; l’appli reste utilisable avec les données d’avant.</span>
+          <a class="btn btn-sm" href="#/reglages">Voir les automatisations</a>
+        </div>`));
+    }
+
+    // une carte ajoutée à la main que TCGdex connaît maintenant
+    (async () => {
+      const found = await api.list('manual_lookalikes', { limit: 5 }).catch(() => []);
+      for (const x of found) {
+        $('#alerts').insertAdjacentHTML('beforeend', String(html`
+          <div class="banner banner-info">
+            <strong>TCGdex vient d’ajouter ${x.tcgdex_name} · ${x.tcgdex_set} ${x.tcgdex_number || ''}</strong>
+            <span class="small">Elle ressemble à ta carte manuelle « ${x.manual_name} »${x.lignes ? `. Ses ${x.lignes} vente(s) ou achat(s) suivront.` : '.'}</span>
+            <a class="btn btn-sm" href="#/cartes/${encodeURIComponent(x.manual_id)}">Voir et remplacer</a>
+          </div>`));
+      }
     })();
 
     on(main, 'click', '[data-commande]', async (_, b) => {

@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, eur } from '../../ui/dom.js';
+import { html, setHtml, on, eur, errorHtml } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { toastError } from '../../ui/toast.js';
 import { store } from '../../shared/store.js';
@@ -27,7 +27,8 @@ export default {
   async render(main, params, { tab = 'vente' } = {}) {
     const dir = tab;
     const f = memory[dir];
-    if (params[0]) f.status = params[0];
+    const openNew = params[0] === 'nouvelle';
+    if (params[0] && !openNew) f.status = params[0];
     let rows = [];
     let total = 0;
     let selected = new Set();
@@ -143,7 +144,7 @@ export default {
         if (!append) selected = new Set([...selected].filter(id => rows.some(r => r.id === id)));
         renderResults();
       } catch (err) {
-        setHtml(box, html`<div class="empty"><h2>Impossible de charger la liste</h2><p>${err.message}</p><button type="button" class="btn" data-retry>Réessayer</button></div>`);
+        setHtml(box, errorHtml('Impossible de charger la liste', err));
       }
     }
 
@@ -316,6 +317,10 @@ export default {
     });
 
     if (f.open) renderFilters();
+    if (openNew) {
+      history.replaceState(null, '', dir === 'vente' ? '#/ventes' : '#/achats');
+      main.querySelector('[data-new]').click();
+    }
     await Promise.all([renderChips(), load()]);
   },
 };

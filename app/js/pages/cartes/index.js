@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on } from '../../ui/dom.js';
+import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { norm } from '../../shared/sales.js';
 import { FAMILLES, familleLabel, cardTile } from '../../shared/cards.js';
@@ -79,19 +79,26 @@ export default {
         total = page.total;
         render();
       } catch (err) {
-        setHtml($('#results'), html`<div class="empty"><h2>Impossible de charger les cartes</h2><p>${err.message}</p></div>`);
+        setHtml($('#results'), errorHtml('Impossible de charger les cartes', err));
       }
     }
 
-    function render() {
+    async function render() {
       const more = rows.length < total
         ? html`<div class="more"><button type="button" class="btn" data-more>Afficher plus (${total - rows.length} restantes)</button></div>` : '';
       if (!rows.length) {
         setHtml($('#count'), '');
-        return setHtml($('#results'), html`<div class="empty">
+        setHtml($('#results'), html`<div class="empty">
           <h2>Aucune carte${state.q ? ` pour « ${state.q} »` : ''}</h2>
+          <p id="suggest"></p>
           <button type="button" class="btn" data-manual>Ajouter une carte absente de TCGdex</button>
         </div>`);
+        if (state.q) {
+          const sugg = await api.rpc('suggest_names', { q: state.q, lim: 3 }).catch(() => []);
+          const box = $('#suggest');
+          if (box && sugg.length) setHtml(box, html`Tu voulais dire ${sugg.map((s, i) => html`${i ? ', ' : ''}<button type="button" class="link" data-suggest="${s.name}">${s.name}</button>`)} ?`);
+        }
+        return;
       }
       if (!state.group) {
         setHtml($('#count'), `${total.toLocaleString('fr-FR')} carte${total > 1 ? 's' : ''}`);
@@ -130,6 +137,7 @@ export default {
     on(main, 'click', '[data-mine]', (_, b) => { state[b.dataset.mine] = !state[b.dataset.mine]; facets(); load(); });
     on(main, 'change', '#serie', (_, s) => { state.serie = s.value; refresh(); });
     on(main, 'click', '[data-more]', () => load(true));
+    on(main, 'click', '[data-suggest]', (_, b) => { state.q = b.dataset.suggest; $('#q').value = state.q; refresh(); });
     on(main, 'click', '[data-manual]', async () => {
       const { openManualCard } = await import('./manual.js');
       openManualCard({ name: state.q, onSaved: id => { location.hash = `#/cartes/${encodeURIComponent(id)}`; } });

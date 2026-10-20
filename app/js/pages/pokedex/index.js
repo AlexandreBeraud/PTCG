@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on } from '../../ui/dom.js';
+import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { norm } from '../../shared/sales.js';
 import { pokemonTile } from '../../shared/cards.js';
@@ -51,7 +51,7 @@ export default {
         rows = append ? rows.concat(page.rows) : page.rows;
         total = page.total;
       } catch (err) {
-        return setHtml($('#grid'), html`<div class="empty"><h2>Impossible de charger le Pokédex</h2><p>${err.message}</p></div>`);
+        return setHtml($('#grid'), errorHtml('Impossible de charger le Pokédex', err));
       }
       setHtml($('#grid'), rows.length ? html`
         <div class="poke-grid">${rows.map(r => pokemonTile(r))}</div>

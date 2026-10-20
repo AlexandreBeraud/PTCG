@@ -24,6 +24,7 @@ export const SECTIONS = [
 ];
 
 const href = item => '#/' + (item.path ?? item.id);
+const PLUS = ['extensions', 'pokedex', 'contacts', 'bilan', 'classeurs', 'produits', 'reglages', 'labels', 'plus'];
 
 export function renderNav(active) {
   setHtml(document.getElementById('sidebar'), html`
@@ -40,12 +41,12 @@ export function renderNav(active) {
   `);
 
   const tab = (id, label, path = id) => html`
-    <a class="tab" href="#/${path}" ${id === active ? html`aria-current="page"` : ''}>${icon(id, 22)}${label}</a>`;
+    <a class="tab" href="#/${path}" ${id === active || (id === 'plus' && PLUS.includes(active)) ? html`aria-current="page"` : ''}>${icon(id === 'plus' ? 'menu' : id, 22)}${label}</a>`;
   setHtml(document.getElementById('tabbar'), html`
     ${tab('accueil', 'Accueil', '')}
     ${tab('cartes', 'Cartes')}
-    <a class="tab-main" href="#/ventes" aria-label="Ventes et achats">${icon('plus', 24)}</a>
+    <a class="tab-main" href="#/ventes/nouvelle" aria-label="Nouvelle vente">${icon('plus', 24)}</a>
     ${tab('ventes', 'Ventes')}
-    ${tab('reglages', 'Plus')}
+    ${tab('plus', 'Plus')}
   `);
 }

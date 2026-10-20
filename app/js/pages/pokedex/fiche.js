@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml } from '../../ui/dom.js';
+import { html, setHtml, errorHtml } from '../../ui/dom.js';
 import { spriteHtml, formBadge } from '../../shared/sales.js';
 import { cardTile, pokemonTile } from '../../shared/cards.js';
 
@@ -15,7 +15,7 @@ export async function renderPokemon(main, key) {
       api.list('fiche_cards', { fiche: `eq.${key}`, order: 'release_date.desc.nullslast,set_id,number' }),
     ]);
   } catch (err) {
-    return setHtml(main, html`<div class="empty"><h2>Impossible de charger la fiche</h2><p>${err.message}</p></div>`);
+    return setHtml(main, errorHtml('Impossible de charger la fiche', err));
   }
   if (!p) return setHtml(main, html`<div class="empty"><h2>Pokémon introuvable</h2><a href="#/pokedex">Retour au Pokédex</a></div>`);
   document.title = `${p.name_fr} · PTCG`;

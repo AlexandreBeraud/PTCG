@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, reloadPage } from '../../ui/dom.js';
+import { html, setHtml, on, reloadPage, errorHtml } from '../../ui/dom.js';
 import { openModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { fmtDate } from '../../shared/sales.js';
@@ -29,7 +29,7 @@ export async function renderSet(main, id) {
       api.list('set_list', { parent_id: `eq.${id}`, select: 'id,name' }),
     ]);
   } catch (err) {
-    return setHtml(main, html`<div class="empty"><h2>Impossible de charger l’extension</h2><p>${err.message}</p></div>`);
+    return setHtml(main, errorHtml('Impossible de charger l’extension', err));
   }
   if (!set) return setHtml(main, html`<div class="empty"><h2>Extension introuvable</h2><a href="#/extensions">Toutes les extensions</a></div>`);
 

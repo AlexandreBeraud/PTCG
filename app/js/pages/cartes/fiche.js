@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, eur, reloadPage } from '../../ui/dom.js';
+import { html, setHtml, on, eur, reloadPage, errorHtml } from '../../ui/dom.js';
 import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { cardPicker } from '../../shared/picker.js';
@@ -26,7 +26,7 @@ export async function renderCard(main, id) {
       store.settings().catch(() => null),
     ]);
   } catch (err) {
-    return setHtml(main, html`<div class="empty"><h2>Impossible de charger la carte</h2><p>${err.message}</p></div>`);
+    return setHtml(main, errorHtml('Impossible de charger la carte', err));
   }
   if (!c) return setHtml(main, html`<div class="empty"><h2>Carte introuvable</h2><a href="#/cartes">Toutes les cartes</a></div>`);
   document.title = `${c.name} · PTCG`;

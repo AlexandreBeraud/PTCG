@@ -20,6 +20,14 @@ function query(params = {}) {
   return s ? '?' + s : '';
 }
 
+// Prévient l'appli quand le Pi devient injoignable ou revient
+let online = true;
+function signal(ok) {
+  if (ok === online) return;
+  online = ok;
+  window.dispatchEvent(new CustomEvent('pi-status', { detail: { ok } }));
+}
+
 async function request(path, { method = 'GET', body, headers = {} } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
@@ -38,10 +46,12 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
       signal: ctrl.signal,
     });
   } catch (e) {
+    signal(false);
     throw new ApiError(e.name === 'AbortError' ? 'Le Pi ne répond pas (délai dépassé)' : 'Le Pi est injoignable', 0);
   } finally {
     clearTimeout(timer);
   }
+  signal(true);
 
   if (!res.ok) {
     let message = `Erreur ${res.status}`;

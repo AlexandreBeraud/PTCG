@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, uid } from '../../ui/dom.js';
+import { html, setHtml, on, uid, errorHtml } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
@@ -307,7 +307,7 @@ export default {
     try {
       await load();
     } catch (err) {
-      return setHtml($('#table'), html`<div class="empty"><h2>Impossible de charger les labels</h2><p>${err.message}</p></div>`);
+      return setHtml($('#table'), errorHtml('Impossible de charger les labels', err));
     }
     if (selected) {
       const l = labels.find(x => x.type === selected);

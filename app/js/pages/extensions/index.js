@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on } from '../../ui/dom.js';
+import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { fmtDate, norm } from '../../shared/sales.js';
 
@@ -40,7 +40,7 @@ export default {
         order: 'serie_sort.asc.nullslast,serie_release.desc.nullslast,sort_order.asc.nullslast,release_date.desc.nullslast,id',
       });
     } catch (err) {
-      return setHtml($('#list'), html`<div class="empty"><h2>Impossible de charger les extensions</h2><p>${err.message}</p></div>`);
+      return setHtml($('#list'), errorHtml('Impossible de charger les extensions', err));
     }
 
     function render() {

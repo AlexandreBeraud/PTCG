@@ -46,7 +46,12 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, placeholder
       const rows = await api.rpc('search_cards', { q, lim: 40 });
       if (mine !== seq) return;
       results = rows || [];
-      renderResults(results.length ? null : `Aucune carte pour « ${q} »`);
+      if (results.length) return renderResults(null);
+      renderResults(`Aucune carte pour « ${q} »`);
+      const sugg = await api.rpc('suggest_names', { q, lim: 3 }).catch(() => []);
+      if (mine === seq && sugg.length) {
+        list.insertAdjacentHTML('beforeend', String(html`<p class="small picker-note">Tu voulais dire ${sugg.map((s, i) => html`${i ? ', ' : ''}<button type="button" class="link" data-suggest="${s.name}">${s.name}</button>`)} ?</p>`));
+      }
     } catch (err) {
       if (mine === seq) renderResults(err.message);
     }
@@ -67,6 +72,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, placeholder
     if (e.key === 'ArrowUp') { e.preventDefault(); (btn.previousElementSibling || input).focus(); }
   });
   on(list, 'click', '.picker-item', (_, btn) => onPick?.(results[Number(btn.dataset.i)]));
+  on(list, 'click', '[data-suggest]', (_, btn) => { input.value = btn.dataset.suggest; search(); input.focus(); });
   if (onManual) el.querySelector('[data-manual]').addEventListener('click', () => onManual(input.value.trim()));
 
   if (autofocus) setTimeout(() => input.focus(), 0);

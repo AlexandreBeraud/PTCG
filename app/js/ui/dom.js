@@ -49,3 +49,13 @@ export function uid() {
 
 // Réaffiche la page courante dans un conteneur neuf (voir route() dans main.js)
 export const reloadPage = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+// Écran d'erreur avec « Réessayer » (géré dans main.js)
+export function errorHtml(title, err) {
+  const offline = err && err.status === 0;
+  return html`<div class="empty">
+    <h2>${offline ? 'Le Pi ne répond pas' : title}</h2>
+    <p>${offline ? 'Vérifie que Tailscale est connecté sur cet appareil et que le Pi est allumé. Rien de ce que tu as saisi n’est perdu.' : err?.message || ''}</p>
+    <button type="button" class="btn" data-retry-page>Réessayer</button>
+  </div>`;
+}
