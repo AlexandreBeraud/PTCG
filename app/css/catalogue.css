@@ -186,7 +186,15 @@
 .binder-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .binder-body h2 { margin: 0; font-size: 16px; }
 .binder-sets { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.binder-sets li { display: flex; justify-content: space-between; gap: 10px; }
+.binder-sets li { display: flex; align-items: center; gap: 8px; }
+.binder-sets .set-sym { width: 22px; height: 22px; padding: 2px; font-size: 7px; }
+/* séparateurs : un titre et un trait, les classeurs en dessous */
+.binder-group { display: flex; flex-direction: column; gap: 14px; }
+.binder-group + .binder-group { margin-top: 18px; }
+.binder-sep { display: flex; align-items: center; gap: 10px; }
+.binder-sep h2 { margin: 0; font-family: var(--font-display); font-size: 20px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.binder-sep-line { flex: 1; height: 2px; border-radius: 2px; background: var(--border-strong); }
+.line-set { flex-direction: row; align-items: center; gap: 8px; }
 .binder-sets a { color: inherit; }
 .progress { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .progress span { display: block; height: 100%; width: var(--w); background: var(--accent); border-radius: 999px; }
@@ -227,3 +235,5 @@ code { font-size: 12px; padding: 2px 6px; border-radius: 4px; background: var(--
 .set-header > .grow, .poke-header > .grow { flex: 1 1 220px; }
 .set-header h1, .card-title { overflow-wrap: anywhere; }
 .binder-sets li span { white-space: nowrap; }
+
+.product-img .product-logo { object-fit: contain; padding: 14px; }

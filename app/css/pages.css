@@ -282,9 +282,9 @@
 .bulk-input[aria-disabled="true"] { opacity: 0.45; }
 
 /* contacts */
-.split { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 20px; align-items: start; }
+.split { display: grid; grid-template-columns: 390px minmax(0, 1fr); gap: 20px; align-items: start; }
 .split-list { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 16px; }
-.contact-list { display: flex; flex-direction: column; gap: 4px; max-height: calc(100vh - 260px); overflow-y: auto; }
+.contact-list { display: flex; flex-direction: column; gap: 4px; max-height: calc(100vh - 200px); overflow-y: auto; }
 .contact-item { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: var(--radius); color: inherit; text-decoration: none; border: 1px solid transparent; }
 .contact-item:hover { background: var(--surface); }
 .contact-item[aria-current="true"] { background: var(--accent-bg); border-color: var(--accent); }
@@ -307,6 +307,13 @@
   font-size: calc(var(--size, 40px) * 0.36);
 }
 .orders { display: flex; flex-direction: column; gap: 8px; }
+.contact-overview { border: 1px dashed var(--border-strong); margin-bottom: 4px; }
+.pie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.pie-box { padding: 14px; border-radius: var(--radius); background: var(--surface-2); min-width: 0; }
+.pie-box h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.pie-canvas { position: relative; height: 190px; }
+.missing-list { max-height: 60vh; overflow-y: auto; }
+.missing-list .todo-item { color: inherit; }
 .flag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
 .flag-btn { min-height: 44px; display: grid; place-items: center; font-size: 13px; line-height: 1; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; }
 .flag { display: inline-grid; place-items: center; }

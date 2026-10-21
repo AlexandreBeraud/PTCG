@@ -91,7 +91,8 @@ export default {
       return html`
         <article class="product ${p.obtained ? 'is-got' : ''}">
           <button type="button" class="product-img" data-edit="${p.id}" aria-label="Modifier ${p.description || typeLabel(p.type)}">
-            ${p.image ? html`<img src="${imageUrl(p.image, 'thumb')}" alt="" loading="lazy" data-hide-on-error>` : html`<span>${icon('produits', 28)}</span>`}
+            ${p.image ? html`<img src="${imageUrl(p.image, 'thumb')}" alt="" loading="lazy" data-hide-on-error>`
+              : p.set_logo ? html`<img class="product-logo" src="${p.set_logo}" alt="" loading="lazy" data-hide-on-error>` : html`<span>${icon('produits', 28)}</span>`}
           </button>
           <span class="muted small">${typeLabel(p.type)}${withSet && p.set_name ? ` · ${p.set_name}` : ''}</span>
           <strong>${p.description || typeLabel(p.type)}</strong>
@@ -136,7 +137,13 @@ async function editProduct(p, type = '') {
     width: 720,
     body: html`
       <div class="manual-grid">
-        <div id="pf-photo"></div>
+        <div class="form-grid">
+          <div id="pf-photo"></div>
+          <label class="field">ou l’adresse d’une image
+            <input class="input" type="url" id="pf-url" value="${/^https?:/.test(st.image) ? st.image : ''}" placeholder="https://…">
+            <span class="muted small">Clic droit sur la photo du produit (Cardmarket, boutique…) → « Copier l’adresse de l’image ». Sans photo, le logo de l’extension s’affiche.</span>
+          </label>
+        </div>
         <div class="form-grid">
           <label class="field">Type<select class="select" id="pf-type">${TYPES.map(t => html`<option value="${t.id}" ${t.id === st.type ? 'selected' : ''}>${t.label}</option>`)}</select></label>
           <label class="field">Description<input class="input" id="pf-desc" value="${st.description}" placeholder="ETB Nuit Noire, booster illustration 2…"></label>
@@ -159,7 +166,7 @@ async function editProduct(p, type = '') {
           type: el.querySelector('#pf-type').value,
           description: el.querySelector('#pf-desc').value.trim() || null,
           set_id: el.querySelector('#pf-set').value || null,
-          image: st.image || null,
+          image: el.querySelector('#pf-url').value.trim() || st.image || null,
           obtained,
           obtained_on: obtained ? (el.querySelector('#pf-date').value || today()) : null,
         };
@@ -172,5 +179,8 @@ async function editProduct(p, type = '') {
       } },
     ],
   });
-  dropzone(m.el.querySelector('#pf-photo'), { value: st.image, folder: 'Produits', label: 'Photo du produit', onChange: v => { st.image = v; } });
+  dropzone(m.el.querySelector('#pf-photo'), {
+    value: /^https?:/.test(st.image) ? '' : st.image, folder: 'Produits', label: 'Photo du produit',
+    onChange: v => { st.image = v; m.el.querySelector('#pf-url').value = ''; },
+  });
 }

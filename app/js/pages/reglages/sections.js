@@ -5,6 +5,7 @@ import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { dropzone } from '../../ui/upload.js';
 import { store } from '../../shared/store.js';
+import { setSymbolHtml, spriteHtml, formBadge, cardImage } from '../../shared/sales.js';
 import { forgetSets } from '../../shared/sets.js';
 
 const nb = n => Number(n || 0).toLocaleString('fr-FR');
@@ -28,7 +29,7 @@ export async function renderBackups(box) {
 }
 
 // Tout ce que j'ai saisi (pas le référentiel, que les jobs recréent)
-const MY_TABLES = ['transactions', 'commandes', 'contacts', 'accessoires', 'classeurs', 'classeur_sets', 'produits',
+const MY_TABLES = ['transactions', 'commandes', 'contacts', 'accessoires', 'classeurs', 'classeur_groupes', 'classeur_sets', 'produits',
   'set_prefs', 'labels', 'label_categories', 'pokemon_labels', 'card_overrides', 'entites', 'settings'];
 
 async function exportJson(btn) {
@@ -60,27 +61,95 @@ async function exportJson(btn) {
   }
 }
 
-// D'où viennent les images, sprites, liens et prix, et où ça en est
+// D'où viennent les images, sprites, liens et prix, et où ça en est ; un clic montre ce qui manque
 export async function renderSources(box) {
   let s;
   try { s = await api.rpc('catalogue_stats'); } catch (err) {
     return setHtml(box, html`<h2>Images et liens</h2><p class="muted">${err.message}</p>`);
   }
   const rows = [
-    ['Logos d’extension', 'Fournis par TCGdex', `${nb(s.sets_logo)} / ${nb(s.sets)}`],
-    ['Images des cartes', 'TCGdex, en VF dès qu’elle existe, sinon en anglais', `${nb(s.cards_image)} / ${nb(s.cards)} · ${nb(s.cards_en)} encore en anglais`],
-    ['Cartes ajoutées à la main', 'Absentes de TCGdex, à remplacer quand elles y arrivent', nb(s.cards_manual)],
-    ['Sprites des Pokémon et des formes', 'Tes sprites Home sur le NAS, repli sur l’illustration officielle', `${nb(s.pokemon_sprite)} / ${nb(s.pokemon)}`],
-    ['Liens Cardmarket', 'Nom anglais, extension et numéro ; modifiables carte par carte',
-      `${pct(s.cm_direct, s.cards)} directs · ${nb(s.cm_manual)} corrigés à la main · ${nb(s.cm_search)} recherches`],
-    ['Prix Cardmarket', 'Tendance, prix bas et moyenne 30 jours de TCGdex, chaque nuit', `${nb(s.prices)} cartes · ${nb(s.prices_tracked)} suivies`],
+    ['logos', 'Logos d’extension', 'Fournis par TCGdex', `${nb(s.sets_logo)} / ${nb(s.sets)}`, s.sets - s.sets_logo],
+    ['sigles', 'Sigles d’extension', 'pokemontcg.io, sinon TCGdex (souvent absents)', `${nb(s.sets_symbol)} / ${nb(s.sets)} de pokemontcg.io`, s.sets - s.sets_symbol],
+    ['images', 'Images des cartes', 'TCGdex en VF, sinon en anglais, sinon pokemontcg.io ; ou ajoutée à la main',
+      `${nb(s.cards_image)} / ${nb(s.cards)} · ${nb(s.cards_fallback)} de pokemontcg.io`, s.cards - s.cards_image],
+    ['anglais', 'Cartes encore en anglais', 'Passent en VF dès que TCGdex la publie', nb(s.cards_en), s.cards_en],
+    ['manuelles', 'Cartes ajoutées à la main', 'Absentes de TCGdex, à remplacer quand elles y arrivent', nb(s.cards_manual), s.cards_manual],
+    ['sprites', 'Sprites des Pokémon et des formes', 'Tes sprites Home sur le NAS, repli sur l’illustration officielle', `${nb(s.pokemon_sprite)} / ${nb(s.pokemon)}`, s.pokemon - s.pokemon_sprite],
+    ['liens', 'Liens Cardmarket', 'Nom anglais, extension et numéro ; modifiables carte par carte',
+      `${pct(s.cm_direct, s.cards)} directs · ${nb(s.cm_manual)} corrigés à la main · ${nb(s.cm_search)} recherches`, s.cm_search],
+    ['prix', 'Prix Cardmarket', 'Prix le plus bas de TCGdex, chaque nuit, pour les cartes de tes ventes et achats', `${nb(s.prices)} cartes · ${nb(s.prices_tracked)} suivies`, 1],
   ];
   setHtml(box, html`
-    <div class="panel-head"><h2>Images et liens</h2><span class="muted small">Tout est rempli automatiquement, rien à coller à la main</span></div>
-    <div class="table-scroll"><table class="table">
-      <tbody>${rows.map(([name, how, state]) => html`<tr><td><strong>${name}</strong><br><span class="muted small">${how}</span></td><td class="small">${state}</td></tr>`)}</tbody>
+    <div class="panel-head"><h2>Images et liens</h2><span class="muted small">Rempli automatiquement · clique sur une ligne pour voir ce qui manque</span></div>
+    <div class="table-scroll"><table class="table table-click">
+      <tbody>${rows.map(([id, name, how, state, missing]) => html`
+        <tr data-missing="${missing ? id : ''}" tabindex="${missing ? 0 : -1}">
+          <td><strong>${name}</strong><br><span class="muted small">${how}</span></td>
+          <td class="small">${state}</td>
+          <td class="small num">${missing ? html`<span class="link">Voir</span>` : html`<span class="pos">Complet</span>`}</td>
+        </tr>`)}</tbody>
     </table></div>
-    ${s.sets_without_code ? html`<p class="small" style="margin: 0">${s.sets_without_code} extension(s) où tu as des cartes n’ont pas de code Cardmarket : leurs liens sont des recherches. <a href="#/extensions">Ajoute le code</a> depuis la page de l’extension (Personnaliser).</p>` : ''}`);
+    ${s.sets_without_code ? html`<p class="small" style="margin: 0">${s.sets_without_code} extension(s) où tu as des cartes n’ont pas de code Cardmarket : leurs liens sont des recherches. <button type="button" class="link" data-missing="codes">Les voir</button></p>` : ''}`);
+
+  on(box, 'click', '[data-missing]', (_, el) => el.dataset.missing && showMissing(el.dataset.missing));
+  on(box, 'keydown', '[data-missing]', (e, el) => { if (e.key === 'Enter') el.click(); });
+}
+
+// Ce qui manque, les éléments de mes ventes et achats d'abord
+const MINE = '(en_stock.gt.0,vendues.gt.0,achetees.gt.0)';
+const CARD = 'id,name,number,set_id,set_name,set_symbol,image,lang,en_stock,vendues,achetees';
+const MISSING = {
+  logos: { title: 'Extensions sans logo', table: 'set_list', params: { logo: 'is.null', source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
+  sigles: { title: 'Extensions sans sigle de pokemontcg.io', note: 'Celles qui gardent l’icône TCGdex : si elle ne s’affiche pas ici, c’est qu’elle n’existe pas (le code de l’extension la remplace).',
+    table: 'set_list', params: { or: '(symbol.is.null,symbol.not.like.*pokemontcg*)', source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
+  images: { title: 'Cartes sans image', note: 'Le catalogue en cherche 60 par nuit sur pokemontcg.io. Sur la page d’une carte : « Ajouter une image ».',
+    table: 'card_list', params: { image: 'is.null', select: CARD, order: 'a_du_stock.desc,vendues.desc,achetees.desc,release_date.desc.nullslast,set_id,number_sort.nullslast' }, kind: 'card' },
+  anglais: { title: 'Cartes encore en anglais', table: 'card_list', params: { lang: 'eq.en', select: CARD, order: 'a_du_stock.desc,vendues.desc,release_date.desc.nullslast,set_id,number_sort.nullslast' }, kind: 'card' },
+  manuelles: { title: 'Cartes ajoutées à la main', table: 'card_list', params: { source: 'eq.manual', select: CARD, order: 'name' }, kind: 'card' },
+  sprites: { title: 'Pokémon sans sprite sur le NAS', note: 'Ils affichent l’illustration officielle.', table: 'pokedex',
+    params: { sprite: 'is.null', select: 'key,dex,name_fr,pokeapi_id,form_badge,form_color,cartes', order: 'cartes.desc,sort_order' }, kind: 'pokemon' },
+  liens: { title: 'Cartes de tes ventes et achats avec un lien de recherche', note: 'Ajoute le code Cardmarket de l’extension (page de l’extension, Personnaliser), ou corrige le lien sur la page de la carte.',
+    table: 'card_list', params: { cardmarket_url: 'like.*/Search?*', or: MINE, select: CARD, order: 'set_name,number_sort.nullslast' }, kind: 'card' },
+  prix: { title: 'Cartes de tes ventes et achats sans prix', note: 'TCGdex n’a pas de prix Cardmarket pour elles.',
+    table: 'card_list', params: { prices_updated_at: 'is.null', or: MINE, source: 'eq.tcgdex', select: CARD, order: 'set_name,number_sort.nullslast' }, kind: 'card' },
+  codes: { title: 'Extensions de tes cartes sans code Cardmarket', table: 'set_list',
+    params: { cardmarket_code: 'is.null', source: 'eq.tcgdex', or: '(en_stock.gt.0,vendues.gt.0)', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
+};
+
+async function showMissing(id) {
+  const m = MISSING[id];
+  let page;
+  try { page = await api.page(m.table, m.params, { limit: 300 }); } catch (err) { return toastError(err); }
+  const item = r => {
+    if (m.kind === 'set') return html`
+      <a class="todo-item" href="#/extensions/${encodeURIComponent(r.id)}">
+        ${setSymbolHtml({ set_id: r.id, set_symbol: r.symbol, set_name: r.name })}
+        <span class="grow"><strong>${r.name}</strong><span class="muted small">${[r.serie_name, r.id.toUpperCase(), r.release_date ? r.release_date.slice(0, 4) : ''].filter(Boolean).join(' · ')}</span></span>
+      </a>`;
+    if (m.kind === 'pokemon') return html`
+      <a class="todo-item" href="#/pokedex/${encodeURIComponent(r.key)}">
+        <span class="tx-sprite">${spriteHtml(r, 'sprite-inline')}</span>
+        <span class="grow"><strong>${r.name_fr} ${formBadge(r)}</strong><span class="muted small">n°${String(r.dex).padStart(3, '0')} · ${r.cartes} carte${r.cartes > 1 ? 's' : ''}</span></span>
+      </a>`;
+    const mine = Number(r.en_stock) || Number(r.vendues) || Number(r.achetees);
+    return html`
+      <a class="todo-item" href="#/cartes/${encodeURIComponent(r.id)}">
+        ${setSymbolHtml(r)}
+        <span class="thumb thumb-xs">${r.image ? html`<img src="${cardImage(r.image)}" alt="" loading="lazy" data-hide-on-error>` : ''}</span>
+        <span class="grow"><strong>${r.name}</strong><span class="muted small">${r.set_name} · ${r.number || '—'}</span></span>
+        ${mine ? html`<span class="tag tag-info">Dans mes ventes ou achats</span>` : ''}
+      </a>`;
+  };
+  const modal = openModal({
+    title: m.title,
+    width: 680,
+    body: html`
+      <p class="muted small" style="margin: 0">${page.total.toLocaleString('fr-FR')} au total${page.total > page.rows.length ? `, les ${page.rows.length} premiers` : ''}${m.note ? ` · ${m.note}` : ''}</p>
+      ${page.rows.length ? html`<div class="mini-list missing-list">${page.rows.map(item)}</div>` : html`<p class="pos">Rien ne manque.</p>`}`,
+    actions: [{ label: 'Fermer' }],
+  });
+  // un lien ouvert ferme la liste
+  on(modal.el, 'click', 'a[href]', () => modal.close());
 }
 
 // Articles qui ne sont pas des cartes (protège-cartes, classeurs…), à choisir dans une vente

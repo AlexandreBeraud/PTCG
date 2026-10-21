@@ -4,7 +4,8 @@ import { icon } from '../../ui/icons.js';
 import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { store } from '../../shared/store.js';
-import { contactAvatar, commandeStatusTag, fmtDate, norm, today, COUNTRIES, flag } from '../../shared/sales.js';
+import { contactAvatar, commandeStatusTag, commandeStatus, fmtDate, norm, today, COUNTRIES, flag, KINDS } from '../../shared/sales.js';
+import { loadChart, PALETTE, topParts } from '../../shared/chart.js';
 
 const ROLE = { all: 'Tous', vente: 'Acheteurs', achat: 'Vendeurs' };
 // statut d'au moins une de ses commandes
@@ -33,8 +34,55 @@ function roleLabel(c) {
   return `${who} · ${n} commande${n > 1 ? 's' : ''}`;
 }
 
+// camemberts affichés, détruits quand on change de contact ou de page
+let charts = [];
+const clearCharts = () => { charts.forEach(c => c.destroy()); charts = []; };
+
+const countryName = code => COUNTRIES.find(([c]) => c === code)?.[1] || (code ? code.toUpperCase() : 'Sans pays');
+const TYPE = { pokemon: 'Pokémon', trainer: 'Dresseurs', energy: 'Énergies' };
+const typeOf = t => (t.kind === 'carte' ? TYPE[t.category] || 'Cartes' : KINDS[t.kind]);
+
+// Des camemberts : [{ title, parts: [[libellé, valeur]], money }]
+function piesHtml(specs) {
+  return html`<div class="pie-grid">${specs.map((p, i) => html`
+    <section class="pie-box">
+      <h4>${p.title}</h4>
+      ${p.parts.length ? html`<div class="pie-canvas"><canvas id="pie-${i}" role="img" aria-label="${p.title}"></canvas></div>` : html`<p class="muted small">Rien pour l’instant.</p>`}
+    </section>`)}</div>`;
+}
+
+async function drawPies(box, specs) {
+  clearCharts();
+  let Chart;
+  try { Chart = await loadChart(); } catch (err) {
+    box.querySelectorAll('.pie-canvas').forEach(c => setHtml(c, html`<p class="muted small">${err.message}</p>`));
+    return;
+  }
+  if (!box.isConnected) return;
+  const text = getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim();
+  specs.forEach((p, i) => {
+    const canvas = box.querySelector(`#pie-${i}`);
+    if (!canvas || !p.parts.length) return;
+    const total = p.parts.reduce((n, [, v]) => n + v, 0);
+    charts.push(new Chart(canvas, {
+      type: 'doughnut',
+      data: { labels: p.parts.map(([l]) => l), datasets: [{ data: p.parts.map(([, v]) => v), backgroundColor: PALETTE, borderWidth: 0 }] },
+      options: {
+        maintainAspectRatio: false,
+        cutout: '58%',
+        plugins: {
+          legend: { position: 'right', labels: { color: text, boxWidth: 12, font: { size: 12 } } },
+          tooltip: { callbacks: { label: c => `${c.label} : ${p.money ? eur(c.parsed) : c.parsed} (${Math.round(c.parsed / total * 100)} %)` } },
+        },
+      },
+    }));
+  });
+}
+
 export default {
   title: 'Contacts',
+
+  destroy() { clearCharts(); },
 
   async render(main, params) {
     let contacts = [];
@@ -85,8 +133,13 @@ export default {
       const list = byRole
         .filter(c => !state.statut || (c.statuts || []).includes(state.statut))
         .sort(SORTS.find(o => o.id === state.sort).cmp);
-      if (!currentId && list.length && matchMedia('(min-width: 861px)').matches) currentId = list[0].id;
-      setHtml($('#clist'), list.length ? html`${list.map(c => html`
+      if (!currentId && matchMedia('(min-width: 861px)').matches) currentId = 'stats';
+      const overview = html`
+        <a class="contact-item contact-overview" href="#/contacts/stats" ${currentId === 'stats' ? html`aria-current="true"` : ''}>
+          <span class="avatar">${icon('bilan', 20)}</span>
+          <span class="grow"><strong>Vue d’ensemble</strong><span class="muted small">Répartitions de tous tes contacts</span></span>
+        </a>`;
+      setHtml($('#clist'), list.length ? html`${overview}${list.map(c => html`
         <a class="contact-item" href="#/contacts/${encodeURIComponent(c.id)}" ${c.id === currentId ? html`aria-current="true"` : ''} data-contact="${c.id}">
           ${contactAvatar(c)}
           <span class="grow"><strong>${c.pseudo}</strong><span class="muted small">${roleLabel(c)}</span></span>
@@ -97,6 +150,11 @@ export default {
 
     async function renderDetail() {
       const box = $('#detail');
+      clearCharts();
+      if (currentId === 'stats') {
+        main.querySelector('.split').classList.add('has-detail');
+        return renderOverview(box);
+      }
       const c = contacts.find(x => x.id === currentId);
       main.querySelector('.split').classList.toggle('has-detail', !!c);
       if (!c) return setHtml(box, html`<div class="empty"><h2>Choisis un contact</h2></div>`);
@@ -117,9 +175,11 @@ export default {
           <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${c.cartes_vendues}</strong></div>
           <div class="kpi"><span class="muted small">${Number(c.total_achat) && !Number(c.total_vente) ? 'Total acheté' : 'Total vendu'}</span><strong>${eur(Number(c.total_vente) || Number(c.total_achat))}</strong></div>
         </div>
+        <div id="pies"></div>
         <h3 class="section-title">Commandes</h3>
         <div id="orders"><p class="muted">Chargement…</p></div>
       `);
+      contactPies(c, box.querySelector('#pies'));
 
       try {
         const all = await api.list('commande_list', { contact_id: `eq.${c.id}`, order: 'ordered_on.desc.nullslast,created_at.desc' });
@@ -142,6 +202,61 @@ export default {
       } catch (err) {
         setHtml(box.querySelector('#orders'), html`<p class="muted">${err.message}</p>`);
       }
+    }
+
+    // Répartition de ce qu'il m'a acheté (ou vendu, si c'est un vendeur)
+    async function contactPies(c, box) {
+      const dir = Number(c.commandes_vente) >= Number(c.commandes_achat) ? 'vente' : 'achat';
+      let lines;
+      try {
+        lines = await api.list('transaction_list', { contact_id: `eq.${c.id}`, direction: `eq.${dir}`, select: 'kind,category,total,qty,set_name,condition,day' });
+      } catch (_) { return; }
+      if (currentId !== c.id || !lines.length) return;
+      const sum = (key, val = t => Number(t.total)) => {
+        const m = new Map();
+        for (const t of lines) { const k = key(t) || '—'; m.set(k, (m.get(k) || 0) + val(t)); }
+        return [...m];
+      };
+      const year = d => (d ? d.slice(0, 4) : '—');
+      const specs = [
+        { title: dir === 'vente' ? 'Ce qu’il t’a acheté, par extension' : 'Ce que tu lui as acheté, par extension', parts: topParts(sum(t => t.set_name || 'Sans extension')), money: true },
+        { title: 'Par type d’article', parts: topParts(sum(typeOf)), money: true },
+        { title: 'Par état', parts: topParts(sum(t => t.condition, t => t.qty)) },
+        { title: 'Par année', parts: sum(t => year(t.day)).sort((a, b) => a[0].localeCompare(b[0])), money: true },
+      ];
+      setHtml(box, html`<h3 class="section-title">Répartition</h3>${piesHtml(specs)}`);
+      drawPies(box, specs);
+    }
+
+    // Tous les contacts : à qui je vends, chez qui j'achète, d'où ils viennent
+    async function renderOverview(box) {
+      let orders = [];
+      try { orders = await api.list('commande_list', { select: 'direction,status,total,contact_id' }); } catch (_) { /* facultatif */ }
+      if (currentId !== 'stats') return;
+      const buyers = contacts.filter(c => Number(c.total_vente) > 0);
+      const sellers = contacts.filter(c => Number(c.total_achat) > 0);
+      const countries = new Map();
+      for (const c of contacts) { const k = countryName(c.icon && /^[a-z]{2}$/.test(c.icon) ? c.icon : ''); countries.set(k, (countries.get(k) || 0) + 1); }
+      const statuses = new Map();
+      for (const o of orders) { const k = `${o.direction === 'vente' ? 'Vente' : 'Achat'} · ${commandeStatus(o.direction, o.status).label}`; statuses.set(k, (statuses.get(k) || 0) + 1); }
+      const ventes = buyers.reduce((n, c) => n + Number(c.total_vente), 0);
+      const achats = sellers.reduce((n, c) => n + Number(c.total_achat), 0);
+      const specs = [
+        { title: 'Ventes par acheteur', parts: topParts(buyers.map(c => [c.pseudo, Number(c.total_vente)])), money: true },
+        { title: 'Achats par vendeur', parts: topParts(sellers.map(c => [c.pseudo, Number(c.total_achat)])), money: true },
+        { title: 'Contacts par pays', parts: topParts([...countries]) },
+        { title: 'Commandes par statut', parts: topParts([...statuses]) },
+      ];
+      setHtml(box, html`
+        <a class="btn btn-ghost btn-sm back-link" href="#/contacts">← Contacts</a>
+        <div class="contact-head"><div class="grow"><h2>Vue d’ensemble</h2><p class="muted small" style="margin: 2px 0 0">${contacts.length} contacts · ${orders.length} commandes</p></div></div>
+        <div class="kpis kpis-3">
+          <div class="kpi"><span class="muted small">Acheteurs</span><strong>${buyers.length}</strong><span class="muted small">${eur(ventes)} de ventes</span></div>
+          <div class="kpi"><span class="muted small">Vendeurs</span><strong>${sellers.length}</strong><span class="muted small">${eur(achats)} d’achats</span></div>
+          <div class="kpi"><span class="muted small">Panier moyen</span><strong>${eur(ventes / Math.max(1, orders.filter(o => o.direction === 'vente').length))}</strong><span class="muted small">par commande de vente</span></div>
+        </div>
+        ${piesHtml(specs)}`);
+      drawPies(box, specs);
     }
 
     function contactForm(c = null) {

@@ -1,27 +1,13 @@
 import { api } from '../../api.js';
 import { html, setHtml, eur } from '../../ui/dom.js';
 import { store } from '../../shared/store.js';
+import { loadChart } from '../../shared/chart.js';
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 const SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-const CHART_JS = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
 
 const state = { scope: '', year: String(new Date().getFullYear()) };
 let chart = null;
-
-// Chart.js n'est chargé que sur cette page
-let chartLoading = null;
-function loadChart() {
-  if (window.Chart) return Promise.resolve(window.Chart);
-  chartLoading ||= new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = CHART_JS;
-    s.onload = () => resolve(window.Chart);
-    s.onerror = () => { chartLoading = null; reject(new Error('Graphique indisponible (pas d’accès à cdnjs)')); };
-    document.head.append(s);
-  });
-  return chartLoading;
-}
 
 const signed = n => (n > 0 ? '+' : '') + eur(n);
 
