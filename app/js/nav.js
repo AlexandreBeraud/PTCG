@@ -7,6 +7,7 @@ export const SECTIONS = [
     { id: 'extensions', label: 'Extensions' },
     { id: 'cartes', label: 'Cartes' },
     { id: 'pokedex', label: 'Pokédex' },
+    { id: 'fiches', label: 'Personnages et objets' },
   ] },
   { title: 'Ventes et achats', items: [
     { id: 'ventes', label: 'Ventes et achats' },
@@ -24,7 +25,7 @@ export const SECTIONS = [
 ];
 
 const href = item => '#/' + (item.path ?? item.id);
-const PLUS = ['extensions', 'pokedex', 'contacts', 'bilan', 'classeurs', 'produits', 'reglages', 'labels', 'plus'];
+const PLUS = ['extensions', 'pokedex', 'fiches', 'contacts', 'bilan', 'classeurs', 'produits', 'reglages', 'labels', 'plus'];
 
 export function renderNav(active) {
   setHtml(document.getElementById('sidebar'), html`

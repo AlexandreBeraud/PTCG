@@ -16,6 +16,7 @@ const PAGES = {
   extensions: () => import('./pages/extensions/index.js'),
   cartes: () => import('./pages/cartes/index.js'),
   pokedex: () => import('./pages/pokedex/index.js'),
+  fiches: () => import('./pages/fiches/index.js'),
   labels: () => import('./pages/labels/index.js'),
   contacts: () => import('./pages/contacts/index.js'),
   bilan: () => import('./pages/bilan/index.js'),

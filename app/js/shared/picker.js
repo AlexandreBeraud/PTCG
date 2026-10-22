@@ -11,7 +11,7 @@ import { cardImage, spriteHtml, formBadge, setSymbolHtml, norm, inList } from '.
 // cardPicker(el, { onPick(card), onManual(nom), autofocus, stockToggle })
 //   stockToggle : case « Seulement mon stock » (nouvelle vente)
 
-const TABS = [
+export const TABS = [
   { id: 'pokemon', label: 'Pokémon', search: 'Chercher un Pokémon…', one: 'Pokémon' },
   { id: 'personnage', label: 'Personnages', search: 'Chercher un personnage (Cynthia, N…)', one: 'personnage', fam: null },
   { id: 'objet', label: 'Objets', search: 'Chercher un objet (Poké Ball…)', one: 'objet', fam: ['objet', 'outil'] },
@@ -25,13 +25,13 @@ let lastTab = 'pokemon';
 let stockOnly = false;
 const inStock = x => Number(x.en_stock) > 0;
 
-const bySortie = (a, b) => String(b.release_date || '').localeCompare(String(a.release_date || ''))
+export const bySortie = (a, b) => String(b.release_date || '').localeCompare(String(a.release_date || ''))
   || String(a.set_id).localeCompare(String(b.set_id))
   || (a.number_sort ?? 1e9) - (b.number_sort ?? 1e9) || String(a.number).localeCompare(String(b.number));
 
 // image d'une fiche : son portrait, sinon l'illustration de sa carte la plus récente
 const isCard = src => /tcgdex|pokemontcg|cardmarket/.test(src || '');
-function entityImg(e, small = false) {
+export function entityImg(e, small = false) {
   if (e.type === 'pokemon') return html`<span class="ent-img ${small ? 'ent-img-sm' : ''}">${spriteHtml(e, 'poke-img')}</span>`;
   if (!e.image) return html`<span class="ent-img ${small ? 'ent-img-sm' : ''}"></span>`;
   const card = isCard(e.image);

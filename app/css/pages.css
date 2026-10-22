@@ -187,6 +187,7 @@
   background: var(--surface-2); border: 1px solid var(--border); color: inherit;
 }
 .ent:hover, .ent:focus-visible { border-color: var(--accent); }
+a.ent { text-decoration: none; }
 .ent-new { justify-content: center; color: var(--accent-text); grid-column: span 2; }
 .ent-img { width: 72px; height: 72px; display: grid; place-items: center; flex: none; overflow: hidden; border-radius: 10px; }
 .ent-img img { width: 100%; height: 100%; object-fit: contain; }

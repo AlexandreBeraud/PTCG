@@ -69,7 +69,7 @@ export async function renderSources(box) {
   }
   const rows = [
     ['logos', 'Logos d’extension', 'Fournis par TCGdex', `${nb(s.sets_logo)} / ${nb(s.sets)}`, s.sets - s.sets_logo],
-    ['sigles', 'Sigles d’extension', 'pokemontcg.io, sinon TCGdex (souvent absents)', `${nb(s.sets_symbol)} / ${nb(s.sets)} de pokemontcg.io`, s.sets - s.sets_symbol],
+    ['sigles', 'Sigles d’extension', 'pokemontcg.io, sinon TCGdex', 'La liste vérifie chaque sigle et ne garde que ceux qui ne s’affichent pas', 1],
     ['images', 'Images des cartes', 'TCGdex en VF, sinon en anglais, sinon pokemontcg.io ; ou ajoutée à la main',
       `${nb(s.cards_image)} / ${nb(s.cards)} · ${nb(s.cards_fallback)} de pokemontcg.io`, s.cards - s.cards_image],
     ['anglais', 'Cartes encore en anglais', 'Passent en VF dès que TCGdex la publie', nb(s.cards_en), s.cards_en],
@@ -100,8 +100,13 @@ const MINE = '(en_stock.gt.0,vendues.gt.0,achetees.gt.0)';
 const CARD = 'id,name,number,set_id,set_name,set_symbol,image,lang,en_stock,vendues,achetees';
 const MISSING = {
   logos: { title: 'Extensions sans logo', table: 'set_list', params: { logo: 'is.null', source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
-  sigles: { title: 'Extensions sans sigle de pokemontcg.io', note: 'Celles qui gardent l’icône TCGdex : si elle ne s’affiche pas ici, c’est qu’elle n’existe pas (le code de l’extension la remplace).',
-    table: 'set_list', params: { or: '(symbol.is.null,symbol.not.like.*pokemontcg*)', source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
+  sigles: { title: 'Extensions sans sigle', note: 'Sans sigle, ou dont l’image ne s’affiche pas : le code de l’extension la remplace.',
+    table: 'set_list', params: { source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set', limit: 1000,
+    // seul le navigateur sait si l'image existe vraiment
+    keep: async rows => {
+      const broken = await Promise.all(rows.map(r => !r.symbol || imageFails(r.symbol)));
+      return rows.filter((_, i) => broken[i]);
+    } },
   images: { title: 'Cartes sans image', note: 'Le catalogue en cherche 60 par nuit sur pokemontcg.io.',
     table: 'card_list', params: { image: 'is.null', select: CARD, order: 'a_du_stock.desc,vendues.desc,achetees.desc,release_date.desc.nullslast,set_id,number_sort.nullslast' }, kind: 'card' },
   anglais: { title: 'Cartes encore en anglais', table: 'card_list', params: { lang: 'eq.en', select: CARD, order: 'a_du_stock.desc,vendues.desc,release_date.desc.nullslast,set_id,number_sort.nullslast' }, kind: 'card' },
@@ -129,11 +134,26 @@ const FIX = {
   codes: { text: 'PFL, SVI…', save: (r, v) => api.rpc('set_cardmarket_code', { set_id: r.id, code: v }) },
 };
 
+// l'image se charge-t-elle ? (6 s au plus)
+function imageFails(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const timer = setTimeout(() => resolve(true), 6000);
+    img.onload = () => { clearTimeout(timer); resolve(!img.naturalWidth); };
+    img.onerror = () => { clearTimeout(timer); resolve(true); };
+    img.src = src;
+  });
+}
+
 async function showMissing(id) {
   const m = MISSING[id];
   const fix = FIX[id];
   let page;
-  try { page = await api.page(m.table, m.params, { limit: 300 }); } catch (err) { return toastError(err); }
+  try { page = await api.page(m.table, m.params, { limit: m.limit || 300 }); } catch (err) { return toastError(err); }
+  if (m.keep) {
+    const rows = await m.keep(page.rows);
+    page = { rows, total: rows.length };
+  }
   const control = (r, i) => !fix ? ''
     : fix.text ? html`<span class="input-group missing-fix"><input class="input input-sm" data-fix-text="${i}" placeholder="${fix.text}" aria-label="Corriger"><button type="button" class="btn btn-sm" data-fix-ok="${i}">OK</button></span>`
     : html`<button type="button" class="btn btn-sm" data-fix-image="${i}">${fix.label}</button>`;
