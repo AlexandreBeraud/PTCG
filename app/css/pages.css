@@ -195,8 +195,22 @@ a.ent { text-decoration: none; }
 .ent-img-photo { background: var(--surface-3); }
 .ent-img-photo img { object-fit: cover; object-position: 50% 0; }
 .ent-img-card { background: var(--surface-3); }
+.ent-img-obj { background: var(--surface-3); }
+.ent-img-obj img { padding: 6px; }
 .ent-img-card img { object-fit: cover; object-position: 50% 22%; transform: scale(1.35); transform-origin: 50% 22%; }
 .ent-img-sm { width: 36px; height: 36px; border-radius: 7px; }
+/* fiche sans image : emoji (👤 🎒 🌳 ⭕) ou rond de la couleur de l'énergie */
+.fiche-emoji { display: inline-grid; place-items: center; width: 100%; height: 100%; font-size: 22px; line-height: 1; }
+.ent-img .fiche-emoji { font-size: 34px; background: var(--surface-3); }
+.ent-img-sm .fiche-emoji { font-size: 18px; }
+.fiche-dot { width: 55%; height: 55%; max-width: 24px; max-height: 24px; border-radius: 999px; box-shadow: 0 0 0 3px var(--surface-3); }
+.ent-img .fiche-dot { max-width: 40px; max-height: 40px; }
+.fiche-emoji.sprite-lg { width: 52px; height: 52px; font-size: 30px; border-radius: 999px; background: var(--surface); }
+/* Encyclopédie : mode « Modifier » */
+.edit-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 12px; margin: 8px 0 18px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+.card-tile-wrap { position: relative; min-width: 0; }
+.card-x { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 999px; border: 0; background: rgba(0, 0, 0, .72); color: #fff; font-size: 14px; cursor: pointer; }
+.card-x:hover { background: var(--danger, #d64545); }
 .pick-set { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .pick-set:first-child { margin-top: 0; }
 .ent-name { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }

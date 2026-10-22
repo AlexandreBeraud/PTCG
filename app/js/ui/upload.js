@@ -4,8 +4,9 @@ import { upload, imageUrl } from '../nas.js';
 import { toastError } from './toast.js';
 
 // Zone de dépôt d'image : glisser-déposer ou bouton, envoi direct sur le NAS.
-// dropzone(el, { value, folder, onChange(path) })
-export function dropzone(el, { value = '', folder = '', label = 'Glisse une photo ici', onChange } = {}) {
+// dropzone(el, { value, folder, onChange(path), send(file) })
+//   send : envoi personnalisé (nom de fichier imposé), renvoie le chemin
+export function dropzone(el, { value = '', folder = '', label = 'Glisse une photo ici', onChange, send: sendFile } = {}) {
   let current = value;
   let busy = false;
 
@@ -27,7 +28,7 @@ export function dropzone(el, { value = '', folder = '', label = 'Glisse une phot
     busy = true;
     render();
     try {
-      current = await upload(file, folder);
+      current = await (sendFile ? sendFile(file) : upload(file, folder));
       onChange?.(current);
     } catch (err) {
       toastError(err);

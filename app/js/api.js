@@ -32,10 +32,9 @@ async function request(path, { method = 'GET', body, headers = {}, timeout = TIM
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
   const h = { 'Accept-Profile': PROFILE, ...headers };
-  if (body !== undefined) {
-    h['Content-Type'] = 'application/json';
-    h['Content-Profile'] = PROFILE;
-  }
+  if (body !== undefined) h['Content-Type'] = 'application/json';
+  // toute écriture, même sans corps (DELETE), doit viser le schéma v2 : sinon PostgREST cherche dans public
+  if (method !== 'GET' && method !== 'HEAD') h['Content-Profile'] = PROFILE;
 
   let res;
   try {

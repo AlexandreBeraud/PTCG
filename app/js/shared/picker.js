@@ -1,11 +1,10 @@
 import { api } from '../api.js';
-import { imageUrl } from '../nas.js';
 import { html, setHtml, on } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
-import { toastError } from '../ui/toast.js';
-import { cardImage, spriteHtml, formBadge, setSymbolHtml, norm, inList } from './sales.js';
+import { cardImage, spriteHtml, formBadge, setSymbolHtml, norm } from './sales.js';
+import { KINDS, ficheImg, loadFicheImages } from './fiches.js';
 
-// Choix d'une carte en deux temps : le Pokémon (ou le personnage, l'objet…),
+// Choix d'une carte en deux temps : le Pokémon (ou une fiche de l'Encyclopédie),
 // puis la carte parmi toutes les siennes. L'onglet « Recherche » garde la
 // recherche directe : « dracaufeu 013 », « goupix nuit noire »…
 // cardPicker(el, { onPick(card), onManual(nom), autofocus, stockToggle })
@@ -13,10 +12,7 @@ import { cardImage, spriteHtml, formBadge, setSymbolHtml, norm, inList } from '.
 
 export const TABS = [
   { id: 'pokemon', label: 'Pokémon', search: 'Chercher un Pokémon…', one: 'Pokémon' },
-  { id: 'personnage', label: 'Personnages', search: 'Chercher un personnage (Cynthia, N…)', one: 'personnage', fam: null },
-  { id: 'objet', label: 'Objets', search: 'Chercher un objet (Poké Ball…)', one: 'objet', fam: ['objet', 'outil'] },
-  { id: 'lieu', label: 'Lieux', search: 'Chercher un lieu (stade)', one: 'lieu', fam: ['stade'] },
-  { id: 'energie', label: 'Énergies', search: 'Chercher une énergie', one: 'énergie', fam: ['energie'] },
+  ...KINDS,
   { id: 'cartes', label: 'Recherche', search: 'Nom de la carte, numéro, extension…' },
 ];
 const CARD_SELECT = 'id,name,number,set_id,set_name,set_symbol,set_count,image,variants,rarity,lang,source,price_trend,price_low,price_low_holo,cardmarket_url,en_stock,release_date,number_sort,form_badge,form_color';
@@ -29,14 +25,10 @@ export const bySortie = (a, b) => String(b.release_date || '').localeCompare(Str
   || String(a.set_id).localeCompare(String(b.set_id))
   || (a.number_sort ?? 1e9) - (b.number_sort ?? 1e9) || String(a.number).localeCompare(String(b.number));
 
-// image d'une fiche : son portrait, sinon l'illustration de sa carte la plus récente
-const isCard = src => /tcgdex|pokemontcg|cardmarket/.test(src || '');
+// image d'un Pokémon ou d'une fiche
 export function entityImg(e, small = false) {
   if (e.type === 'pokemon') return html`<span class="ent-img ${small ? 'ent-img-sm' : ''}">${spriteHtml(e, 'poke-img')}</span>`;
-  if (!e.image) return html`<span class="ent-img ${small ? 'ent-img-sm' : ''}"></span>`;
-  const card = isCard(e.image);
-  return html`<span class="ent-img ${card ? 'ent-img-card' : 'ent-img-photo'} ${small ? 'ent-img-sm' : ''}">
-    <img src="${card ? cardImage(e.image) : imageUrl(e.image, 'thumb')}" alt="" loading="lazy" data-hide-on-error></span>`;
+  return ficheImg(e, small);
 }
 
 export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle = false } = {}) {
@@ -77,7 +69,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
     const q = input.value.trim();
     note('Recherche…');
     try {
-      const rows = await api.rpc('picker_entities', { kind: st.tab, q: q || null, lim: 2000 });
+      const [rows] = await Promise.all([api.rpc('picker_entities', { kind: st.tab, q: q || null, lim: 2000 }), loadFicheImages()]);
       if (mine !== seq) return;
       st.entities = rows || [];
       renderEntities(q);
@@ -88,19 +80,13 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
 
   function renderEntities(q) {
     const t = tab();
-    const exact = st.entities.some(e => e.type === 'entite' && norm(e.name) === norm(q));
     st.list = onlyStock() ? st.entities.filter(inStock) : st.entities;
-    const create = t.id !== 'pokemon' && q.length >= 2 && !exact
-      ? html`<button type="button" class="ent ent-new" data-create>+ Créer la fiche ${t.one} « ${q} »<span class="muted small">regroupe toutes les cartes dont le nom contient « ${q} »</span></button>`
-      : '';
     if (!st.list.length) {
       setHtml(body, html`
-        <p class="muted small picker-note">${onlyStock() ? `Aucun ${t.one} en stock${q ? ` pour « ${q} »` : ''}` : q ? `Aucun ${t.one} pour « ${q} »` : `Tape le nom d’un ${t.one}.`}</p>
-        ${create ? html`<div class="ent-grid">${create}</div>` : ''}`);
+        <p class="muted small picker-note">${onlyStock() ? `Aucun ${t.one} en stock${q ? ` pour « ${q} »` : ''}` : q ? `Aucun ${t.one} pour « ${q} »` : `Tape le nom d’un ${t.one}.`}</p>`);
       return;
     }
     setHtml(body, html`
-      ${!q && t.id !== 'pokemon' && !onlyStock() ? html`<p class="muted small picker-note">Tes fiches et les cartes que tu as déjà vendues ou achetées · tape un nom pour les autres</p>` : ''}
       <div class="ent-grid">
         ${st.list.map((e, i) => html`
           <button type="button" class="ent" data-ent="${i}">
@@ -108,7 +94,6 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
             <span class="ent-name">${e.name} ${formBadge(e)}</span>
             <span class="muted small">${e.cartes} carte${e.cartes > 1 ? 's' : ''}${Number(e.en_stock) ? html` · <span class="pos">${e.en_stock} en stock</span>` : ''}</span>
           </button>`)}
-        ${create}
       </div>`);
   }
 
@@ -125,16 +110,9 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
     note('Chargement des cartes…');
     const mine = ++seq;
     const order = 'release_date.desc.nullslast,set_id,number_sort.nullslast,number';
-    const fam = tab().fam;
-    let p;
-    if (e.type === 'pokemon') p = api.list('fiche_cards', { fiche: `eq.${e.key}`, select: CARD_SELECT, order });
-    else {
-      const params = { select: CARD_SELECT, order, limit: 400 };
-      params.name_tokens = e.type === 'entite' ? `like.*${e.tokens}*` : `eq.${e.tokens}`;
-      if (fam) params.famille = inList(fam);
-      else if (e.type === 'nom') params.famille = 'eq.supporter';
-      p = api.list('card_list', params);
-    }
+    const p = e.type === 'pokemon'
+      ? api.list('fiche_cards', { fiche: `eq.${e.key}`, select: CARD_SELECT, order })
+      : api.list('fiche_card_list', { fiche_key: `eq.${e.key}`, select: CARD_SELECT, order });
     try {
       const rows = await p;
       if (mine !== seq) return;
@@ -224,18 +202,6 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
     input.focus();
   }
 
-  async function createEntity() {
-    const name = input.value.trim();
-    try {
-      const row = await api.insert('entites', { kind: st.tab, name });
-      const rows = await api.rpc('picker_entities', { kind: st.tab, q: name, lim: 48 });
-      const e = (rows || []).find(x => x.key === `e:${row.id}`);
-      if (e) openEntity(e);
-    } catch (err) {
-      toastError(err.status === 409 ? new Error(`La fiche « ${name} » existe déjà`) : err);
-    }
-  }
-
   input.addEventListener('input', () => {
     clearTimeout(timer);
     // filtrer les cartes d'un Pokémon est immédiat, le reste interroge le Pi
@@ -254,7 +220,6 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
   on(el, 'click', '[data-back]', () => selectTab(st.tab));
   on(body, 'click', '[data-ent]', (_, b) => openEntity(st.list[Number(b.dataset.ent)]));
   el.querySelector('[data-stock]')?.addEventListener('change', e => { stockOnly = e.target.checked; refresh(); });
-  on(body, 'click', '[data-create]', () => createEntity());
   on(body, 'click', '[data-card]', (_, b) => onPick?.(st.results[Number(b.dataset.card)]));
   on(body, 'click', '[data-suggest]', (_, b) => { input.value = b.dataset.suggest; searchCards(); input.focus(); });
   if (onManual) el.querySelector('[data-manual]').addEventListener('click', () => onManual(st.tab === 'cartes' ? input.value.trim() : ''));

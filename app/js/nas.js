@@ -58,6 +58,38 @@ export async function upload(file, folder = '') {
   return path;
 }
 
+// Envoie un fichier à un chemin précis (« Personnages/Cynthia.png »), en remplaçant l'ancien
+export async function uploadAs(file, path) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('Ce fichier n’est pas une image');
+  if (!token) await login();
+  const put = () => fetch(`${config.nas}/api/resources/${encodePath(path)}?override=true`, {
+    method: 'POST',
+    headers: { 'X-Auth': token },
+    body: file,
+  });
+  let res = await put();
+  if (res.status === 401) {
+    await login();
+    res = await put();
+  }
+  if (!res.ok) throw new Error(`Le NAS a refusé l’envoi (${res.status})`);
+  return path;
+}
+
+// Fichiers d'un dossier ; null si le NAS ne répond pas
+export async function listFolder(folder) {
+  if (!await ensureLogin()) return null;
+  try {
+    const res = await fetch(`${config.nas}/api/resources/${encodePath(folder)}/`, { headers: { 'X-Auth': token } });
+    if (res.status === 404) return [];
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.items || []).filter(i => !i.isDir).map(i => ({ name: i.name, path: `${folder}/${i.name}`, modified: i.modified || '' }));
+  } catch (_) {
+    return null;
+  }
+}
+
 // Fichier tel quel (sans redimensionnement par FileBrowser) : plus rapide pour les petits sprites
 export const rawUrl = path => `${config.nas}/api/raw/${encodePath(path)}?inline=true`;
 

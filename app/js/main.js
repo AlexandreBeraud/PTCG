@@ -4,6 +4,7 @@ import { renderNav } from './nav.js';
 import { html, setHtml, errorHtml, reloadPage } from './ui/dom.js';
 import { toastError } from './ui/toast.js';
 import { applyAppearance } from './appearance.js';
+import { loadFicheImages } from './shared/fiches.js';
 
 // Chaque page est un module chargé seulement quand on l'ouvre.
 const ventes = tab => () => import('./pages/ventes/index.js').then(m => ({
@@ -16,7 +17,7 @@ const PAGES = {
   extensions: () => import('./pages/extensions/index.js'),
   cartes: () => import('./pages/cartes/index.js'),
   pokedex: () => import('./pages/pokedex/index.js'),
-  fiches: () => import('./pages/fiches/index.js'),
+  encyclopedie: () => import('./pages/encyclopedie/index.js'),
   labels: () => import('./pages/labels/index.js'),
   contacts: () => import('./pages/contacts/index.js'),
   bilan: () => import('./pages/bilan/index.js'),
@@ -36,6 +37,8 @@ function parseHash() {
 }
 
 async function route() {
+  // ancienne adresse de l'Encyclopédie
+  if (/^#\/?fiches\b/.test(location.hash)) return location.replace('#/encyclopedie');
   const { id, params } = parseHash();
   renderNav(id === 'achats' ? 'ventes' : id);
   current?.destroy?.();
@@ -108,6 +111,7 @@ async function boot() {
   window.addEventListener('hashchange', route);
   // les images du NAS ont besoin du jeton FileBrowser : on l'attend un peu avant le premier affichage
   await Promise.race([ensureLogin(), new Promise(r => setTimeout(r, 2500))]);
+  loadFicheImages();
   route();
   loadAppearance();
 }

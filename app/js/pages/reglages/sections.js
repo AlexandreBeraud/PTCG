@@ -30,7 +30,7 @@ export async function renderBackups(box) {
 
 // Tout ce que j'ai saisi (pas le référentiel, que les jobs recréent)
 const MY_TABLES = ['transactions', 'commandes', 'contacts', 'accessoires', 'classeurs', 'classeur_groupes', 'classeur_sets', 'produits',
-  'set_prefs', 'labels', 'label_categories', 'pokemon_labels', 'card_overrides', 'entites', 'settings'];
+  'set_prefs', 'labels', 'label_categories', 'pokemon_labels', 'card_overrides', 'fiche_retouches', 'settings'];
 
 async function exportJson(btn) {
   btn.disabled = true;
@@ -63,8 +63,8 @@ async function exportJson(btn) {
 
 // D'où viennent les images, sprites, liens et prix, et où ça en est ; un clic montre ce qui manque
 export async function renderSources(box) {
-  let s;
-  try { s = await api.rpc('catalogue_stats'); } catch (err) {
+  let s, fiches;
+  try { [s, fiches] = await Promise.all([api.rpc('catalogue_stats'), api.count('fiches').catch(() => null)]); } catch (err) {
     return setHtml(box, html`<h2>Images et liens</h2><p class="muted">${err.message}</p>`);
   }
   const rows = [
@@ -89,7 +89,20 @@ export async function renderSources(box) {
           <td class="small num">${missing ? html`<span class="link">Voir</span>` : html`<span class="pos">Complet</span>`}</td>
         </tr>`)}</tbody>
     </table></div>
-    ${s.sets_without_code ? html`<p class="small" style="margin: 0">${s.sets_without_code} extension(s) où tu as des cartes n’ont pas de code Cardmarket : leurs liens sont des recherches. <button type="button" class="link" data-missing="codes">Les voir</button></p>` : ''}`);
+    ${s.sets_without_code ? html`<p class="small" style="margin: 0">${s.sets_without_code} extension(s) où tu as des cartes n’ont pas de code Cardmarket : leurs liens sont des recherches. <button type="button" class="link" data-missing="codes">Les voir</button></p>` : ''}
+    <p class="small" style="margin: 0">Encyclopédie : ${fiches == null ? '—' : nb(fiches)} fiches, regroupées chaque nuit par le catalogue. <button type="button" class="link" data-refiches>Recalculer maintenant</button></p>`);
+
+  on(box, 'click', '[data-refiches]', async (_, b) => {
+    b.disabled = true;
+    try {
+      const n = await api.rpc('refresh_fiches', {}, { timeout: 120000 });
+      toast(`Encyclopédie recalculée : ${nb(n)} fiches`);
+      renderSources(box);
+    } catch (err) {
+      toastError(err);
+      b.disabled = false;
+    }
+  });
 
   on(box, 'click', '[data-missing]', (_, el) => el.dataset.missing && showMissing(el.dataset.missing));
   on(box, 'keydown', '[data-missing]', (e, el) => { if (e.key === 'Enter') el.click(); });

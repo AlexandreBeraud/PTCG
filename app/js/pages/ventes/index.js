@@ -5,10 +5,11 @@ import { toastError } from '../../ui/toast.js';
 import { store } from '../../shared/store.js';
 import {
   CONDITIONS, ITEM_CONDITIONS, LANGS, VENTE_STATUS, COMMANDE_STATUS,
-  thumbHtml, spriteHtml, subtitle, formBadge, conditionTag, venteStatusTag, commandeStatusTag, variantLabel, fmtDate, norm, priceText,
+  thumbHtml, subtitle, formBadge, conditionTag, venteStatusTag, commandeStatusTag, variantLabel, fmtDate, norm, priceText,
   setSymbolHtml, setColorStyle,
 } from '../../shared/sales.js';
 import { setOptionsHtml } from '../../shared/sets.js';
+import { lineSpriteHtml, loadFicheImages } from '../../shared/fiches.js';
 
 const PAGE = 60;
 const BY_NUMBER = 'number_sort.asc.nullslast,number.asc';
@@ -151,7 +152,7 @@ export default {
       if (!append && !keep) setHtml(box, html`<p class="muted">Chargement…</p>`);
       try {
         const limit = keep ? Math.max(rows.length, PAGE) : PAGE;
-        const page = await api.page('transaction_list', queryParams(), { offset: append ? rows.length : 0, limit });
+        const [page] = await Promise.all([api.page('transaction_list', queryParams(), { offset: append ? rows.length : 0, limit }), loadFicheImages()]);
         rows = append ? rows.concat(page.rows) : page.rows;
         total = page.total;
         if (!append) selected = new Set([...selected].filter(id => rows.some(r => r.id === id)));
@@ -172,7 +173,7 @@ export default {
         <div class="tx-row ${sel ? 'is-selected' : ''} ${t.set_color ? 'has-set-color' : ''}" data-id="${t.id}" style="${setColorStyle(t)}">
           <label class="tx-check"><input type="checkbox" data-select="${t.id}" ${sel ? 'checked' : ''} aria-label="Sélectionner ${t.title}"></label>
           <button type="button" class="tx-open" data-open="${t.id}">
-            <span class="tx-media">${setSymbolHtml(t)}${thumbHtml(t, { lotImage: lotImage() })}<span class="tx-sprite">${spriteHtml(t, 'sprite-inline')}</span></span>
+            <span class="tx-media">${setSymbolHtml(t)}${thumbHtml(t, { lotImage: lotImage() })}<span class="tx-sprite">${lineSpriteHtml(t)}</span></span>
             <span class="tx-name">
               <span class="tx-title">${t.title}${t.qty > 1 && t.kind !== 'lot' ? html` <span class="tag">×${t.qty}</span>` : ''} ${formBadge(t)}${t.for_account ? html` <span class="tag tag-owner">Pour ${t.for_account}</span>` : ''}</span>
               <span class="muted small">${subtitle(t)}</span>
@@ -194,7 +195,7 @@ export default {
         <article class="tx-card ${sel ? 'is-selected' : ''} ${t.set_color ? 'has-set-color' : ''}" data-id="${t.id}" style="${setColorStyle(t)}">
           <label class="tx-card-check"><input type="checkbox" data-select="${t.id}" ${sel ? 'checked' : ''} aria-label="Sélectionner ${t.title}"></label>
           <button type="button" class="tx-card-open" data-open="${t.id}">
-            <span class="tx-card-media">${thumbHtml(t, { lotImage: lotImage(), size: 'lg' })}${spriteHtml(t, 'sprite sprite-lg')}</span>
+            <span class="tx-card-media">${thumbHtml(t, { lotImage: lotImage(), size: 'lg' })}${lineSpriteHtml(t, 'sprite sprite-lg')}</span>
             <span class="tx-title">${setSymbolHtml(t)} ${t.title} ${formBadge(t)}</span>
             <span class="muted small">${subtitle(t)}</span>
           </button>

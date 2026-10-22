@@ -489,6 +489,8 @@ runlog.run('catalogue', async () => {
   const prices = PRICES ? await refreshPrices(ctx) : null;
   const links = await refreshCardmarket();
   await db.rpc('refresh_card_forms');
+  // Encyclopédie : fiches regroupées à partir des nouvelles cartes
+  const fiches = env.DRY_RUN ? null : await db.rpc('refresh_fiches').catch(e => `erreur : ${e.message}`);
   const images = IMAGES && !env.DRY_RUN ? await fillImages(ctx).catch(e => ({ erreur: e.message })) : null;
 
   const sum = key => results.reduce((n, r) => n + (r[key] || 0), 0);
@@ -507,6 +509,7 @@ runlog.run('catalogue', async () => {
     liens_cardmarket: links,
     sigles,
     images,
+    fiches,
     erreurs: errors.map(r => `${r.id} : ${r.error}`),
   };
 
