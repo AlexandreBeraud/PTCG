@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
+import { html, setHtml, on, errorHtml, autoMore } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { norm } from '../../shared/sales.js';
 import { FAMILLES, familleLabel, cardTile } from '../../shared/cards.js';
@@ -90,7 +90,7 @@ export default {
 
     async function render() {
       const more = rows.length < total
-        ? html`<div class="more"><button type="button" class="btn" data-more>Afficher plus (${total - rows.length} restantes)</button></div>` : '';
+        ? html`<div class="more" data-more><span class="muted small">Chargement de la suite (${total - rows.length} restantes)…</span></div>` : '';
       if (!rows.length) {
         setHtml($('#count'), '');
         setHtml($('#results'), html`<div class="empty">
@@ -141,7 +141,7 @@ export default {
     on(main, 'click', '[data-famille]', (_, b) => { state.famille = b.dataset.famille; facets(); load(); });
     on(main, 'click', '[data-mine]', (_, b) => { state[b.dataset.mine] = !state[b.dataset.mine]; facets(); load(); });
     on(main, 'change', '#serie', (_, s) => { state.serie = s.value; refresh(); });
-    on(main, 'click', '[data-more]', () => load(true));
+    autoMore(main, () => rows.length < total && load(true));
     on(main, 'click', '[data-suggest]', (_, b) => { state.q = b.dataset.suggest; $('#q').value = state.q; refresh(); });
     on(main, 'click', '[data-manual]', async () => {
       const { openManualCard } = await import('./manual.js');

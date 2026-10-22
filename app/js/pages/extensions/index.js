@@ -65,16 +65,25 @@ export default {
           ? html`<div class="set-grid">${[...shown].sort(sort.cmp).map(s => setCard(s, true))}</div>`
           : html`<div class="empty"><h2>Aucune extension ne correspond</h2></div>`);
       }
-      // rangées par bloc ; « anciennes d'abord » retourne blocs et extensions
-      const list = state.sort === 'date_asc' ? [...shown].reverse() : shown;
+      // rangées par bloc, extensions strictement par date de sortie (sans date : à la fin)
+      const asc = state.sort === 'date_asc';
+      const byRelease = (a, b) => {
+        if (!a.release_date !== !b.release_date) return a.release_date ? -1 : 1;
+        return (asc ? 1 : -1) * String(a.release_date).localeCompare(String(b.release_date)) || a.id.localeCompare(b.id);
+      };
       const series = [];
-      for (const s of list) {
+      for (const s of shown) {
         let g = series.find(x => x.id === (s.serie_id || ''));
         if (!g) series.push(g = { id: s.serie_id || '', name: s.serie_name || 'Hors bloc', sort: s.serie_sort, sets: [] });
         g.sets.push(s);
       }
-      // l'ordre des blocs choisi dans Réglages passe avant la date ; les extensions sans bloc à la fin
-      series.sort((a, b) => (a.id === '') - (b.id === '') || (a.sort ?? 1e6) - (b.sort ?? 1e6));
+      for (const g of series) {
+        g.sets.sort(byRelease);
+        g.date = g.sets.find(s => s.release_date)?.release_date || '';
+      }
+      // l'ordre des blocs choisi dans Réglages, sinon par date ; les extensions sans bloc à la fin
+      series.sort((a, b) => (a.id === '') - (b.id === '') || (a.sort ?? 1e6) - (b.sort ?? 1e6)
+        || (!a.date - !b.date) || (asc ? 1 : -1) * a.date.localeCompare(b.date));
 
       setHtml($('#list'), series.length ? html`${series.map(g => {
         const stock = g.sets.reduce((n, s) => n + Number(s.en_stock), 0);

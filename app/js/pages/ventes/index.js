@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, eur, errorHtml } from '../../ui/dom.js';
+import { html, setHtml, on, eur, errorHtml, autoMore } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { toastError } from '../../ui/toast.js';
 import { store } from '../../shared/store.js';
@@ -87,7 +87,7 @@ export default {
       setHtml($('#filters'), html`
         <label class="field">État<select class="select" data-filter="condition">${opt('', 'Tous')}${[...CONDITIONS, ...ITEM_CONDITIONS].map(c => opt(c.id, c.id, f.condition))}</select></label>
         <label class="field">Langue<select class="select" data-filter="lang">${opt('', 'Toutes')}${LANGS.map(l => opt(l.id, l.label, f.lang))}</select></label>
-        <label class="field">Extension<select class="select" data-filter="set">${setOptionsHtml(setsList, f.set || '', { empty: 'Toutes', label: s => `${s.set_name} (${s.lignes})` })}</select></label>
+        <label class="field">Bloc ou extension<select class="select" data-filter="set">${setOptionsHtml(setsList, f.set || '', { empty: 'Toutes', blocs: true, label: s => `${s.set_name} (${s.lignes})` })}</select></label>
         ${dir === 'vente' ? html`<label class="field">Pour le compte de<select class="select" data-filter="account">${opt('', 'Tout le monde')}${opt('__moi', 'Moi', f.account)}${accounts.map(a => opt(a.name, a.name, f.account))}</select></label>` : ''}
         <label class="field">Du<input class="input" type="date" data-filter="from" value="${f.from || ''}"></label>
         <label class="field">Au<input class="input" type="date" data-filter="to" value="${f.to || ''}"></label>
@@ -130,7 +130,11 @@ export default {
       if (f.q) p.search = `ilike.*${norm(f.q).replace(/[*(),]/g, ' ')}*`;
       if (f.condition) p.condition = `eq.${f.condition}`;
       if (f.lang) p.lang = `eq.${f.lang}`;
-      if (f.set) p.set_key = `eq.${f.set}`;
+      // « bloc:Méga-Évolution » = toutes les extensions du bloc
+      if (f.set) {
+        if (f.set.startsWith('bloc:')) p.serie_name = `eq.${f.set.slice(5)}`;
+        else p.set_key = `eq.${f.set}`;
+      }
       if (f.account) p.for_account = f.account === '__moi' ? 'is.null' : `eq.${f.account}`;
       const and = [];
       if (f.from) and.push(`day.gte.${f.from}`);
@@ -141,15 +145,19 @@ export default {
       return p;
     }
 
-    async function load(append = false) {
+    // keep : après une modification, on relit les lignes déjà affichées sans tout vider ni remonter en haut
+    async function load(append = false, { keep = false } = {}) {
       const box = $('#results');
-      if (!append) setHtml(box, html`<p class="muted">Chargement…</p>`);
+      if (!append && !keep) setHtml(box, html`<p class="muted">Chargement…</p>`);
       try {
-        const page = await api.page('transaction_list', queryParams(), { offset: append ? rows.length : 0, limit: PAGE });
+        const limit = keep ? Math.max(rows.length, PAGE) : PAGE;
+        const page = await api.page('transaction_list', queryParams(), { offset: append ? rows.length : 0, limit });
         rows = append ? rows.concat(page.rows) : page.rows;
         total = page.total;
         if (!append) selected = new Set([...selected].filter(id => rows.some(r => r.id === id)));
+        const y = window.scrollY;
         renderResults();
+        if (keep) window.scrollTo(0, y);
       } catch (err) {
         setHtml(box, errorHtml('Impossible de charger la liste', err));
       }
@@ -220,8 +228,9 @@ export default {
       renderSelection();
     }
 
+    // la suite se charge toute seule en arrivant en bas
     const moreHtml = () => rows.length < total
-      ? html`<div class="more"><button type="button" class="btn" data-more>Afficher plus (${total - rows.length} restantes)</button></div>`
+      ? html`<div class="more" data-more><span class="muted small">Chargement de la suite (${total - rows.length} restantes)…</span></div>`
       : '';
 
     function renderSelection() {
@@ -241,7 +250,7 @@ export default {
 
     async function refresh() {
       store.forget('forAccounts');
-      await Promise.all([load(), renderChips()]);
+      await Promise.all([load(false, { keep: true }), renderChips()]);
       if (f.open) renderFilters();
     }
 
@@ -281,7 +290,7 @@ export default {
         store.forget('settings');
       } catch (_) { /* le choix d'affichage n'est qu'une préférence */ }
     });
-    on(main, 'click', '[data-more]', () => load(true));
+    autoMore(main, () => rows.length < total && load(true));
     on(main, 'click', '[data-retry]', () => load());
 
     on(main, 'change', '[data-select]', (_, c) => {

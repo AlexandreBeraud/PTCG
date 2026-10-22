@@ -53,7 +53,7 @@ export function cardTile(c, { showSet = false } = {}) {
 // Petite vignette de Pokémon (Pokédex, évolutions, autres formes)
 export function pokemonTile(p, { compact = false } = {}) {
   return html`
-    <a class="poke-tile ${compact ? 'poke-tile-sm' : ''}" href="#/pokedex/${encodeURIComponent(p.key)}">
+    <a class="poke-tile ${compact ? 'poke-tile-sm' : ''} ${p.masque ? 'is-masked' : ''}" href="#/pokedex/${encodeURIComponent(p.key)}" ${p.masque ? html`title="Forme masquée"` : ''}>
       <span class="poke-sprite">${spriteHtml(p, 'poke-img')}</span>
       <span class="muted small">n°${String(p.dex).padStart(3, '0')}</span>
       <span class="poke-name">${p.name_fr} ${formBadge(p)}</span>

@@ -110,8 +110,10 @@ export function spriteHtml(t, cls = 'sprite') {
   const official = t.pokeapi_id
     ? `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${t.pokeapi_id}.png`
     : '';
+  // sprite choisi à la main : une adresse, ou « /chemin » d'une photo envoyée sur le NAS
+  if (/^https?:/.test(t.sprite || '')) return html`<img class="${cls}" src="${t.sprite}" alt="" loading="lazy" data-fallback="${official}" data-hide-on-error>`;
   // le fichier brut d'abord (adresse fixe, en cache), l'aperçu FileBrowser si le cookie ne passe pas
-  const path = `${config.spritesRoot}/${t.sprite}`;
+  const path = (t.sprite || '').startsWith('/') ? t.sprite.slice(1) : `${config.spritesRoot}/${t.sprite}`;
   const nas = t.sprite ? [rawUrl(path), imageUrl(path, 'big')] : [];
   const [src, ...rest] = [...nas, official].filter(Boolean);
   return html`<img class="${cls}" src="${src}" alt="" loading="lazy" data-fallback="${rest.join(' ')}" data-hide-on-error>`;

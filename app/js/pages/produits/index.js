@@ -19,7 +19,7 @@ export const TYPES = [
 ];
 const typeLabel = id => TYPES.find(t => t.id === id)?.label || id;
 
-const state = { type: '', got: '', q: '', sort: 'recent' };
+const state = { type: '', got: '', q: '', sort: 'recent', view: 'list' };
 const SORTS = [
   { id: 'recent', label: 'Extensions récentes d’abord' },
   { id: 'old', label: 'Extensions anciennes d’abord' },
@@ -33,11 +33,20 @@ export default {
   async render(main) {
     setHtml(main, html`
       <header class="page-header">
-        <div><h1>Produits</h1><p id="sub">Boosters, ETB, coffrets et decks</p></div>
-        <div class="page-actions"><button type="button" class="btn btn-primary" data-new>${icon('plus')}Ajouter un produit</button></div>
+        <div>
+          <h1>Produits</h1><p id="sub">Boosters, ETB, coffrets et decks</p>
+          <nav class="segmented" aria-label="Affichage" style="margin-top: 12px">
+            <button type="button" data-view="list" aria-pressed="${state.view === 'list'}">Produits</button>
+            <button type="button" data-view="stats" aria-pressed="${state.view === 'stats'}">Statistiques</button>
+          </nav>
+        </div>
+        <div class="page-actions">
+          <button type="button" class="btn" data-fill>Compléter automatiquement</button>
+          <button type="button" class="btn btn-primary" data-new>${icon('plus')}Ajouter un produit</button>
+        </div>
       </header>
       <div class="chips" id="types" role="group" aria-label="Type"></div>
-      <div class="toolbar">
+      <div class="toolbar" id="tools">
         <label class="search grow">${icon('search')}<input type="search" id="q" placeholder="Rechercher un produit ou une extension" value="${state.q}" aria-label="Rechercher un produit"></label>
         <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
         <div class="segmented" role="group" aria-label="Obtenu">
@@ -58,6 +67,8 @@ export default {
     setHtml($('#sub'), `Boosters, ETB, coffrets et decks · ${items.length} produit${items.length > 1 ? 's' : ''}, ${got} obtenu${got > 1 ? 's' : ''}`);
 
     function render() {
+      $('#types').hidden = $('#tools').hidden = state.view === 'stats';
+      if (state.view === 'stats') return renderStats();
       setHtml($('#types'), html`
         <button type="button" class="chip" data-type="" aria-pressed="${!state.type}">Tous<span class="n">${items.length}</span></button>
         ${TYPES.map(t => {
@@ -85,6 +96,53 @@ export default {
           <span class="muted small">${g.items.filter(p => p.obtained).length} / ${g.items.length} obtenus</span></div>
         <div class="product-grid">${g.items.map(p => productHtml(p))}</div>`)}`
         : html`<div class="empty"><h2>Aucun produit${state.type || state.got || q ? ' pour ces filtres' : ''}</h2></div>`);
+    }
+
+    // Où j'en suis : par type, par bloc, et ce que j'ai obtenu chaque année
+    function renderStats() {
+      if (!items.length) return setHtml($('#list'), html`<div class="empty"><h2>Aucun produit pour l’instant</h2></div>`);
+      const count = key => {
+        const m = new Map();
+        for (const p of items) {
+          const k = key(p);
+          const c = m.get(k) || { total: 0, got: 0 };
+          c.total++;
+          if (p.obtained) c.got++;
+          m.set(k, c);
+        }
+        return [...m];
+      };
+      const bars = rows => html`<div class="bars">${rows.map(([label, c]) => html`
+        <div class="bar-row">
+          <span class="bar-label">${label}</span>
+          <span class="bar"><span class="bar-fill bar-vente" style="--w: ${Math.round(c.got / c.total * 100)}%"></span></span>
+          <span class="bar-value">${c.got} / ${c.total}</span>
+        </div>`)}</div>`;
+      const got = items.filter(p => p.obtained);
+      const byYear = new Map();
+      for (const p of got) { const y = p.obtained_on ? p.obtained_on.slice(0, 4) : 'Sans date'; byYear.set(y, (byYear.get(y) || 0) + 1); }
+      const years = [...byYear].sort((a, b) => b[0].localeCompare(a[0]));
+      const maxYear = Math.max(1, ...years.map(([, n]) => n));
+      const blocs = count(p => p.serie_name || 'Sans extension').sort((a, b) => b[1].total - a[1].total);
+      const types = count(p => typeLabel(p.type)).sort((a, b) => b[1].total - a[1].total);
+      const sets = count(p => p.set_name || 'Sans extension').filter(([, c]) => c.got === c.total).length;
+
+      setHtml($('#list'), html`<div class="stack">
+        <div class="kpis">
+          <div class="kpi"><span class="muted small">Produits</span><strong>${items.length}</strong></div>
+          <div class="kpi"><span class="muted small">Obtenus</span><strong>${got.length}</strong><span class="muted small">${Math.round(got.length / items.length * 100)} %</span></div>
+          <div class="kpi"><span class="muted small">À obtenir</span><strong>${items.length - got.length}</strong></div>
+          <div class="kpi"><span class="muted small">Extensions complètes</span><strong>${sets}</strong><span class="muted small">tous leurs produits obtenus</span></div>
+        </div>
+        <div class="grid-auto" style="--min: 320px">
+          <section class="panel"><div class="panel-head"><h2>Par type</h2><span class="muted small">obtenus / total</span></div>${bars(types)}</section>
+          <section class="panel"><div class="panel-head"><h2>Obtenus par année</h2></div>
+            <div class="bars">${years.map(([y, n]) => html`
+              <div class="bar-row"><span class="bar-label">${y}</span><span class="bar"><span class="bar-fill bar-achat" style="--w: ${Math.round(n / maxYear * 100)}%"></span></span><span class="bar-value">${n}</span></div>`)}</div>
+          </section>
+        </div>
+        <section class="panel"><div class="panel-head"><h2>Par bloc</h2><span class="muted small">obtenus / total</span></div>${bars(blocs)}</section>
+      </div>`);
     }
 
     function productHtml(p, withSet = false) {
@@ -120,11 +178,51 @@ export default {
         render();
       } catch (err) { toastError(err); c.checked = !c.checked; }
     });
+    on(main, 'click', '[data-view]', (_, b) => {
+      state.view = b.dataset.view;
+      main.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      render();
+    });
+    on(main, 'click', '[data-fill]', () => fillProducts());
     on(main, 'click', '[data-new]', () => editProduct(null, state.type));
     on(main, 'click', '[data-edit]', (_, b) => editProduct(items.find(x => x.id === b.dataset.edit)));
     render();
   },
 };
+
+// Crée d'un coup les produits qui manquent (un par type et par extension sortie), « à obtenir »
+async function fillProducts() {
+  const sets = await setOptions().catch(() => []);
+  const blocs = [...new Map(sets.filter(s => s.serie_id).map(s => [s.serie_id, s.serie_name])).entries()];
+  openModal({
+    title: 'Compléter automatiquement',
+    width: 560,
+    body: html`
+      <p class="muted" style="margin: 0">Ajoute, pour chaque extension déjà sortie, les produits choisis qui n’existent pas encore, à cocher ensuite quand tu les as. Les sous-extensions (galeries…) sont ignorées.</p>
+      <div class="field"><span>Produits</span>
+        <div class="chips">${TYPES.filter(t => t.id !== 'autre').map(t => html`
+          <label class="check-inline"><input type="checkbox" data-fill-type="${t.id}" ${t.id === 'booster' || t.id === 'etb' ? 'checked' : ''}> ${t.plural}</label>`)}</div>
+      </div>
+      <div class="form-row">
+        <label class="field grow">Extensions
+          <select class="select" id="fill-bloc"><option value="">Tous les blocs</option>${blocs.map(([id, name]) => html`<option value="${id}">${name}</option>`)}</select>
+        </label>
+        <label class="field">Sorties depuis<input class="input" type="date" id="fill-since"></label>
+      </div>`,
+    actions: [
+      { label: 'Annuler' },
+      { label: 'Compléter', primary: true, run: async el => {
+        const types = [...el.querySelectorAll('[data-fill-type]:checked')].map(c => c.dataset.fillType);
+        if (!types.length) { toastError(new Error('Choisis au moins un type de produit')); return false; }
+        try {
+          const n = await api.rpc('fill_produits', { types, serie: el.querySelector('#fill-bloc').value || null, depuis: el.querySelector('#fill-since').value || null });
+          toast(n ? `${n} produit${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''}` : 'Rien à ajouter : tout y est déjà');
+          if (n) reloadPage();
+        } catch (err) { toastError(err); return false; }
+      } },
+    ],
+  });
+}
 
 async function editProduct(p, type = '') {
   const sets = await setOptions();

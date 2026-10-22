@@ -313,7 +313,14 @@
 .pie-box h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .pie-canvas { position: relative; height: 190px; }
 .missing-list { max-height: 60vh; overflow-y: auto; }
-.missing-list .todo-item { color: inherit; }
+.missing-list .todo-item { color: inherit; cursor: default; }
+.missing-list .todo-item > a { display: flex; flex-direction: column; color: inherit; text-decoration: none; }
+.missing-list .todo-item > a:hover strong { text-decoration: underline; }
+.missing-list .is-fixed { opacity: 0.6; }
+.missing-fix { max-width: 280px; flex: 0 1 280px; }
+.opt-bloc { font-weight: 700; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.poke-tile.is-masked { opacity: 0.5; }
 .flag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
 .flag-btn { min-height: 44px; display: grid; place-items: center; font-size: 13px; line-height: 1; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; }
 .flag { display: inline-grid; place-items: center; }

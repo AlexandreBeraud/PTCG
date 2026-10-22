@@ -36,6 +36,24 @@ export function on(root, type, selector, handler) {
   });
 }
 
+// Liste qui se complète toute seule : load() est appelé quand l'élément [data-more]
+// arrive à l'écran (un à la fois). À appeler une fois par page.
+export function autoMore(root, load) {
+  let busy = false;
+  const io = new IntersectionObserver(entries => {
+    if (busy || !entries.some(e => e.isIntersecting)) return;
+    busy = true;
+    Promise.resolve(load()).finally(() => { busy = false; });
+  }, { rootMargin: '600px 0px' });
+  const watch = () => {
+    if (!root.isConnected) { io.disconnect(); mo.disconnect(); return; }
+    root.querySelectorAll('[data-more]:not([data-watched])').forEach(el => { el.dataset.watched = '1'; io.observe(el); });
+  };
+  const mo = new MutationObserver(watch);
+  mo.observe(root, { childList: true, subtree: true });
+  watch();
+}
+
 export function setHtml(el, content) {
   el.innerHTML = String(content);
 }

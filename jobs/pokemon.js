@@ -110,7 +110,11 @@ runlog.run('pokemon', async () => {
   ]);
   const rows = buildRows({ pokemon, species, speciesNames, forms, formNames, types, typeNames });
 
-  const existing = new Set((await db.select('pokemon', 'select=key')).map(r => r.key));
+  const known = await db.select('pokemon', 'select=key,sprite_manual');
+  const existing = new Set(known.map(r => r.key));
+  // un sprite choisi à la main dans l'appli reste
+  const manual = new Map(known.filter(r => r.sprite_manual).map(r => [r.key, r.sprite_manual]));
+  for (const r of rows) if (manual.has(r.key)) r.sprite = manual.get(r.key);
   const added = rows.filter(r => !existing.has(r.key));
   const formsCount = rows.filter(r => !r.is_default).length;
 

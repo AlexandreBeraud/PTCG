@@ -30,7 +30,7 @@ export async function renderPokemon(main, key) {
   if (!p) return setHtml(main, html`<div class="empty"><h2>Pokémon introuvable</h2><a href="#/pokedex">Retour au Pokédex</a></div>`);
   document.title = `${p.name_fr} · PTCG`;
 
-  const select = 'key,dex,name_fr,sprite,pokeapi_id,form_badge,form_color,cartes,en_stock,is_default,sort_order';
+  const select = 'key,dex,name_fr,sprite,pokeapi_id,form_badge,form_color,cartes,en_stock,is_default,sort_order,masque';
   const [forms, evolutions, label] = await Promise.all([
     api.list('pokedex', { species_key: `eq.${p.species_key}`, select, order: 'sort_order' }).catch(() => []),
     p.evolution_id ? api.list('pokedex', { evolution_id: `eq.${p.evolution_id}`, is_default: 'eq.true', select, order: 'sort_order' }).catch(() => []) : [],
@@ -63,8 +63,13 @@ export async function renderPokemon(main, key) {
       <div class="grow">
         <p class="muted small" style="margin: 0">n°${String(p.dex).padStart(3, '0')}${p.generation ? ` · Génération ${GEN[p.generation]}` : ''} ·
           ${p.is_default ? 'forme de base' : html`forme de <a href="#/pokedex/${encodeURIComponent(base?.key || p.species_key)}">${base?.name_fr || p.species_key}</a>`}</p>
-        <h1 class="card-title">${p.name_fr} ${formBadge(p)}</h1>
+        <h1 class="card-title">${p.name_fr} ${formBadge(p)}${p.masque ? html` <span class="tag">Masquée</span>` : ''}</h1>
         <div class="chips-static">${(p.types || []).map(t => html`<span class="tag">${t}</span>`)}</div>
+        <div class="row-actions">
+          ${!p.is_default ? html`<button type="button" class="btn btn-sm ${p.masque ? 'btn-primary' : 'btn-ghost'}" data-masque>${p.masque ? 'Afficher cette forme' : 'Masquer cette forme'}</button>` : ''}
+          <button type="button" class="btn btn-sm btn-ghost" data-sprite>Changer le sprite</button>
+          ${p.masque ? html`<span class="muted small">Absente du Pokédex et du choix des cartes ; ses cartes sont sur ${base?.name_fr || 'l’espèce'}.</span>` : ''}
+        </div>
       </div>
       <div class="kpis kpis-2">
         <div class="kpi"><span class="muted small">Cartes de cette fiche</span><strong>${cards.length}</strong></div>
@@ -104,6 +109,26 @@ export async function renderPokemon(main, key) {
   `);
   on(main, 'change', '#fsort', (_, el) => { sortId = el.value; setHtml(main.querySelector('#fcards'), cardsHtml()); });
   on(main, 'click', '[data-ranger]', () => rangerIci(p, cards));
+  // sprite choisi à la main (le job du dimanche ne l'écrase plus) ; « Retirer » rend la main au NAS
+  on(main, 'click', '[data-sprite]', async () => {
+    const { askImage } = await import('../../ui/upload.js');
+    const v = await askImage({ title: `Sprite de ${p.name_fr}`, folder: 'Sprites', removable: true });
+    if (v === null) return;
+    try {
+      await api.rpc('set_pokemon_sprite', { pokemon_key: p.key, sprite: !v || /^https?:/.test(v) ? v : `/${v}` });
+      toast(v ? 'Sprite enregistré' : 'Sprite du NAS rétabli à la prochaine mise à jour');
+      reloadPage();
+    } catch (err) { toastError(err); }
+  });
+  // une forme dont je ne veux pas (Pokémon Dominant…) : ses cartes repartent sur l'espèce
+  on(main, 'click', '[data-masque]', async () => {
+    try {
+      if (p.masque) await api.remove('pokemon_masques', { pokemon_key: `eq.${p.key}` });
+      else await api.insert('pokemon_masques', { pokemon_key: p.key });
+      toast(p.masque ? 'Forme de nouveau affichée' : 'Forme masquée');
+      reloadPage();
+    } catch (err) { toastError(err); }
+  });
 }
 
 // Envoyer à la main des cartes de l'espèce sur cette fiche (Méga X ou Y, Deoxys Attaque,

@@ -1,5 +1,5 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
+import { html, setHtml, on, errorHtml, autoMore } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { norm } from '../../shared/sales.js';
 import { pokemonTile } from '../../shared/cards.js';
@@ -37,6 +37,7 @@ export default {
         <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
         <label class="check-inline"><input type="checkbox" id="forms" ${state.forms ? 'checked' : ''}> Afficher les formes</label>
         <label class="check-inline"><input type="checkbox" id="withcards" ${state.withCards ? 'checked' : ''}> Avec des cartes</label>
+        <label class="check-inline"><input type="checkbox" id="masked" ${state.masked ? 'checked' : ''}> Formes masquées</label>
       </div>
       <div class="chips" role="group" aria-label="Génération">
         <button type="button" class="chip" data-gen="" aria-pressed="${!state.gen}">Toutes</button>
@@ -48,12 +49,13 @@ export default {
 
     async function load(append = false) {
       const p = {
-        select: 'key,dex,name_fr,sprite,pokeapi_id,form_badge,form_color,cartes,en_stock,is_default',
+        select: 'key,dex,name_fr,sprite,pokeapi_id,form_badge,form_color,cartes,en_stock,is_default,masque',
         order: SORTS.find(o => o.id === state.sort).order,
       };
       if (state.gen) p.generation = `eq.${state.gen}`;
       if (!state.forms) p.is_default = 'eq.true';
       if (state.withCards) p.cartes = 'gt.0';
+      if (!state.masked) p.masque = 'is.false';
       if (state.q) p.search = `ilike.*${norm(state.q).replace(/[*(),]/g, '')}*`;
       try {
         const page = await api.page('pokedex', p, { offset: append ? rows.length : 0, limit: PAGE });
@@ -64,7 +66,7 @@ export default {
       }
       setHtml($('#grid'), rows.length ? html`
         <div class="poke-grid">${rows.map(r => pokemonTile(r))}</div>
-        ${rows.length < total ? html`<div class="more"><button type="button" class="btn" data-more>Afficher plus (${total - rows.length} restants)</button></div>` : ''}`
+        ${rows.length < total ? html`<div class="more" data-more><span class="muted small">Chargement de la suite (${total - rows.length} restants)…</span></div>` : ''}`
         : html`<div class="empty"><h2>Aucun Pokémon${state.q ? ` pour « ${state.q} »` : ''}</h2></div>`);
     }
 
@@ -81,7 +83,8 @@ export default {
       main.querySelectorAll('[data-gen]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
       load();
     });
-    on(main, 'click', '[data-more]', () => load(true));
+    $('#masked').addEventListener('change', e => { state.masked = e.target.checked; load(); });
+    autoMore(main, () => rows.length < total && load(true));
     load();
   },
 };

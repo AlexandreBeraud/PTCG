@@ -3,7 +3,7 @@ import { imageUrl } from '../../nas.js';
 import { html, setHtml, on } from '../../ui/dom.js';
 import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
-import { dropzone } from '../../ui/upload.js';
+import { dropzone, askImage } from '../../ui/upload.js';
 import { store } from '../../shared/store.js';
 import { setSymbolHtml, spriteHtml, formBadge, cardImage } from '../../shared/sales.js';
 import { forgetSets } from '../../shared/sets.js';
@@ -102,13 +102,13 @@ const MISSING = {
   logos: { title: 'Extensions sans logo', table: 'set_list', params: { logo: 'is.null', source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
   sigles: { title: 'Extensions sans sigle de pokemontcg.io', note: 'Celles qui gardent l’icône TCGdex : si elle ne s’affiche pas ici, c’est qu’elle n’existe pas (le code de l’extension la remplace).',
     table: 'set_list', params: { or: '(symbol.is.null,symbol.not.like.*pokemontcg*)', source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
-  images: { title: 'Cartes sans image', note: 'Le catalogue en cherche 60 par nuit sur pokemontcg.io. Sur la page d’une carte : « Ajouter une image ».',
+  images: { title: 'Cartes sans image', note: 'Le catalogue en cherche 60 par nuit sur pokemontcg.io.',
     table: 'card_list', params: { image: 'is.null', select: CARD, order: 'a_du_stock.desc,vendues.desc,achetees.desc,release_date.desc.nullslast,set_id,number_sort.nullslast' }, kind: 'card' },
   anglais: { title: 'Cartes encore en anglais', table: 'card_list', params: { lang: 'eq.en', select: CARD, order: 'a_du_stock.desc,vendues.desc,release_date.desc.nullslast,set_id,number_sort.nullslast' }, kind: 'card' },
   manuelles: { title: 'Cartes ajoutées à la main', table: 'card_list', params: { source: 'eq.manual', select: CARD, order: 'name' }, kind: 'card' },
   sprites: { title: 'Pokémon sans sprite sur le NAS', note: 'Ils affichent l’illustration officielle.', table: 'pokedex',
     params: { sprite: 'is.null', select: 'key,dex,name_fr,pokeapi_id,form_badge,form_color,cartes', order: 'cartes.desc,sort_order' }, kind: 'pokemon' },
-  liens: { title: 'Cartes de tes ventes et achats avec un lien de recherche', note: 'Ajoute le code Cardmarket de l’extension (page de l’extension, Personnaliser), ou corrige le lien sur la page de la carte.',
+  liens: { title: 'Cartes de tes ventes et achats avec un lien de recherche', note: 'Colle le bon lien, ou ajoute le code Cardmarket de l’extension (liste « sans code Cardmarket »).',
     table: 'card_list', params: { cardmarket_url: 'like.*/Search?*', or: MINE, select: CARD, order: 'set_name,number_sort.nullslast' }, kind: 'card' },
   prix: { title: 'Cartes de tes ventes et achats sans prix', note: 'TCGdex n’a pas de prix Cardmarket pour elles.',
     table: 'card_list', params: { prices_updated_at: 'is.null', or: MINE, source: 'eq.tcgdex', select: CARD, order: 'set_name,number_sort.nullslast' }, kind: 'card' },
@@ -116,33 +116,52 @@ const MISSING = {
     params: { cardmarket_code: 'is.null', source: 'eq.tcgdex', or: '(en_stock.gt.0,vendues.gt.0)', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
 };
 
+// Corriger à la main depuis la liste : une image (logo, sigle, image de carte, sprite) ou un texte (code, lien)
+const FIX = {
+  logos: { label: 'Logo…', image: r => ({ title: `Logo de ${r.name}`, folder: 'Extensions' }), save: (r, v) => api.rpc('set_set_image', { set_id: r.id, quoi: 'logo', url: v }) },
+  sigles: { label: 'Sigle…', image: r => ({ title: `Sigle de ${r.name}`, folder: 'Extensions', hint: 'Une petite icône, de préférence sur fond transparent.' }),
+    save: (r, v) => api.rpc('set_set_image', { set_id: r.id, quoi: 'symbol', url: v }) },
+  images: { label: 'Image…', image: r => ({ title: `Image de ${r.name}`, folder: 'Cartes', hint: 'Sur Cardmarket : clic droit sur l’image de la carte, « Copier l’adresse de l’image ».' }),
+    save: (r, v) => api.rpc('set_card_image', { card_id: r.id, image: v }) },
+  sprites: { label: 'Sprite…', image: r => ({ title: `Sprite de ${r.name_fr}`, folder: 'Sprites' }),
+    save: (r, v) => api.rpc('set_pokemon_sprite', { pokemon_key: r.key, sprite: /^https?:/.test(v) ? v : `/${v}` }) },
+  liens: { text: 'https://www.cardmarket.com/fr/Pokemon/Products/Singles/…', save: (r, v) => api.rpc('set_card_cardmarket_url', { card_id: r.id, url: v }) },
+  codes: { text: 'PFL, SVI…', save: (r, v) => api.rpc('set_cardmarket_code', { set_id: r.id, code: v }) },
+};
+
 async function showMissing(id) {
   const m = MISSING[id];
+  const fix = FIX[id];
   let page;
   try { page = await api.page(m.table, m.params, { limit: 300 }); } catch (err) { return toastError(err); }
-  const item = r => {
+  const control = (r, i) => !fix ? ''
+    : fix.text ? html`<span class="input-group missing-fix"><input class="input input-sm" data-fix-text="${i}" placeholder="${fix.text}" aria-label="Corriger"><button type="button" class="btn btn-sm" data-fix-ok="${i}">OK</button></span>`
+    : html`<button type="button" class="btn btn-sm" data-fix-image="${i}">${fix.label}</button>`;
+  const item = (r, i) => {
     if (m.kind === 'set') return html`
-      <a class="todo-item" href="#/extensions/${encodeURIComponent(r.id)}">
+      <div class="todo-item" data-row="${i}">
         ${setSymbolHtml({ set_id: r.id, set_symbol: r.symbol, set_name: r.name })}
-        <span class="grow"><strong>${r.name}</strong><span class="muted small">${[r.serie_name, r.id.toUpperCase(), r.release_date ? r.release_date.slice(0, 4) : ''].filter(Boolean).join(' · ')}</span></span>
-      </a>`;
+        <a class="grow" href="#/extensions/${encodeURIComponent(r.id)}"><strong>${r.name}</strong><span class="muted small">${[r.serie_name, r.id.toUpperCase(), r.release_date ? r.release_date.slice(0, 4) : ''].filter(Boolean).join(' · ')}</span></a>
+        ${control(r, i)}
+      </div>`;
     if (m.kind === 'pokemon') return html`
-      <a class="todo-item" href="#/pokedex/${encodeURIComponent(r.key)}">
+      <div class="todo-item" data-row="${i}">
         <span class="tx-sprite">${spriteHtml(r, 'sprite-inline')}</span>
-        <span class="grow"><strong>${r.name_fr} ${formBadge(r)}</strong><span class="muted small">n°${String(r.dex).padStart(3, '0')} · ${r.cartes} carte${r.cartes > 1 ? 's' : ''}</span></span>
-      </a>`;
+        <a class="grow" href="#/pokedex/${encodeURIComponent(r.key)}"><strong>${r.name_fr} ${formBadge(r)}</strong><span class="muted small">n°${String(r.dex).padStart(3, '0')} · ${r.cartes} carte${r.cartes > 1 ? 's' : ''}</span></a>
+        ${control(r, i)}
+      </div>`;
     const mine = Number(r.en_stock) || Number(r.vendues) || Number(r.achetees);
     return html`
-      <a class="todo-item" href="#/cartes/${encodeURIComponent(r.id)}">
+      <div class="todo-item" data-row="${i}">
         ${setSymbolHtml(r)}
         <span class="thumb thumb-xs">${r.image ? html`<img src="${cardImage(r.image)}" alt="" loading="lazy" data-hide-on-error>` : ''}</span>
-        <span class="grow"><strong>${r.name}</strong><span class="muted small">${r.set_name} · ${r.number || '—'}</span></span>
-        ${mine ? html`<span class="tag tag-info">Dans mes ventes ou achats</span>` : ''}
-      </a>`;
+        <a class="grow" href="#/cartes/${encodeURIComponent(r.id)}"><strong>${r.name}</strong><span class="muted small">${r.set_name} · ${r.number || '—'}${mine ? ' · dans mes ventes ou achats' : ''}</span></a>
+        ${control(r, i)}
+      </div>`;
   };
   const modal = openModal({
     title: m.title,
-    width: 680,
+    width: 760,
     body: html`
       <p class="muted small" style="margin: 0">${page.total.toLocaleString('fr-FR')} au total${page.total > page.rows.length ? `, les ${page.rows.length} premiers` : ''}${m.note ? ` · ${m.note}` : ''}</p>
       ${page.rows.length ? html`<div class="mini-list missing-list">${page.rows.map(item)}</div>` : html`<p class="pos">Rien ne manque.</p>`}`,
@@ -150,6 +169,31 @@ async function showMissing(id) {
   });
   // un lien ouvert ferme la liste
   on(modal.el, 'click', 'a[href]', () => modal.close());
+
+  const done = i => {
+    const row = modal.el.querySelector(`[data-row="${i}"]`);
+    row.classList.add('is-fixed');
+    row.querySelector('.missing-fix, [data-fix-image]')?.replaceWith(Object.assign(document.createElement('span'), { className: 'tag tag-ok', textContent: 'Corrigé' }));
+  };
+  const apply = async (i, value) => {
+    try {
+      await fix.save(page.rows[i], value);
+      done(i);
+      if (id === 'codes' || id === 'liens') toast('Enregistré · liens Cardmarket recalculés');
+    } catch (err) { toastError(err); }
+  };
+  on(modal.el, 'click', '[data-fix-image]', async (_, b) => {
+    const r = page.rows[Number(b.dataset.fixImage)];
+    const value = await askImage(fix.image(r));
+    if (value) apply(Number(b.dataset.fixImage), value);
+  });
+  on(modal.el, 'click', '[data-fix-ok]', (_, b) => {
+    const input = modal.el.querySelector(`[data-fix-text="${b.dataset.fixOk}"]`);
+    if (input.value.trim()) apply(Number(b.dataset.fixOk), input.value.trim());
+  });
+  on(modal.el, 'keydown', '[data-fix-text]', (e, input) => {
+    if (e.key === 'Enter' && input.value.trim()) { e.preventDefault(); apply(Number(input.dataset.fixText), input.value.trim()); }
+  });
 }
 
 // Articles qui ne sont pas des cartes (protège-cartes, classeurs…), à choisir dans une vente

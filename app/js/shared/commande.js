@@ -86,7 +86,7 @@ export async function openCommande(id, { onChanged } = {}) {
         ${o.direction === 'vente' ? html`<button type="button" class="btn btn-sm" data-attach>+ Rattacher une vente</button>` : ''}
         <button type="button" class="btn btn-sm btn-ghost" data-add>${o.direction === 'vente' ? '+ Nouvelle vente dans cette commande' : '+ Ajouter un article'}</button>
         <span class="grow"></span>
-        <strong>Total ${eur(o.total)}${Number(o.shipping) ? html` <span class="muted small">dont ${eur(o.shipping)} de port</span>` : ''}</strong>
+        <strong data-total>${totalHtml()}</strong>
       </div>
     `);
     setHtml(foot, html`
@@ -97,12 +97,16 @@ export async function openCommande(id, { onChanged } = {}) {
     `);
   }
 
-  async function patch(fields) {
+  const totalHtml = () => html`Total ${eur(o.total)}${Number(o.shipping) ? html` <span class="muted small">dont ${eur(o.shipping)} de port</span>` : ''}`;
+
+  // quiet : un champ saisi au clavier, on ne réaffiche pas la fiche (le curseur reste où il est)
+  async function patch(fields, { quiet = false } = {}) {
     try {
       await api.update('commandes', { id: `eq.${id}` }, fields);
       touch();
       await load();
-      render();
+      if (quiet) setHtml(root.querySelector('[data-total]'), totalHtml());
+      else render();
     } catch (err) { toastError(err); }
   }
 
@@ -118,12 +122,21 @@ export async function openCommande(id, { onChanged } = {}) {
     toast(`Commande : ${commandeStatus(o.direction, status).label}`);
   }
 
+  // listes et case : enregistrées tout de suite ; dates, lien, port : quand on quitte le champ
+  // (une date se valide à chaque chiffre tapé, l'enregistrer en pleine saisie faisait perdre le champ)
   root.addEventListener('change', e => {
     const f = e.target.dataset.f;
     if (!f) return;
     if (f === 'shipping_paid') return patch({ shipping_paid: e.target.checked });
+    if (e.target.tagName === 'SELECT') patch({ [f]: e.target.value || null });
+  });
+  root.addEventListener('focusout', e => {
+    const f = e.target.dataset.f;
+    if (!f || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox') return;
     const v = e.target.value.trim();
-    patch({ [f]: f === 'shipping' ? Number(v.replace(',', '.')) || 0 : v || null });
+    const value = f === 'shipping' ? Number(v.replace(',', '.')) || 0 : v || null;
+    if (String(value ?? '') === String(o[f] ?? '') || (f === 'shipping' && Number(o[f]) === value)) return;
+    patch({ [f]: value }, { quiet: true });
   });
   on(root, 'click', '[data-status]', (_, b) => { if (b.dataset.status !== o.status) setStatus(b.dataset.status); });
   on(foot, 'click', '[data-next]', () => {

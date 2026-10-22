@@ -221,8 +221,10 @@ async function processSet(id, briefs, ctx) {
     serie_id: (main.serie && ctx.seriesIds.has(main.serie.id)) ? main.serie.id : null,
     name: (fr && fr.name) || en.name,
     name_en: (en && en.name) || null,
-    logo: png((fr && fr.logo) || (en && en.logo)),
-    symbol: symbolFor(ctx, id, inDb ? inDb.cardmarket_code : abbreviation(fr, en), (en && en.name) || null)
+    // une image corrigée à la main dans l'appli reste
+    logo: (inDb && inDb.logo_manual) || png((fr && fr.logo) || (en && en.logo)),
+    symbol: (inDb && inDb.symbol_manual)
+      || symbolFor(ctx, id, inDb ? inDb.cardmarket_code : abbreviation(fr, en), (en && en.name) || null)
       || png((fr && fr.symbol) || (en && en.symbol)),
     card_count: count.official || null,
     card_count_total: Math.max(count.total || 0, wanted.length) || null,
@@ -379,7 +381,7 @@ function symbolFor(ctx, id, code, nameEn) {
 async function fixSymbols(ctx, done) {
   let n = 0;
   for (const [id, set] of ctx.dbSets) {
-    if (done.has(id) || set.source === 'manual') continue;
+    if (done.has(id) || set.source === 'manual' || set.symbol_manual) continue;
     const url = symbolFor(ctx, id, set.cardmarket_code, set.name_en);
     if (!url || url === set.symbol) continue;
     await db.patch('sets', `id=eq.${encodeURIComponent(id)}`, { symbol: url });
@@ -421,7 +423,7 @@ runlog.run('catalogue', async () => {
     getJson(`${TCGDEX}/fr/series`),
     getJson(`${TCGDEX}/en/series`),
     tcgdex('en', `series/${POCKET_SERIE}`).catch(() => null),
-    db.select('sets', 'select=id,name,name_en,lang,source,release_date,cardmarket_code,parent_id,symbol'),
+    db.select('sets', 'select=id,name,name_en,lang,source,release_date,cardmarket_code,parent_id,symbol,logo_manual,symbol_manual'),
     db.select('cards', 'select=id,set_id,number,name,name_en,lang,category,source&order=id'),
     db.select('pokemon', 'select=name_fr,name_en,is_default'),
   ]);
