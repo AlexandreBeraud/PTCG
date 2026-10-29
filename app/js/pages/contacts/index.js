@@ -5,7 +5,6 @@ import { openModal, confirmModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
 import { store } from '../../shared/store.js';
 import { contactAvatar, commandeStatusTag, commandeStatus, fmtDate, norm, today, COUNTRIES, flag, KINDS } from '../../shared/sales.js';
-import { loadChart, PALETTE, topParts } from '../../shared/chart.js';
 
 const ROLE = { all: 'Tous', vente: 'Acheteurs', achat: 'Vendeurs' };
 // statut d'au moins une de ses commandes
@@ -34,55 +33,43 @@ function roleLabel(c) {
   return `${who} · ${n} commande${n > 1 ? 's' : ''}`;
 }
 
-// camemberts affichés, détruits quand on change de contact ou de page
-let charts = [];
-const clearCharts = () => { charts.forEach(c => c.destroy()); charts = []; };
-
 const countryName = code => COUNTRIES.find(([c]) => c === code)?.[1] || (code ? code.toUpperCase() : 'Sans pays');
 const TYPE = { pokemon: 'Pokémon', trainer: 'Dresseurs', energy: 'Énergies' };
 const typeOf = t => (t.kind === 'carte' ? TYPE[t.category] || 'Cartes' : KINDS[t.kind]);
+const shortDate = d => (d ? new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' }) : '');
 
-// Des camemberts : [{ title, parts: [[libellé, valeur]], money }]
-function piesHtml(specs) {
-  return html`<div class="pie-grid">${specs.map((p, i) => html`
-    <section class="pie-box">
-      <h4>${p.title}</h4>
-      ${p.parts.length ? html`<div class="pie-canvas"><canvas id="pie-${i}" role="img" aria-label="${p.title}"></canvas></div>` : html`<p class="muted small">Rien pour l’instant.</p>`}
-    </section>`)}</div>`;
+// Paniers d'une liste de commandes : montant des articles, hors port, commandes vides exclues
+function baskets(orders) {
+  const v = orders.filter(o => Number(o.lignes) > 0).map(o => Number(o.total) - Number(o.shipping || 0)).sort((a, b) => a - b);
+  if (!v.length) return { n: 0, moyen: 0, median: 0 };
+  const mid = Math.floor(v.length / 2);
+  return { n: v.length, moyen: v.reduce((a, b) => a + b, 0) / v.length, median: v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2 };
 }
 
-async function drawPies(box, specs) {
-  clearCharts();
-  let Chart;
-  try { Chart = await loadChart(); } catch (err) {
-    box.querySelectorAll('.pie-canvas').forEach(c => setHtml(c, html`<p class="muted small">${err.message}</p>`));
-    return;
-  }
-  if (!box.isConnected) return;
-  const text = getComputedStyle(document.documentElement).getPropertyValue('--text-2').trim();
-  specs.forEach((p, i) => {
-    const canvas = box.querySelector(`#pie-${i}`);
-    if (!canvas || !p.parts.length) return;
-    const total = p.parts.reduce((n, [, v]) => n + v, 0);
-    charts.push(new Chart(canvas, {
-      type: 'doughnut',
-      data: { labels: p.parts.map(([l]) => l), datasets: [{ data: p.parts.map(([, v]) => v), backgroundColor: PALETTE, borderWidth: 0 }] },
-      options: {
-        maintainAspectRatio: false,
-        cutout: '58%',
-        plugins: {
-          legend: { position: 'right', labels: { color: text, boxWidth: 12, font: { size: 12 } } },
-          tooltip: { callbacks: { label: c => `${c.label} : ${p.money ? eur(c.parsed) : c.parsed} (${Math.round(c.parsed / total * 100)} %)` } },
-        },
-      },
-    }));
-  });
+// Classement en barres : les plus grosses parts seulement, rien de regroupé
+function barsHtml(title, entries, { money = false, tone = 'vente', max = 10, unit = '' } = {}) {
+  const sorted = [...entries].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, max);
+  const hi = Math.max(1, ...top.map(([, v]) => v));
+  const fmt = v => (money ? eur(v) : `${v}${unit}`);
+  return html`
+    <section class="stat-box">
+      <h4>${title}</h4>
+      ${top.length ? html`<div class="bars">${top.map(([label, v, note]) => html`
+        <div class="bar-row">
+          <span class="bar-label" title="${label}">${label}${note ? html` <span class="muted">${note}</span>` : ''}</span>
+          <span class="bar"><span class="bar-fill bar-${tone}" style="--w: ${Math.round(v / hi * 100)}%"></span></span>
+          <span class="bar-value">${fmt(v)}</span>
+        </div>`)}</div>
+        ${sorted.length > top.length ? html`<p class="muted small" style="margin: 8px 0 0">${sorted.length - top.length} de plus, non affiché${sorted.length - top.length > 1 ? 's' : ''}</p>` : ''}`
+      : html`<p class="muted small" style="margin: 0">Rien pour l’instant.</p>`}
+    </section>`;
 }
+
+const kpi = (label, value, sub = '') => html`<div class="kpi"><span class="muted small">${label}</span><strong>${value}</strong>${sub ? html`<span class="muted small">${sub}</span>` : ''}</div>`;
 
 export default {
   title: 'Contacts',
-
-  destroy() { clearCharts(); },
 
   async render(main, params) {
     let contacts = [];
@@ -137,20 +124,38 @@ export default {
       const overview = html`
         <a class="contact-item contact-overview" href="#/contacts/stats" ${currentId === 'stats' ? html`aria-current="true"` : ''}>
           <span class="avatar">${icon('bilan', 20)}</span>
-          <span class="grow"><strong>Vue d’ensemble</strong><span class="muted small">Répartitions de tous tes contacts</span></span>
+          <span class="grow"><strong>Vue d’ensemble</strong><span class="muted small">Paniers, meilleurs acheteurs, pays</span></span>
         </a>`;
+      // par nom : une lettre en tête de chaque groupe
+      let letter = '';
+      const head = c => {
+        if (state.sort !== 'name') return '';
+        const l = norm(c.pseudo).charAt(0).toUpperCase() || '#';
+        const k = /[A-Z]/.test(l) ? l : '#';
+        if (k === letter) return '';
+        letter = k;
+        return html`<div class="contact-letter">${k}</div>`;
+      };
+      const amount = c => {
+        const v = Number(c.total_vente), a = Number(c.total_achat);
+        if (state.role === 'achat' || state.sort === 'achete' || (!v && a)) return html`<span class="contact-amount"><strong>${eur(a)}</strong><span class="muted small">acheté</span></span>`;
+        return html`<span class="contact-amount"><strong>${eur(v)}</strong><span class="muted small">vendu</span></span>`;
+      };
       setHtml($('#clist'), list.length ? html`${overview}${list.map(c => html`
+        ${head(c)}
         <a class="contact-item" href="#/contacts/${encodeURIComponent(c.id)}" ${c.id === currentId ? html`aria-current="true"` : ''} data-contact="${c.id}">
-          ${contactAvatar(c)}
-          <span class="grow"><strong>${c.pseudo}</strong><span class="muted small">${roleLabel(c)}</span></span>
-          ${Number(c.en_attente) ? html`<span class="tag tag-warn">${c.en_attente} en attente</span>` : ''}
-        </a>`)}` : html`<p class="muted small">Aucun contact.</p>`);
+          ${contactAvatar(c, 36)}
+          <span class="grow">
+            <strong>${c.pseudo}${Number(c.en_attente) ? html` <span class="dot dot-warn" title="${c.en_attente} commande(s) en attente"></span>` : ''}</strong>
+            <span class="muted small">${roleLabel(c)}${c.derniere ? ` · ${shortDate(c.derniere)}` : ''}</span>
+          </span>
+          ${amount(c)}
+        </a>`)}` : html`${overview}<p class="muted small">Aucun contact.</p>`);
       renderDetail();
     }
 
     async function renderDetail() {
       const box = $('#detail');
-      clearCharts();
       if (currentId === 'stats') {
         main.querySelector('.split').classList.add('has-detail');
         return renderOverview(box);
@@ -170,20 +175,25 @@ export default {
           <button type="button" class="btn btn-sm btn-ghost" data-edit-contact>Modifier</button>
           <button type="button" class="btn btn-sm btn-primary" data-new-order>${icon('plus', 16)}Nouvelle commande</button>
         </div>
-        <div class="kpis kpis-3">
-          <div class="kpi"><span class="muted small">Commandes</span><strong>${Number(c.commandes_vente) + Number(c.commandes_achat)}</strong></div>
-          <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${c.cartes_vendues}</strong></div>
-          <div class="kpi"><span class="muted small">${Number(c.total_achat) && !Number(c.total_vente) ? 'Total acheté' : 'Total vendu'}</span><strong>${eur(Number(c.total_vente) || Number(c.total_achat))}</strong></div>
-        </div>
-        <div id="pies"></div>
+        <div class="kpis kpis-contact" id="ckpis"></div>
+        <div id="repartition"></div>
         <h3 class="section-title">Commandes</h3>
         <div id="orders"><p class="muted">Chargement…</p></div>
       `);
-      contactPies(c, box.querySelector('#pies'));
+      const dir = Number(c.commandes_vente) >= Number(c.commandes_achat) ? 'vente' : 'achat';
+      contactPies(c, dir, box.querySelector('#repartition'));
 
       try {
         const all = await api.list('commande_list', { contact_id: `eq.${c.id}`, order: 'ordered_on.desc.nullslast,created_at.desc' });
         if (currentId !== c.id) return;
+        const b = baskets(all.filter(o => o.direction === dir));
+        const vente = dir === 'vente';
+        setHtml(box.querySelector('#ckpis'), html`
+          ${kpi('Commandes', Number(c.commandes_vente) + Number(c.commandes_achat))}
+          ${kpi(vente ? 'Cartes vendues' : 'Cartes achetées', vente ? c.cartes_vendues : all.filter(o => o.direction === 'achat').reduce((n, o) => n + Number(o.cartes), 0))}
+          ${kpi(vente ? 'Total vendu' : 'Total acheté', eur(vente ? c.total_vente : c.total_achat), 'port compris')}
+          ${kpi('Panier moyen', b.n ? eur(b.moyen) : '—', 'hors port')}
+          ${kpi('Panier médian', b.n ? eur(b.median) : '—', 'hors port')}`);
         const orders = state.statut ? all.filter(o => o.status === state.statut) : all;
         const filtre = state.statut && orders.length < all.length
           ? html`<p class="muted small" style="margin: 0">${orders.length} commande${orders.length > 1 ? 's' : ''} « ${STATUTS.find(o => o.id === state.statut).label} » sur ${all.length} · <button type="button" class="link" data-statut-all>Tout afficher</button></p>`
@@ -205,8 +215,7 @@ export default {
     }
 
     // Répartition de ce qu'il m'a acheté (ou vendu, si c'est un vendeur)
-    async function contactPies(c, box) {
-      const dir = Number(c.commandes_vente) >= Number(c.commandes_achat) ? 'vente' : 'achat';
+    async function contactPies(c, dir, box) {
       let lines;
       try {
         lines = await api.list('transaction_list', { contact_id: `eq.${c.id}`, direction: `eq.${dir}`, select: 'kind,category,total,qty,set_name,condition,day' });
@@ -217,46 +226,63 @@ export default {
         for (const t of lines) { const k = key(t) || '—'; m.set(k, (m.get(k) || 0) + val(t)); }
         return [...m];
       };
-      const year = d => (d ? d.slice(0, 4) : '—');
-      const specs = [
-        { title: dir === 'vente' ? 'Ce qu’il t’a acheté, par extension' : 'Ce que tu lui as acheté, par extension', parts: topParts(sum(t => t.set_name || 'Sans extension')), money: true },
-        { title: 'Par type d’article', parts: topParts(sum(typeOf)), money: true },
-        { title: 'Par état', parts: topParts(sum(t => t.condition, t => t.qty)) },
-        { title: 'Par année', parts: sum(t => year(t.day)).sort((a, b) => a[0].localeCompare(b[0])), money: true },
-      ];
-      setHtml(box, html`<h3 class="section-title">Répartition</h3>${piesHtml(specs)}`);
-      drawPies(box, specs);
+      const tone = dir;
+      setHtml(box, html`
+        <h3 class="section-title">Répartition</h3>
+        <div class="stat-grid">
+          ${barsHtml(dir === 'vente' ? 'Ce qu’il t’a acheté, par extension' : 'Ce que tu lui as acheté, par extension', sum(t => t.set_name || 'Sans extension'), { money: true, tone, max: 8 })}
+          ${barsHtml('Par type d’article', sum(typeOf), { money: true, tone })}
+          ${barsHtml('Par état', sum(t => t.condition, t => t.qty), { tone, unit: ' ex.' })}
+          ${barsHtml('Par année', sum(t => (t.day ? t.day.slice(0, 4) : '—')), { money: true, tone })}
+        </div>`);
     }
 
-    // Tous les contacts : à qui je vends, chez qui j'achète, d'où ils viennent
+    // Tous les contacts : paniers, à qui je vends, chez qui j'achète, d'où ils viennent
     async function renderOverview(box) {
+      setHtml(box, html`<a class="btn btn-ghost btn-sm back-link" href="#/contacts">← Contacts</a><p class="muted">Chargement…</p>`);
       let orders = [];
-      try { orders = await api.list('commande_list', { select: 'direction,status,total,contact_id' }); } catch (_) { /* facultatif */ }
+      try { orders = await api.list('commande_list', { select: 'direction,status,total,shipping,lignes,contact_id' }); } catch (_) { /* facultatif */ }
       if (currentId !== 'stats') return;
+      const ventes = orders.filter(o => o.direction === 'vente');
+      const achats = orders.filter(o => o.direction === 'achat');
+      const bv = baskets(ventes), ba = baskets(achats);
       const buyers = contacts.filter(c => Number(c.total_vente) > 0);
       const sellers = contacts.filter(c => Number(c.total_achat) > 0);
+      const nCmd = n => html`· ${n} cmd`;
       const countries = new Map();
-      for (const c of contacts) { const k = countryName(c.icon && /^[a-z]{2}$/.test(c.icon) ? c.icon : ''); countries.set(k, (countries.get(k) || 0) + 1); }
-      const statuses = new Map();
-      for (const o of orders) { const k = `${o.direction === 'vente' ? 'Vente' : 'Achat'} · ${commandeStatus(o.direction, o.status).label}`; statuses.set(k, (statuses.get(k) || 0) + 1); }
-      const ventes = buyers.reduce((n, c) => n + Number(c.total_vente), 0);
-      const achats = sellers.reduce((n, c) => n + Number(c.total_achat), 0);
-      const specs = [
-        { title: 'Ventes par acheteur', parts: topParts(buyers.map(c => [c.pseudo, Number(c.total_vente)])), money: true },
-        { title: 'Achats par vendeur', parts: topParts(sellers.map(c => [c.pseudo, Number(c.total_achat)])), money: true },
-        { title: 'Contacts par pays', parts: topParts([...countries]) },
-        { title: 'Commandes par statut', parts: topParts([...statuses]) },
-      ];
+      for (const c of contacts.filter(x => Number(x.commandes_vente) + Number(x.commandes_achat) > 0)) {
+        const k = countryName(c.icon && /^[a-z]{2}$/.test(c.icon) ? c.icon : '');
+        countries.set(k, (countries.get(k) || 0) + 1);
+      }
+      const open = new Map();
+      for (const o of orders.filter(x => x.status !== 'arrive')) {
+        const k = `${o.direction === 'vente' ? 'Vente' : 'Achat'} · ${commandeStatus(o.direction, o.status).label}`;
+        open.set(k, (open.get(k) || 0) + 1);
+      }
       setHtml(box, html`
         <a class="btn btn-ghost btn-sm back-link" href="#/contacts">← Contacts</a>
-        <div class="contact-head"><div class="grow"><h2>Vue d’ensemble</h2><p class="muted small" style="margin: 2px 0 0">${contacts.length} contacts · ${orders.length} commandes</p></div></div>
-        <div class="kpis kpis-3">
-          <div class="kpi"><span class="muted small">Acheteurs</span><strong>${buyers.length}</strong><span class="muted small">${eur(ventes)} de ventes</span></div>
-          <div class="kpi"><span class="muted small">Vendeurs</span><strong>${sellers.length}</strong><span class="muted small">${eur(achats)} d’achats</span></div>
-          <div class="kpi"><span class="muted small">Panier moyen</span><strong>${eur(ventes / Math.max(1, orders.filter(o => o.direction === 'vente').length))}</strong><span class="muted small">par commande de vente</span></div>
+        <div class="contact-head"><div class="grow"><h2>Vue d’ensemble</h2><p class="muted small" style="margin: 2px 0 0">${contacts.length} contacts · ${orders.length} commandes · paniers hors frais de port</p></div></div>
+        <h3 class="section-title">Ventes</h3>
+        <div class="kpis kpis-4">
+          ${kpi('Acheteurs', buyers.length, `${ventes.length} commande${ventes.length > 1 ? 's' : ''}`)}
+          ${kpi('Total vendu', eur(buyers.reduce((n, c) => n + Number(c.total_vente), 0)), 'port compris')}
+          ${kpi('Panier moyen', bv.n ? eur(bv.moyen) : '—')}
+          ${kpi('Panier médian', bv.n ? eur(bv.median) : '—')}
         </div>
-        ${piesHtml(specs)}`);
-      drawPies(box, specs);
+        ${achats.length ? html`
+          <h3 class="section-title">Achats</h3>
+          <div class="kpis kpis-4">
+            ${kpi('Vendeurs', sellers.length, `${achats.length} commande${achats.length > 1 ? 's' : ''}`)}
+            ${kpi('Total acheté', eur(sellers.reduce((n, c) => n + Number(c.total_achat), 0)), 'port compris')}
+            ${kpi('Panier moyen', ba.n ? eur(ba.moyen) : '—')}
+            ${kpi('Panier médian', ba.n ? eur(ba.median) : '—')}
+          </div>` : ''}
+        <div class="stat-grid">
+          ${barsHtml('Meilleurs acheteurs', buyers.map(c => [c.pseudo, Number(c.total_vente), nCmd(c.commandes_vente)]), { money: true })}
+          ${sellers.length ? barsHtml('Principaux vendeurs', sellers.map(c => [c.pseudo, Number(c.total_achat), nCmd(c.commandes_achat)]), { money: true, tone: 'achat' }) : ''}
+          ${barsHtml('Contacts par pays', [...countries], { tone: 'neutre' })}
+          ${open.size ? barsHtml('Commandes en cours', [...open], { tone: 'neutre' }) : ''}
+        </div>`);
     }
 
     function contactForm(c = null) {

@@ -36,6 +36,23 @@ export function cardFoil(c) {
 export const variantsText = c => (c.variants?.length ? c.variants.map(variantLabel).join(', ') : 'inconnues');
 
 // Vignette d'une carte du catalogue (pages Extension, Cartes, Pokédex)
+// La liste d'où l'on ouvre une fiche carte (extension, Pokédex, Encyclopédie…) :
+// le retour y ramène, et les flèches de la fiche passent d'une carte à l'autre dans son ordre
+let trail = null;
+document.addEventListener('click', e => {
+  const a = e.target.closest?.('a.card-tile');
+  if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  const tiles = [...(a.closest('.page') || document).querySelectorAll('a.card-tile')];
+  const ids = tiles.map(t => decodeURIComponent(t.getAttribute('href').replace('#/cartes/', '')));
+  trail = { ids: [...new Set(ids)], back: location.hash || '#/', label: document.title.replace(/ · PTCG$/, '') };
+}, true);
+
+export function cardTrail(id) {
+  const i = trail ? trail.ids.indexOf(id) : -1;
+  if (i < 0) return null;
+  return { back: trail.back, label: trail.label, prev: trail.ids[i - 1] || null, next: trail.ids[i + 1] || null, pos: i + 1, total: trail.ids.length };
+}
+
 export function cardTile(c, { showSet = false } = {}) {
   return html`
     <a class="card-tile" href="#/cartes/${encodeURIComponent(c.id)}">

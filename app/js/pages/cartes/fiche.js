@@ -8,7 +8,7 @@ import { store } from '../../shared/store.js';
 import {
   cardImage, spriteHtml, formBadge, variantLabel, conditionShort, venteStatusTag, fmtDate, norm, priceText, inList,
 } from '../../shared/sales.js';
-import { cardNumber, cardFoil, familleLabel, variantsText } from '../../shared/cards.js';
+import { cardNumber, cardFoil, familleLabel, variantsText, cardTrail } from '../../shared/cards.js';
 
 const FICHE_PAR = {
   label: l => l ? `envoyée ici par le label « ${l} »` : 'envoyée ici par un label',
@@ -43,8 +43,22 @@ export async function renderCard(main, id) {
   const priceRows = [['Prix le plus bas', c.price_low], ['Plus bas holo/reverse', c.price_low_holo]].filter(([, v]) => v != null);
   const imageNote = { manuelle: 'Image ajoutée à la main', secours: 'Image de pokemontcg.io (TCGdex n’en a pas)' }[c.image_source] || '';
 
+  // retour vers la liste d'où vient la carte, sinon vers son extension
+  const nav = cardTrail(c.id);
+  const step = (to, label, sym) => (to
+    ? html`<a class="btn btn-ghost btn-sm card-step" href="#/cartes/${encodeURIComponent(to)}" data-step aria-label="${label}" title="${label}">${sym}</a>`
+    : html`<span class="btn btn-ghost btn-sm card-step" aria-disabled="true">${sym}</span>`);
+
   setHtml(main, html`
-    <a class="back-crumb" href="#/extensions/${encodeURIComponent(c.set_id)}">← ${c.set_name}</a>
+    <div class="card-nav">
+      ${nav ? html`<a class="back-crumb" href="${nav.back}">← ${nav.label}</a>` : html`<a class="back-crumb" href="#/extensions/${encodeURIComponent(c.set_id)}">← ${c.set_name}</a>`}
+      ${nav && nav.total > 1 ? html`
+        <span class="card-steps">
+          ${step(nav.prev, 'Carte précédente (←)', '‹')}
+          <span class="muted small">${nav.pos} / ${nav.total}</span>
+          ${step(nav.next, 'Carte suivante (→)', '›')}
+        </span>` : ''}
+    </div>
     <div class="card-page">
       <div class="card-visual">
         <span class="card-big ${cardFoil(c)}">${big ? html`<img src="${big}" alt="${c.name}" data-hide-on-error>` : html`<span class="thumb-empty">Pas d’image</span>`}</span>
@@ -133,6 +147,17 @@ export async function renderCard(main, id) {
   `);
 
   const preset = { card: { ...c }, status: 'en_vente' };
+  // d'une carte à l'autre sans empiler l'historique : le retour du navigateur ramène à la liste
+  on(main, 'click', '[data-step]', (e, a) => { e.preventDefault(); location.replace(a.getAttribute('href')); });
+  const onKey = e => {
+    if (!main.isConnected) return document.removeEventListener('keydown', onKey);
+    if (!nav || e.altKey || e.ctrlKey || e.metaKey || document.querySelector('.modal-scrim')) return;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
+    const to = e.key === 'ArrowLeft' ? nav.prev : e.key === 'ArrowRight' ? nav.next : null;
+    if (to) location.replace(`#/cartes/${encodeURIComponent(to)}`);
+  };
+  document.addEventListener('keydown', onKey);
+
   on(main, 'click', '[data-sell]', async (_, b) => {
     const { openLineForm } = await import('../ventes/line-form.js');
     openLineForm({ direction: 'vente', preset: { ...preset, status: b.dataset.sell }, onSaved: reloadPage }).catch(toastError);

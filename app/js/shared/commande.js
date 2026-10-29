@@ -7,6 +7,17 @@ import {
   COMMANDE_STATUS, commandeStatus, thumbHtml, subtitle, variantLabel, conditionShort, fmtDate, today, inList,
 } from './sales.js';
 
+// Tri des articles d'une commande, gardé d'une commande à l'autre
+const byNum = (a, b) => String(a.number ?? '').localeCompare(String(b.number ?? ''), 'fr', { numeric: true });
+const LINE_SORTS = [
+  { id: 'ajout', label: 'Ordre d’ajout', cmp: () => 0 },
+  { id: 'nom', label: 'Nom', cmp: (a, b) => a.title.localeCompare(b.title, 'fr') || byNum(a, b) },
+  { id: 'extension', label: 'Extension et numéro', cmp: (a, b) => String(a.set_name ?? '~').localeCompare(String(b.set_name ?? '~'), 'fr') || byNum(a, b) },
+  { id: 'prix', label: 'Prix décroissant', cmp: (a, b) => Number(b.total) - Number(a.total) || a.title.localeCompare(b.title, 'fr') },
+  { id: 'prix_asc', label: 'Prix croissant', cmp: (a, b) => Number(a.total) - Number(b.total) || a.title.localeCompare(b.title, 'fr') },
+];
+let lineSort = 'ajout';
+
 // Fiche d'une commande : statut, dates, lien, articles. Chaque champ s'enregistre dès qu'il change.
 export async function openCommande(id, { onChanged } = {}) {
   let changed = false;
@@ -67,9 +78,13 @@ export async function openCommande(id, { onChanged } = {}) {
         <label class="check-inline"><input type="checkbox" data-f="shipping_paid" ${o.shipping_paid ? 'checked' : ''}>
           J’ai payé l’envoi avec : le port ne compte pas dans le Bilan (sinon il compte dans les revenus)</label>` : ''}
 
-      <div class="field"><span>${lines.length} article${lines.length > 1 ? 's' : ''}</span>
+      <div class="field">
+        <div class="lines-head">
+          <span>${lines.length} article${lines.length > 1 ? 's' : ''}</span>
+          ${lines.length > 1 ? html`<select class="select select-auto select-sm" data-line-sort aria-label="Trier les articles">${LINE_SORTS.map(o => html`<option value="${o.id}" ${o.id === lineSort ? 'selected' : ''}>${o.label}</option>`)}</select>` : ''}
+        </div>
         <div class="lines">
-          ${lines.map(l => html`
+          ${[...lines].sort(LINE_SORTS.find(o => o.id === lineSort).cmp).map(l => html`
             <div class="line line-ro">
               ${thumbHtml(l, { lotImage: settings?.lot_image, size: 'xs' })}
               <div class="line-main">
@@ -125,6 +140,7 @@ export async function openCommande(id, { onChanged } = {}) {
   // listes et case : enregistrées tout de suite ; dates, lien, port : quand on quitte le champ
   // (une date se valide à chaque chiffre tapé, l'enregistrer en pleine saisie faisait perdre le champ)
   root.addEventListener('change', e => {
+    if (e.target.matches('[data-line-sort]')) { lineSort = e.target.value; return render(); }
     const f = e.target.dataset.f;
     if (!f) return;
     if (f === 'shipping_paid') return patch({ shipping_paid: e.target.checked });

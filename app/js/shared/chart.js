@@ -14,13 +14,3 @@ export function loadChart() {
   return loading;
 }
 
-// Couleurs des parts de camembert, lisibles sur les deux thèmes
-export const PALETTE = ['#FF6B5B', '#4FB6FF', '#F2C14E', '#5BD49A', '#B48CFF', '#FF9F43', '#2EC4B6', '#E86FB0', '#8C95A8'];
-
-// Les n plus grosses parts, le reste regroupé dans « Autres »
-export function topParts(entries, n = 7) {
-  const sorted = [...entries].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  if (sorted.length <= n + 1) return sorted;
-  const rest = sorted.slice(n).reduce((s, [, v]) => s + v, 0);
-  return [...sorted.slice(0, n), ['Autres', rest]];
-}

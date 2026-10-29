@@ -24,7 +24,7 @@ export default {
       <header class="page-header">
         <div>
           <h1>Bilan</h1>
-          <p>Ventes vendues dont la commande est reçue, au mois de réception · achats reçus · les ventes pour le compte d’autres sont à part</p>
+          <p>Ventes vendues dont la commande est reçue, au mois de réception · achats reçus · frais de port compris · les ventes pour le compte d’autres sont à part</p>
         </div>
         <div class="page-actions">
           <select class="select select-auto" id="scope" aria-label="Périmètre"><option value="">Mon bilan</option></select>
@@ -87,7 +87,8 @@ export default {
         <div class="kpi"><span class="muted small">Ventes ${label}</span><strong>${eur(sum('ventes'))}</strong></div>
         <div class="kpi"><span class="muted small">Achats ${label}</span><strong>${eur(sum('achats'))}</strong></div>
         <div class="kpi"><span class="muted small">Bénéfice ${label}</span><strong class="${solde >= 0 ? 'pos' : 'neg'}">${signed(solde)}</strong></div>
-        <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${sum('cartes_vendues')}</strong></div>${attenteKpi}` : html`
+        <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${sum('cartes_vendues')}</strong></div>
+        <div class="kpi"><span class="muted small">Cartes achetées</span><strong>${sum('cartes_achetees')}</strong></div>${attenteKpi}` : html`
         <div class="kpi"><span class="muted small">Ventes pour ${state.scope} · ${label}</span><strong>${eur(sum('ventes'))}</strong></div>
         <div class="kpi"><span class="muted small">Cartes vendues</span><strong>${sum('cartes_vendues')}</strong></div>${attenteKpi}`);
 
@@ -98,17 +99,18 @@ export default {
       setHtml($('#table'), rows.length ? html`
         <div class="table-scroll">
           <table class="table">
-            <thead><tr><th>Mois</th><th class="num">Ventes</th>${self ? html`<th class="num">Achats</th><th class="num">Bénéfice</th>` : ''}<th class="num">Cartes vendues</th>${attente ? html`<th class="num">En attente</th>` : ''}</tr></thead>
+            <thead><tr><th>Mois</th><th class="num">Ventes</th>${self ? html`<th class="num">Achats</th><th class="num">Bénéfice</th>` : ''}<th class="num">Cartes vendues</th>${self ? html`<th class="num">Cartes achetées</th>` : ''}${attente ? html`<th class="num">En attente</th>` : ''}</tr></thead>
             <tbody>
               ${[...rows].reverse().map(r => html`<tr>
                 <td>${name(r)}</td>
                 <td class="num">${eur(r.ventes)}</td>
                 ${self ? html`<td class="num">${eur(r.achats)}</td><td class="num ${r.solde >= 0 ? 'pos' : 'neg'}">${signed(r.solde)}</td>` : ''}
                 <td class="num">${r.cartes_vendues}</td>
+                ${self ? html`<td class="num">${r.cartes_achetees}</td>` : ''}
                 ${attente ? html`<td class="num muted">${r.attente ? eur(r.attente) : '—'}</td>` : ''}
               </tr>`)}
             </tbody>
-            <tfoot><tr><th>Total</th><th class="num">${eur(sum('ventes'))}</th>${self ? html`<th class="num">${eur(sum('achats'))}</th><th class="num ${solde >= 0 ? 'pos' : 'neg'}">${signed(solde)}</th>` : ''}<th class="num">${sum('cartes_vendues')}</th>${attente ? html`<th class="num">${eur(attente)}</th>` : ''}</tr></tfoot>
+            <tfoot><tr><th>Total</th><th class="num">${eur(sum('ventes'))}</th>${self ? html`<th class="num">${eur(sum('achats'))}</th><th class="num ${solde >= 0 ? 'pos' : 'neg'}">${signed(solde)}</th>` : ''}<th class="num">${sum('cartes_vendues')}</th>${self ? html`<th class="num">${sum('cartes_achetees')}</th>` : ''}${attente ? html`<th class="num">${eur(attente)}</th>` : ''}</tr></tfoot>
           </table>
         </div>` : html`<p class="muted">Rien sur cette période.</p>`);
 

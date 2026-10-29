@@ -1,8 +1,11 @@
 import { api } from '../../api.js';
+import { imageUrl } from '../../nas.js';
 import { html, setHtml, on, reloadPage, errorHtml } from '../../ui/dom.js';
 import { openModal } from '../../ui/modal.js';
 import { toast, toastError } from '../../ui/toast.js';
-import { fmtDate } from '../../shared/sales.js';
+import { fmtDate, setSymbolHtml } from '../../shared/sales.js';
+import { askImage } from '../../ui/upload.js';
+import { forgetSets } from '../../shared/sets.js';
 import { cardTile } from '../../shared/cards.js';
 
 const FILTERS = [
@@ -56,9 +59,9 @@ export async function renderSet(main, id) {
   setHtml(main, html`
     <a class="back-crumb" href="#/extensions">← Extensions</a>
     <header class="set-header" style="${set.color || set.serie_color ? `--set-color: ${set.color || set.serie_color}` : ''}">
-      <span class="set-logo set-logo-lg">${set.logo ? html`<img src="${set.logo}" alt="" data-hide-on-error>` : html`<span class="set-code">${set.id.toUpperCase()}</span>`}</span>
+      <span class="set-logo set-logo-lg">${set.logo ? html`<img src="${imageUrl(set.logo)}" alt="" data-hide-on-error>` : html`<span class="set-code">${set.id.toUpperCase()}</span>`}</span>
       <div class="grow">
-        <p class="muted small" style="margin: 0">${set.id.toUpperCase()}${set.parent_id ? html` · fait partie de <a href="#/extensions/${encodeURIComponent(set.parent_id)}">${set.parent_id.toUpperCase()}</a>` : ''}</p>
+        <p class="muted small set-meta" style="margin: 0">${setSymbolHtml({ set_id: set.id, set_symbol: set.symbol, set_name: set.name })}${set.id.toUpperCase()}${set.parent_id ? html` · fait partie de <a href="#/extensions/${encodeURIComponent(set.parent_id)}">${set.parent_id.toUpperCase()}</a>` : ''}</p>
         <h1>${set.name}</h1>
         <p class="muted" style="margin: 4px 0 0">
           ${[set.serie_name, set.release_date ? `sortie le ${fmtDate(set.release_date)}` : '',
@@ -102,12 +105,24 @@ export async function renderSet(main, id) {
   render();
 }
 
-// Couleur, masquage et code Cardmarket de l'extension
+// Couleur, masquage, images et code Cardmarket de l'extension
 function customize(set, done) {
-  openModal({
+  const m = openModal({
     title: `Personnaliser ${set.name}`,
     width: 520,
     body: html`
+      <div class="field"><span>Images</span>
+        <div class="set-images">
+          <button type="button" class="set-image-btn" data-set-image="logo">
+            <span class="set-logo">${set.logo ? html`<img src="${imageUrl(set.logo)}" alt="" data-hide-on-error>` : html`<span class="set-code">${set.id.toUpperCase()}</span>`}</span>
+            <span class="small">Changer le logo</span>
+          </button>
+          <button type="button" class="set-image-btn" data-set-image="symbol">
+            ${setSymbolHtml({ set_id: set.id, set_symbol: set.symbol, set_name: set.name })}
+            <span class="small">Changer le sigle</span>
+          </button>
+        </div>
+      </div>
       <label class="field">Couleur
         <span class="input-group">
           <input class="input input-color" type="color" id="c-color" value="${set.color || '#FF5E5B'}">
@@ -134,5 +149,28 @@ function customize(set, done) {
         } catch (err) { toastError(err); return false; }
       } },
     ],
+  });
+
+  // l'image se choisit dans sa propre fenêtre : on ferme celle-ci d'abord
+  on(m.el, 'click', '[data-set-image]', async (_, b) => {
+    const quoi = b.dataset.setImage;
+    m.close();
+    // l'image mise à la main, s'il y en a une, peut être retirée (retour à celle du catalogue)
+    const mine = await api.one('sets', { id: `eq.${set.id}`, select: 'logo_manual,symbol_manual' }).catch(() => null);
+    const current = (quoi === 'logo' ? mine?.logo_manual : mine?.symbol_manual) || '';
+    const value = await askImage({
+      title: quoi === 'logo' ? `Logo de ${set.name}` : `Sigle de ${set.name}`,
+      value: current,
+      folder: 'Extensions',
+      hint: quoi === 'symbol' ? 'Une petite icône, de préférence sur fond transparent.' : '',
+      removable: !!current,
+    });
+    if (value === null) return;
+    try {
+      await api.rpc('set_set_image', { set_id: set.id, quoi, url: value });
+      forgetSets();
+      toast(quoi === 'logo' ? 'Logo enregistré' : 'Sigle enregistré');
+      done();
+    } catch (err) { toastError(err); }
   });
 }

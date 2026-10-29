@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { imageUrl } from '../nas.js';
 import { html, setHtml, on, eur, reloadPage as reload } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { toastError } from '../ui/toast.js';
@@ -142,7 +143,7 @@ export default {
           <div class="panel-head"><h2>Nouveautés du catalogue</h2><span class="muted small">ajoutées automatiquement</span></div>
           ${sets.length ? html`<div class="mini-list">${sets.map(s => html`
             <div class="mini-row">
-              <span class="set-code">${s.symbol ? html`<img src="${s.symbol}" alt="" data-hide-on-error>` : s.id.toUpperCase().slice(0, 4)}</span>
+              <span class="set-code">${s.symbol ? html`<img src="${imageUrl(s.symbol)}" alt="" data-hide-on-error>` : s.id.toUpperCase().slice(0, 4)}</span>
               <span class="grow"><strong>${s.name}</strong><span class="muted small">${s.card_count_total || '?'} cartes${s.release_date ? ` · sortie le ${fmtDate(s.release_date)}` : ''}</span></span>
               <span class="tag ${s.lang === 'en' ? 'tag-warn' : 'tag-ok'}">${s.lang === 'en' ? 'EN en attendant la VF' : 'VF'}</span>
             </div>`)}</div>` : html`<p class="muted small">Rien de neuf ces deux derniers mois.</p>`}

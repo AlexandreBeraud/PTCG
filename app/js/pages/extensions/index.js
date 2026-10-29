@@ -1,4 +1,5 @@
 import { api } from '../../api.js';
+import { imageUrl } from '../../nas.js';
 import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { fmtDate, norm } from '../../shared/sales.js';
@@ -102,7 +103,7 @@ export default {
       const color = s.color || s.serie_color;
       return html`
         <a class="set-card ${s.hidden || s.serie_hidden ? 'is-hidden' : ''}" href="#/extensions/${encodeURIComponent(s.id)}" style="${color ? `--set-color: ${color}` : ''}">
-          <span class="set-logo">${s.logo ? html`<img src="${s.logo}" alt="" loading="lazy" data-hide-on-error>` : html`<span class="set-code">${s.id.toUpperCase()}</span>`}</span>
+          <span class="set-logo">${s.logo ? html`<img src="${imageUrl(s.logo)}" alt="" loading="lazy" data-hide-on-error>` : html`<span class="set-code">${s.id.toUpperCase()}</span>`}</span>
           <span class="set-info">
             <strong>${s.name}</strong>
             <span class="muted small">${withBloc && s.serie_name ? `${s.serie_name} · ` : ''}${s.id.toUpperCase()} · ${releaseText(s.release_date)}</span>

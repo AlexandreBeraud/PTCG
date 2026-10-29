@@ -95,7 +95,8 @@ export const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, ''
 export function cardImage(url, size = 'low') {
   if (!url) return '';
   if (/assets\.tcgdex\.net/.test(url)) return url.replace(/\/(high|low)\.(png|webp|jpg)$/, `/${size}.webp`);
-  return imageUrl(url, size === 'low' ? 'thumb' : 'big');
+  // la vignette FileBrowser est un carré recadré : une carte du NAS garde toujours son format entier
+  return imageUrl(url, 'big');
 }
 
 export function lineImage(t, lotImage) {
@@ -134,7 +135,7 @@ export function thumbHtml(t, { lotImage, size = 'sm' } = {}) {
 export function setSymbolHtml(t) {
   const id = t.set_key || t.set_id;
   if (!id) return html`<span class="set-sym set-sym-none" aria-hidden="true"></span>`;
-  return html`<span class="set-sym" title="${t.set_name || ''}">${t.set_symbol ? html`<img src="${t.set_symbol}" alt="" loading="lazy" data-hide-on-error>` : ''}<span class="set-sym-code">${String(id).toUpperCase().slice(0, 5)}</span></span>`;
+  return html`<span class="set-sym" title="${t.set_name || ''}">${t.set_symbol ? html`<img src="${imageUrl(t.set_symbol)}" alt="" loading="lazy" data-hide-on-error>` : ''}<span class="set-sym-code">${String(id).toUpperCase().slice(0, 5)}</span></span>`;
 }
 
 // Couleur de l'extension (ou de son bloc) pour le fond des lignes

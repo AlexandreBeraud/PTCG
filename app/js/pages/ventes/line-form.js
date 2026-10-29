@@ -18,6 +18,14 @@ import {
 //   commande : commande imposée (ajout depuis une commande)
 export async function openLineForm({ direction = 'vente', line = null, commande = null, kinds, preset = {}, onSaved } = {}) {
   const editing = !!line;
+  // nouvelle vente d'une carte : variante Normale et 0,02 € proposés d'office
+  const newSale = !editing && direction === 'vente';
+  const PRICE = '0.02';
+  const defaultVariant = card => {
+    const v = card?.variants || [];
+    if (v.length === 1) return v[0];
+    return newSale && (!v.length || v.includes('normale')) ? 'normale' : null;
+  };
   const kindList = kinds || (direction === 'achat' ? ['carte', 'lot', 'accessoire', 'produit'] : ['carte', 'lot', 'accessoire']);
   const [contacts, accessoires, forAccounts, settings] = await Promise.all([
     store.contacts(), store.accessoires(), store.forAccounts(), store.settings(),
@@ -31,11 +39,11 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     } : preset.card || null,
     accessoireId: line?.accessoire_id || null,
     newAccessoire: null,
-    variant: line?.variant || (preset.card?.variants?.length === 1 ? preset.card.variants[0] : null),
+    variant: line?.variant || (preset.card ? defaultVariant(preset.card) : null),
     condition: line?.condition || preset.condition || 'Near Mint',
     lang: line?.lang || preset.lang || 'FR',
     qty: line?.qty || 1,
-    price: line?.price ?? '',
+    price: line?.price ?? (newSale && (preset.kind || 'carte') === 'carte' ? PRICE : ''),
     label: line?.label || '',
     setId: line?.set_id || '',
     shipping: '',
@@ -233,15 +241,18 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
           openManualCard({ name, onSaved: async id => {
             const [card] = await api.list('card_list', { id: `eq.${id}` });
             st.card = { ...card, set_name: card.set_name };
-            st.variant = card.variants?.length === 1 ? card.variants[0] : null;
+            st.variant = defaultVariant(card);
             render();
           } });
         },
         onPick: card => {
           st.card = card;
-          st.variant = card.variants?.length === 1 ? card.variants[0] : null;
+          st.variant = defaultVariant(card);
           render();
-          root.querySelector('[data-f="price"]')?.focus();
+          // le prix proposé est sélectionné : on tape directement le bon par-dessus
+          const price = root.querySelector('[data-f="price"]');
+          price?.focus();
+          price?.select();
         },
       });
     }
@@ -267,7 +278,12 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
   }
 
   // ── interactions ──
-  on(root, 'click', '[data-kind]', (_, b) => { st.kind = b.dataset.kind; render(); });
+  on(root, 'click', '[data-kind]', (_, b) => {
+    st.kind = b.dataset.kind;
+    // le prix proposé ne vaut que pour une carte ; un prix tapé reste
+    if (newSale && (st.price === '' || st.price === PRICE)) st.price = st.kind === 'carte' ? PRICE : '';
+    render();
+  });
   on(root, 'click', '[data-variant]', (_, b) => { st.variant = b.dataset.variant; render(); });
   on(root, 'click', '[data-status]', (_, b) => { st.status = b.dataset.status; render(); });
   on(root, 'click', '[data-change-card]', () => { st.card = null; render(); });

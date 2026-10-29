@@ -63,13 +63,14 @@ async function exportJson(btn) {
 
 // D'où viennent les images, sprites, liens et prix, et où ça en est ; un clic montre ce qui manque
 export async function renderSources(box) {
+  symbols = null;
   let s, fiches;
   try { [s, fiches] = await Promise.all([api.rpc('catalogue_stats'), api.count('fiches').catch(() => null)]); } catch (err) {
     return setHtml(box, html`<h2>Images et liens</h2><p class="muted">${err.message}</p>`);
   }
   const rows = [
     ['logos', 'Logos d’extension', 'Fournis par TCGdex', `${nb(s.sets_logo)} / ${nb(s.sets)}`, s.sets - s.sets_logo],
-    ['sigles', 'Sigles d’extension', 'pokemontcg.io, sinon TCGdex', 'La liste vérifie chaque sigle et ne garde que ceux qui ne s’affichent pas', 1],
+    ['sigles', 'Sigles d’extension', 'pokemontcg.io, sinon TCGdex ; ou ajouté à la main', 'Vérification des images…', 0],
     ['images', 'Images des cartes', 'TCGdex en VF, sinon en anglais, sinon pokemontcg.io ; ou ajoutée à la main',
       `${nb(s.cards_image)} / ${nb(s.cards)} · ${nb(s.cards_fallback)} de pokemontcg.io`, s.cards - s.cards_image],
     ['anglais', 'Cartes encore en anglais', 'Passent en VF dès que TCGdex la publie', nb(s.cards_en), s.cards_en],
@@ -85,8 +86,8 @@ export async function renderSources(box) {
       <tbody>${rows.map(([id, name, how, state, missing]) => html`
         <tr data-missing="${missing ? id : ''}" tabindex="${missing ? 0 : -1}">
           <td><strong>${name}</strong><br><span class="muted small">${how}</span></td>
-          <td class="small">${state}</td>
-          <td class="small num">${missing ? html`<span class="link">Voir</span>` : html`<span class="pos">Complet</span>`}</td>
+          <td class="small" data-state="${id}">${state}</td>
+          <td class="small num" data-done="${id}">${id === 'sigles' ? '' : missing ? html`<span class="link">Voir</span>` : html`<span class="pos">Complet</span>`}</td>
         </tr>`)}</tbody>
     </table></div>
     ${s.sets_without_code ? html`<p class="small" style="margin: 0">${s.sets_without_code} extension(s) où tu as des cartes n’ont pas de code Cardmarket : leurs liens sont des recherches. <button type="button" class="link" data-missing="codes">Les voir</button></p>` : ''}
@@ -104,6 +105,17 @@ export async function renderSources(box) {
     }
   });
 
+  // seul le navigateur sait si un sigle s'affiche vraiment : on compte une fois les images chargées
+  checkSymbols().then(({ total, broken }) => {
+    const ok = total - broken.length;
+    const row = box.querySelector('[data-state="sigles"]')?.closest('tr');
+    if (!row) return;
+    setHtml(row.querySelector('[data-state]'), `${nb(ok)} / ${nb(total)}`);
+    setHtml(row.querySelector('[data-done]'), broken.length ? html`<span class="link">Voir</span>` : html`<span class="pos">Complet</span>`);
+    row.dataset.missing = broken.length ? 'sigles' : '';
+    row.tabIndex = broken.length ? 0 : -1;
+  }).catch(() => {});
+
   on(box, 'click', '[data-missing]', (_, el) => el.dataset.missing && showMissing(el.dataset.missing));
   on(box, 'keydown', '[data-missing]', (e, el) => { if (e.key === 'Enter') el.click(); });
 }
@@ -115,10 +127,9 @@ const MISSING = {
   logos: { title: 'Extensions sans logo', table: 'set_list', params: { logo: 'is.null', source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set' },
   sigles: { title: 'Extensions sans sigle', note: 'Sans sigle, ou dont l’image ne s’affiche pas : le code de l’extension la remplace.',
     table: 'set_list', params: { source: 'eq.tcgdex', select: 'id,name,serie_name,release_date,symbol', order: 'release_date.desc.nullslast' }, kind: 'set', limit: 1000,
-    // seul le navigateur sait si l'image existe vraiment
     keep: async rows => {
-      const broken = await Promise.all(rows.map(r => !r.symbol || imageFails(r.symbol)));
-      return rows.filter((_, i) => broken[i]);
+      const { broken } = await checkSymbols();
+      return rows.filter(r => broken.includes(r.id));
     } },
   images: { title: 'Cartes sans image', note: 'Le catalogue en cherche 60 par nuit sur pokemontcg.io.',
     table: 'card_list', params: { image: 'is.null', select: CARD, order: 'a_du_stock.desc,vendues.desc,achetees.desc,release_date.desc.nullslast,set_id,number_sort.nullslast' }, kind: 'card' },
@@ -146,6 +157,19 @@ const FIX = {
   liens: { text: 'https://www.cardmarket.com/fr/Pokemon/Products/Singles/…', save: (r, v) => api.rpc('set_card_cardmarket_url', { card_id: r.id, url: v }) },
   codes: { text: 'PFL, SVI…', save: (r, v) => api.rpc('set_cardmarket_code', { set_id: r.id, code: v }) },
 };
+
+// Sigles qui ne s'affichent pas (absents ou image cassée), vérifiés une fois par visite de Réglages
+let symbols = null;
+function checkSymbols() {
+  symbols ||= api.list('set_list', { source: 'eq.tcgdex', select: 'id,symbol' })
+    .then(async rows => {
+      const fails = await Promise.all(rows.map(r => !r.symbol || imageFails(imageUrl(r.symbol))));
+      return { total: rows.length, broken: rows.filter((_, i) => fails[i]).map(r => r.id) };
+    })
+    .catch(err => { symbols = null; throw err; });
+  return symbols;
+}
+export const forgetSymbols = () => { symbols = null; };
 
 // l'image se charge-t-elle ? (6 s au plus)
 function imageFails(src) {
@@ -204,6 +228,7 @@ async function showMissing(id) {
   on(modal.el, 'click', 'a[href]', () => modal.close());
 
   const done = i => {
+    if (id === 'sigles') forgetSymbols();
     const row = modal.el.querySelector(`[data-row="${i}"]`);
     row.classList.add('is-fixed');
     row.querySelector('.missing-fix, [data-fix-image]')?.replaceWith(Object.assign(document.createElement('span'), { className: 'tag tag-ok', textContent: 'Corrigé' }));

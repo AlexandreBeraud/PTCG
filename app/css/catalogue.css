@@ -237,3 +237,25 @@ code { font-size: 12px; padding: 2px 6px; border-radius: 4px; background: var(--
 .binder-sets li span { white-space: nowrap; }
 
 .product-img .product-logo { object-fit: contain; padding: 14px; }
+
+/* extension : sigle à côté du code, logo et sigle modifiables */
+.set-meta .set-sym { width: 20px; height: 20px; padding: 2px; font-size: 7px; margin-right: 6px; vertical-align: -5px; }
+.set-images { display: flex; gap: 10px; flex-wrap: wrap; }
+.set-image-btn {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 64px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); color: inherit; cursor: pointer;
+}
+.set-image-btn:hover { border-color: var(--border-strong); }
+.set-image-btn .set-logo { width: 72px; height: 40px; }
+
+/* photo d'une carte ajoutée à la main : entière, sans rogner les bords */
+.card-tile-img img[src*="/api/preview/big/"]:not(.sprite),
+.card-big img[src*="/api/preview/big/"],
+.pick-img img[src*="/api/preview/big/"],
+.thumb img[src*="/api/preview/big/"] { object-fit: contain; }
+
+/* fiche carte : retour et passage d'une carte à l'autre */
+.card-nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.card-steps { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.card-step { min-width: 36px; justify-content: center; font-size: 20px; line-height: 1; }
+.card-step[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
