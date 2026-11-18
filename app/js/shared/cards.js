@@ -1,4 +1,4 @@
-import { html } from '../ui/dom.js';
+import { html } from '/_shared/ui/dom.js';
 import { cardImage, spriteHtml, formBadge, variantLabel } from './sales.js';
 
 export const FAMILLES = [

@@ -1,5 +1,6 @@
 import { api } from '../../api.js';
-import { html, setHtml, eur } from '../../ui/dom.js';
+import { html, setHtml } from '/_shared/ui/dom.js';
+import { eur } from '../../format.js';
 import { store } from '../../shared/store.js';
 import { loadChart } from '../../shared/chart.js';
 
@@ -21,26 +22,26 @@ export default {
 
   async render(main) {
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div>
           <h1>Bilan</h1>
           <p>Ventes vendues dont la commande est reçue, au mois de réception · achats reçus · frais de port compris · les ventes pour le compte d’autres sont à part</p>
         </div>
         <div class="page-actions">
-          <select class="select select-auto" id="scope" aria-label="Périmètre"><option value="">Mon bilan</option></select>
-          <select class="select select-auto" id="year" aria-label="Année"></select>
+          <select class="input select-auto" id="scope" aria-label="Périmètre"><option value="">Mon bilan</option></select>
+          <select class="input select-auto" id="year" aria-label="Année"></select>
         </div>
       </header>
       <div class="kpis" id="kpis"></div>
       <section class="panel">
-        <div class="panel-head"><h2>Ventes et achats par mois</h2></div>
+        <div class="panel-tete"><h2>Ventes et achats par mois</h2></div>
         <div class="chart-box"><canvas id="chart" aria-label="Ventes et achats par mois" role="img"></canvas></div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>Mois par mois</h2></div>
+        <div class="panel-tete"><h2>Mois par mois</h2></div>
         <div id="table"></div>
       </section>
-      <div class="grid-auto" style="--min: 320px" id="split"></div>
+      <div class="grille-auto" style="--min: 320px" id="split"></div>
     `);
     const $ = s => main.querySelector(s);
 
@@ -53,8 +54,8 @@ export default {
       let months, waiting;
       try {
         [months, waiting] = await Promise.all([
-          api.rpc('bilan_mensuel', { scope: state.scope || null }),
-          api.rpc('bilan_en_attente', { scope: state.scope || null }).catch(() => []),
+          api.appeler('bilan_mensuel', { scope: state.scope || null }),
+          api.appeler('bilan_en_attente', { scope: state.scope || null }).catch(() => []),
         ]);
       } catch (err) {
         return setHtml($('#table'), html`<p class="muted">${err.message}</p>`);
@@ -160,13 +161,13 @@ export default {
       const du = state.year === 'all' ? null : `${state.year}-01-01`;
       const au = state.year === 'all' ? null : `${state.year}-12-31`;
       let parts = [];
-      try { parts = await api.rpc('bilan_extensions', { scope: state.scope || null, du, au }); } catch (_) { /* facultatif */ }
+      try { parts = await api.appeler('bilan_extensions', { scope: state.scope || null, du, au }); } catch (_) { /* facultatif */ }
       const block = (sens, title) => {
         const list = parts.filter(p => p.sens === sens).slice(0, 10);
         const max = Math.max(1, ...list.map(p => Number(p.montant)));
         return html`
           <section class="panel">
-            <div class="panel-head"><h2>${title}</h2><span class="muted small">par extension</span></div>
+            <div class="panel-tete"><h2>${title}</h2><span class="muted small">par extension</span></div>
             ${list.length ? html`<div class="bars">${list.map(p => html`
               <div class="bar-row">
                 <span class="bar-label">${p.set_name}</span>

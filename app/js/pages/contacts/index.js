@@ -1,8 +1,9 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, eur } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
-import { openModal, confirmModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on } from '/_shared/ui/dom.js';
+import { eur } from '../../format.js';
+import { icone } from '../../ui/icones.js';
+import { ouvrirModale, confirmer } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { store } from '../../shared/store.js';
 import { contactAvatar, commandeStatusTag, commandeStatus, fmtDate, norm, today, COUNTRIES, flag, KINDS } from '../../shared/sales.js';
 
@@ -76,20 +77,20 @@ export default {
     let currentId = params[0] || null;
 
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div>
           <h1>Contacts</h1>
           <p id="contacts-sub">Acheteurs et vendeurs au même endroit</p>
         </div>
-        <div class="page-actions"><button type="button" class="btn" data-new-contact>${icon('plus')}Nouveau contact</button></div>
+        <div class="page-actions"><button type="button" class="btn" data-new-contact>${icone('plus')}Nouveau contact</button></div>
       </header>
       <div class="split">
         <aside class="split-list" aria-label="Contacts">
-          <label class="search">${icon('search')}<input type="search" id="cq" placeholder="Rechercher un contact" value="${state.q}" aria-label="Rechercher un contact"></label>
+          <label class="recherche">${icone('recherche')}<input type="search" id="cq" placeholder="Rechercher un contact" value="${state.q}" aria-label="Rechercher un contact"></label>
           <div class="chips" id="roles"></div>
           <div class="form-row">
-            <label class="field">Commandes<select class="select" id="cstatut" aria-label="Statut des commandes"></select></label>
-            <label class="field">Tri<select class="select" id="csort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select></label>
+            <label class="field">Commandes<select class="input" id="cstatut" aria-label="Statut des commandes"></select></label>
+            <label class="field">Tri<select class="input" id="csort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select></label>
           </div>
           <div id="clist" class="contact-list"></div>
         </aside>
@@ -100,7 +101,7 @@ export default {
 
     async function loadList() {
       try {
-        contacts = await api.list('contact_list', { order: 'pseudo' });
+        contacts = await api.lire('contact_list', { order: 'pseudo' });
       } catch (err) {
         return setHtml($('#clist'), html`<p class="muted">${err.message}</p>`);
       }
@@ -123,7 +124,7 @@ export default {
       if (!currentId && matchMedia('(min-width: 861px)').matches) currentId = 'stats';
       const overview = html`
         <a class="contact-item contact-overview" href="#/contacts/stats" ${currentId === 'stats' ? html`aria-current="true"` : ''}>
-          <span class="avatar">${icon('bilan', 20)}</span>
+          <span class="avatar">${icone('bilan', 20)}</span>
           <span class="grow"><strong>Vue d’ensemble</strong><span class="muted small">Paniers, meilleurs acheteurs, pays</span></span>
         </a>`;
       // par nom : une lettre en tête de chaque groupe
@@ -146,7 +147,7 @@ export default {
         <a class="contact-item" href="#/contacts/${encodeURIComponent(c.id)}" ${c.id === currentId ? html`aria-current="true"` : ''} data-contact="${c.id}">
           ${contactAvatar(c, 36)}
           <span class="grow">
-            <strong>${c.pseudo}${Number(c.en_attente) ? html` <span class="dot dot-warn" title="${c.en_attente} commande(s) en attente"></span>` : ''}</strong>
+            <strong>${c.pseudo}${Number(c.en_attente) ? html` <span class="point point-warn" title="${c.en_attente} commande(s) en attente"></span>` : ''}</strong>
             <span class="muted small">${roleLabel(c)}${c.derniere ? ` · ${shortDate(c.derniere)}` : ''}</span>
           </span>
           ${amount(c)}
@@ -162,18 +163,18 @@ export default {
       }
       const c = contacts.find(x => x.id === currentId);
       main.querySelector('.split').classList.toggle('has-detail', !!c);
-      if (!c) return setHtml(box, html`<div class="empty"><h2>Choisis un contact</h2></div>`);
+      if (!c) return setHtml(box, html`<div class="vide-etat"><h2>Choisis un contact</h2></div>`);
 
       setHtml(box, html`
-        <a class="btn btn-ghost btn-sm back-link" href="#/contacts">← Contacts</a>
+        <a class="btn btn-fantome btn-petit back-link" href="#/contacts">← Contacts</a>
         <div class="contact-head">
           ${contactAvatar(c, 56)}
           <div class="grow">
             <h2>${c.pseudo}</h2>
             <p class="muted small" style="margin: 2px 0 0">${roleLabel(c)}${c.premiere ? ` · depuis ${new Date(c.premiere).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}` : ''}</p>
           </div>
-          <button type="button" class="btn btn-sm btn-ghost" data-edit-contact>Modifier</button>
-          <button type="button" class="btn btn-sm btn-primary" data-new-order>${icon('plus', 16)}Nouvelle commande</button>
+          <button type="button" class="btn btn-petit btn-fantome" data-edit-contact>Modifier</button>
+          <button type="button" class="btn btn-petit btn-principal" data-new-order>${icone('plus', 16)}Nouvelle commande</button>
         </div>
         <div class="kpis kpis-contact" id="ckpis"></div>
         <div id="repartition"></div>
@@ -184,7 +185,7 @@ export default {
       contactPies(c, dir, box.querySelector('#repartition'));
 
       try {
-        const all = await api.list('commande_list', { contact_id: `eq.${c.id}`, order: 'ordered_on.desc.nullslast,created_at.desc' });
+        const all = await api.lire('commande_list', { contact_id: `eq.${c.id}`, order: 'ordered_on.desc.nullslast,created_at.desc' });
         if (currentId !== c.id) return;
         const b = baskets(all.filter(o => o.direction === dir));
         const vente = dir === 'vente';
@@ -206,8 +207,8 @@ export default {
             </div>
             <span class="price">${eur(o.total)}</span>
             ${commandeStatusTag(o.direction, o.status)}
-            ${o.link ? html`<a class="btn btn-sm btn-ghost" href="${o.link}" target="_blank" rel="noopener">Lien de la commande</a>` : ''}
-            <button type="button" class="btn btn-sm" data-order="${o.id}">Détails</button>
+            ${o.link ? html`<a class="btn btn-petit btn-fantome" href="${o.link}" target="_blank" rel="noopener">Lien de la commande</a>` : ''}
+            <button type="button" class="btn btn-petit" data-order="${o.id}">Détails</button>
           </div>`)}</div>` : html`<p class="muted small">Aucune commande.</p>`);
       } catch (err) {
         setHtml(box.querySelector('#orders'), html`<p class="muted">${err.message}</p>`);
@@ -218,7 +219,7 @@ export default {
     async function contactPies(c, dir, box) {
       let lines;
       try {
-        lines = await api.list('transaction_list', { contact_id: `eq.${c.id}`, direction: `eq.${dir}`, select: 'kind,category,total,qty,set_name,condition,day' });
+        lines = await api.lire('transaction_list', { contact_id: `eq.${c.id}`, direction: `eq.${dir}`, select: 'kind,category,total,qty,set_name,condition,day' });
       } catch (_) { return; }
       if (currentId !== c.id || !lines.length) return;
       const sum = (key, val = t => Number(t.total)) => {
@@ -239,9 +240,9 @@ export default {
 
     // Tous les contacts : paniers, à qui je vends, chez qui j'achète, d'où ils viennent
     async function renderOverview(box) {
-      setHtml(box, html`<a class="btn btn-ghost btn-sm back-link" href="#/contacts">← Contacts</a><p class="muted">Chargement…</p>`);
+      setHtml(box, html`<a class="btn btn-fantome btn-petit back-link" href="#/contacts">← Contacts</a><p class="muted">Chargement…</p>`);
       let orders = [];
-      try { orders = await api.list('commande_list', { select: 'direction,status,total,shipping,lignes,contact_id' }); } catch (_) { /* facultatif */ }
+      try { orders = await api.lire('commande_list', { select: 'direction,status,total,shipping,lignes,contact_id' }); } catch (_) { /* facultatif */ }
       if (currentId !== 'stats') return;
       const ventes = orders.filter(o => o.direction === 'vente');
       const achats = orders.filter(o => o.direction === 'achat');
@@ -260,7 +261,7 @@ export default {
         open.set(k, (open.get(k) || 0) + 1);
       }
       setHtml(box, html`
-        <a class="btn btn-ghost btn-sm back-link" href="#/contacts">← Contacts</a>
+        <a class="btn btn-fantome btn-petit back-link" href="#/contacts">← Contacts</a>
         <div class="contact-head"><div class="grow"><h2>Vue d’ensemble</h2><p class="muted small" style="margin: 2px 0 0">${contacts.length} contacts · ${orders.length} commandes · paniers hors frais de port</p></div></div>
         <h3 class="section-title">Ventes</h3>
         <div class="kpis kpis-4">
@@ -286,10 +287,10 @@ export default {
     }
 
     function contactForm(c = null) {
-      openModal({
-        title: c ? 'Modifier le contact' : 'Nouveau contact',
-        width: 540,
-        body: html`
+      ouvrirModale({
+        titre: c ? 'Modifier le contact' : 'Nouveau contact',
+        largeur: 540,
+        corps: html`
           <label class="field">Pseudo<input class="input" id="cf-pseudo" value="${c?.pseudo || ''}" required></label>
           <div class="field"><span>Pays</span>
             <input type="hidden" id="cf-icon" value="${c?.icon || ''}">
@@ -299,34 +300,34 @@ export default {
               ${c?.icon && !COUNTRIES.some(([code]) => code === c.icon) ? html`<button type="button" class="flag-btn" role="radio" data-flag="${c.icon}" aria-checked="true" title="Icône actuelle">${flag(c.icon) || c.icon}</button>` : ''}
             </div>
           </div>`,
-        onOpen: el => on(el, 'click', '[data-flag]', (_, b) => {
+        aOuverture: el => on(el, 'click', '[data-flag]', (_, b) => {
           el.querySelector('#cf-icon').value = b.dataset.flag;
           el.querySelectorAll('[data-flag]').forEach(x => x.setAttribute('aria-checked', String(x === b)));
         }),
         actions: [
-          ...(c ? [{ label: 'Supprimer', danger: true, run: async () => {
-            const ok = await confirmModal({ title: `Supprimer ${c.pseudo} ?`, message: 'Ses commandes restent, sans contact.', confirmLabel: 'Supprimer', danger: true });
+          ...(c ? [{ libelle: 'Supprimer', danger: true, run: async () => {
+            const ok = await confirmer({ titre: `Supprimer ${c.pseudo} ?`, message: 'Ses commandes restent, sans contact.', libelle: 'Supprimer', danger: true });
             if (!ok) return false;
             try {
-              await api.remove('contacts', { id: `eq.${c.id}` });
+              await api.supprimer('contacts', { id: `eq.${c.id}` });
               store.forget('contacts');
               currentId = null;
               location.hash = '#/contacts';
               await loadList();
-            } catch (err) { toastError(err); return false; }
+            } catch (err) { notifierErreur(err); return false; }
           } }] : []),
-          { label: 'Annuler' },
-          { label: 'Enregistrer', primary: true, run: async el => {
+          { libelle: 'Annuler' },
+          { libelle: 'Enregistrer', principal: true, run: async el => {
             const row = { pseudo: el.querySelector('#cf-pseudo').value.trim(), icon: el.querySelector('#cf-icon').value.trim() || null };
-            if (!row.pseudo) { toastError(new Error('Le pseudo est obligatoire')); return false; }
+            if (!row.pseudo) { notifierErreur(new Error('Le pseudo est obligatoire')); return false; }
             try {
-              if (c) await api.update('contacts', { id: `eq.${c.id}` }, row);
-              else currentId = (await api.insert('contacts', row)).id;
+              if (c) await api.modifier('contacts', { id: `eq.${c.id}` }, row);
+              else currentId = (await api.ajouter('contacts', row)).id;
               store.forget('contacts');
-              toast('Contact enregistré');
+              notifier('Contact enregistré');
               await loadList();
             } catch (err) {
-              toastError(err.status === 409 ? new Error('Ce pseudo existe déjà') : err);
+              notifierErreur(err.status === 409 ? new Error('Ce pseudo existe déjà') : err);
               return false;
             }
           } },
@@ -335,29 +336,29 @@ export default {
     }
 
     function newOrder(c) {
-      openModal({
-        title: `Nouvelle commande · ${c.pseudo}`,
-        width: 460,
-        body: html`<p class="muted" style="margin: 0">Une vente à ${c.pseudo} ou un achat chez ${c.pseudo} ?</p>`,
+      ouvrirModale({
+        titre: `Nouvelle commande · ${c.pseudo}`,
+        largeur: 460,
+        corps: html`<p class="muted" style="margin: 0">Une vente à ${c.pseudo} ou un achat chez ${c.pseudo} ?</p>`,
         actions: [
-          { label: 'Annuler' },
-          { label: 'Achat', run: () => createOrder(c, 'achat') },
-          { label: 'Vente', primary: true, run: () => createOrder(c, 'vente') },
+          { libelle: 'Annuler' },
+          { libelle: 'Achat', run: () => createOrder(c, 'achat') },
+          { libelle: 'Vente', principal: true, run: () => createOrder(c, 'vente') },
         ],
       });
     }
 
     async function createOrder(c, direction) {
       try {
-        const o = await api.insert('commandes', { contact_id: c.id, direction, ordered_on: today(), status: direction === 'vente' ? 'a_envoyer' : 'a_payer' });
+        const o = await api.ajouter('commandes', { contact_id: c.id, direction, ordered_on: today(), status: direction === 'vente' ? 'a_envoyer' : 'a_payer' });
         await openOrder(o.id);
         loadList();
-      } catch (err) { toastError(err); return false; }
+      } catch (err) { notifierErreur(err); return false; }
     }
 
     async function openOrder(id) {
       const { openCommande } = await import('../../shared/commande.js');
-      openCommande(id, { onChanged: loadList }).catch(toastError);
+      openCommande(id, { onChanged: loadList }).catch(notifierErreur);
     }
 
     $('#cq').addEventListener('input', e => { state.q = e.target.value; renderList(); });

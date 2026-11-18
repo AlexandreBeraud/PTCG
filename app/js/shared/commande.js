@@ -1,7 +1,8 @@
 import { api } from '../api.js';
-import { html, setHtml, on, eur } from '../ui/dom.js';
-import { openModal, confirmModal } from '../ui/modal.js';
-import { toast, toastError } from '../ui/toast.js';
+import { html, setHtml, on } from '/_shared/ui/dom.js';
+import { eur } from '../format.js';
+import { ouvrirModale, confirmer } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { store } from './store.js';
 import {
   COMMANDE_STATUS, commandeStatus, thumbHtml, subtitle, variantLabel, conditionShort, fmtDate, today, inList,
@@ -26,8 +27,8 @@ export async function openCommande(id, { onChanged } = {}) {
 
   async function load() {
     [o, lines, settings, contacts] = await Promise.all([
-      api.one('commande_list', { id: `eq.${id}` }),
-      api.list('transaction_list', { commande_id: `eq.${id}`, order: 'created_at' }),
+      api.un('commande_list', { id: `eq.${id}` }),
+      api.lire('transaction_list', { commande_id: `eq.${id}`, order: 'created_at' }),
       store.settings(),
       store.contacts(),
     ]);
@@ -35,15 +36,15 @@ export async function openCommande(id, { onChanged } = {}) {
   }
   await load();
 
-  const m = openModal({
-    title: o.contact ? `Commande de ${o.contact}` : 'Commande sans contact',
-    width: 820,
-    body: html`<div class="form-grid" id="cmd"></div>`,
+  const m = ouvrirModale({
+    titre: o.contact ? `Commande de ${o.contact}` : 'Commande sans contact',
+    largeur: 820,
+    corps: html`<div class="form-grid" id="cmd"></div>`,
     actions: [],
   });
   const root = m.el.querySelector('#cmd');
   const foot = document.createElement('div');
-  foot.className = 'modal-foot';
+  foot.className = 'modale-pied';
   m.el.append(foot);
 
   const statuses = COMMANDE_STATUS[o.direction];
@@ -52,12 +53,12 @@ export async function openCommande(id, { onChanged } = {}) {
     const current = commandeStatus(o.direction, o.status);
     setHtml(root, html`
       <p class="muted" style="margin: -12px 0 0">${o.direction === 'vente' ? 'Vente' : 'Achat'} · commande du ${fmtDate(o.ordered_on || o.created_at)}</p>
-      <div class="segmented" role="radiogroup" aria-label="Statut">
+      <div class="segmente" role="radiogroup" aria-label="Statut">
         ${statuses.map(s => html`<button type="button" role="radio" data-status="${s.id}" aria-checked="${s.id === o.status}" aria-pressed="${s.id === o.status}">${s.label}</button>`)}
       </div>
       <div class="form-row">
         <label class="field grow">${o.direction === 'vente' ? 'Acheteur' : 'Vendeur'}
-          <select class="select" data-f="contact_id">
+          <select class="input" data-f="contact_id">
             <option value="">—</option>
             ${contacts.map(c => html`<option value="${c.id}" ${c.id === o.contact_id ? 'selected' : ''}>${c.pseudo}</option>`)}
           </select>
@@ -69,7 +70,7 @@ export async function openCommande(id, { onChanged } = {}) {
         <label class="field grow">Lien de la commande
           <span class="input-group">
             <input class="input" type="url" data-f="link" value="${o.link || ''}" placeholder="https://…">
-            ${o.link ? html`<a class="btn btn-sm" href="${o.link}" target="_blank" rel="noopener">Ouvrir</a>` : ''}
+            ${o.link ? html`<a class="btn btn-petit" href="${o.link}" target="_blank" rel="noopener">Ouvrir</a>` : ''}
           </span>
         </label>
         <label class="field">${o.direction === 'vente' ? 'Frais de port payés par l’acheteur' : 'Frais de port'}<input class="input" type="number" min="0" step="0.01" data-f="shipping" value="${o.shipping || ''}" placeholder="0,00"></label>
@@ -81,7 +82,7 @@ export async function openCommande(id, { onChanged } = {}) {
       <div class="field">
         <div class="lines-head">
           <span>${lines.length} article${lines.length > 1 ? 's' : ''}</span>
-          ${lines.length > 1 ? html`<select class="select select-auto select-sm" data-line-sort aria-label="Trier les articles">${LINE_SORTS.map(o => html`<option value="${o.id}" ${o.id === lineSort ? 'selected' : ''}>${o.label}</option>`)}</select>` : ''}
+          ${lines.length > 1 ? html`<select class="input select-auto select-sm" data-line-sort aria-label="Trier les articles">${LINE_SORTS.map(o => html`<option value="${o.id}" ${o.id === lineSort ? 'selected' : ''}>${o.label}</option>`)}</select>` : ''}
         </div>
         <div class="lines">
           ${[...lines].sort(LINE_SORTS.find(o => o.id === lineSort).cmp).map(l => html`
@@ -92,14 +93,14 @@ export async function openCommande(id, { onChanged } = {}) {
                 <span class="muted small">${[subtitle(l), l.kind === 'carte' ? variantLabel(l.variant) : '', conditionShort(l.condition), l.lang, l.qty > 1 && l.kind !== 'lot' ? `×${l.qty}` : ''].filter(Boolean).join(' · ')}</span>
               </div>
               <span class="price">${eur(l.total)}</span>
-              <button type="button" class="btn btn-sm btn-ghost" data-edit="${l.id}">Modifier</button>
-              <button type="button" class="btn btn-sm btn-ghost" data-detach="${l.id}">${o.direction === 'vente' ? 'Détacher' : 'Retirer'}</button>
+              <button type="button" class="btn btn-petit btn-fantome" data-edit="${l.id}">Modifier</button>
+              <button type="button" class="btn btn-petit btn-fantome" data-detach="${l.id}">${o.direction === 'vente' ? 'Détacher' : 'Retirer'}</button>
             </div>`)}
         </div>
       </div>
       <div class="row-actions">
-        ${o.direction === 'vente' ? html`<button type="button" class="btn btn-sm" data-attach>+ Rattacher une vente</button>` : ''}
-        <button type="button" class="btn btn-sm btn-ghost" data-add>${o.direction === 'vente' ? '+ Nouvelle vente dans cette commande' : '+ Ajouter un article'}</button>
+        ${o.direction === 'vente' ? html`<button type="button" class="btn btn-petit" data-attach>+ Rattacher une vente</button>` : ''}
+        <button type="button" class="btn btn-petit btn-fantome" data-add>${o.direction === 'vente' ? '+ Nouvelle vente dans cette commande' : '+ Ajouter un article'}</button>
         <span class="grow"></span>
         <strong data-total>${totalHtml()}</strong>
       </div>
@@ -107,8 +108,8 @@ export async function openCommande(id, { onChanged } = {}) {
     setHtml(foot, html`
       <button type="button" class="btn btn-danger" data-delete>Supprimer la commande</button>
       <span class="grow"></span>
-      <button type="button" class="btn btn-ghost" data-close>Fermer</button>
-      ${current.next ? html`<button type="button" class="btn btn-primary" data-next>${current.next}</button>` : ''}
+      <button type="button" class="btn btn-fantome" data-close>Fermer</button>
+      ${current.next ? html`<button type="button" class="btn btn-principal" data-next>${current.next}</button>` : ''}
     `);
   }
 
@@ -117,12 +118,12 @@ export async function openCommande(id, { onChanged } = {}) {
   // quiet : un champ saisi au clavier, on ne réaffiche pas la fiche (le curseur reste où il est)
   async function patch(fields, { quiet = false } = {}) {
     try {
-      await api.update('commandes', { id: `eq.${id}` }, fields);
+      await api.modifier('commandes', { id: `eq.${id}` }, fields);
       touch();
       await load();
       if (quiet) setHtml(root.querySelector('[data-total]'), totalHtml());
       else render();
-    } catch (err) { toastError(err); }
+    } catch (err) { notifierErreur(err); }
   }
 
   async function setStatus(status) {
@@ -134,7 +135,7 @@ export async function openCommande(id, { onChanged } = {}) {
     const fields = { status };
     if (status === 'arrive' && !o.arrived_on) fields.arrived_on = today();
     await patch(fields);
-    toast(`Commande : ${commandeStatus(o.direction, status).label}`);
+    notifier(`Commande : ${commandeStatus(o.direction, status).label}`);
   }
 
   // listes et case : enregistrées tout de suite ; dates, lien, port : quand on quitte le champ
@@ -159,7 +160,7 @@ export async function openCommande(id, { onChanged } = {}) {
     const i = statuses.findIndex(s => s.id === o.status);
     setStatus(statuses[i + 1].id);
   });
-  on(foot, 'click', '[data-close]', () => m.close());
+  on(foot, 'click', '[data-close]', () => m.fermer());
 
   on(root, 'click', '[data-edit]', async (_, b) => {
     const { openLineForm } = await import('../pages/ventes/line-form.js');
@@ -173,36 +174,36 @@ export async function openCommande(id, { onChanged } = {}) {
     const l = lines.find(x => x.id === b.dataset.detach);
     try {
       if (o.direction === 'vente') {
-        await api.update('transactions', { id: `eq.${l.id}` }, { commande_id: null, status: 'en_vente' });
-        toast(`${l.title} est de nouveau en ligne`);
+        await api.modifier('transactions', { id: `eq.${l.id}` }, { commande_id: null, status: 'en_vente' });
+        notifier(`${l.title} est de nouveau en ligne`);
       } else {
-        const ok = await confirmModal({ title: 'Retirer cet article ?', message: `${l.title} sera supprimé de l’achat.`, confirmLabel: 'Retirer', danger: true });
+        const ok = await confirmer({ titre: 'Retirer cet article ?', message: `${l.title} sera supprimé de l’achat.`, libelle: 'Retirer', danger: true });
         if (!ok) return;
-        await api.remove('transactions', { id: `eq.${l.id}` });
+        await api.supprimer('transactions', { id: `eq.${l.id}` });
       }
       await refresh();
-    } catch (err) { toastError(err); }
+    } catch (err) { notifierErreur(err); }
   });
   on(root, 'click', '[data-attach]', () => attachSales(o, refresh));
 
   on(foot, 'click', '[data-delete]', async () => {
-    const ok = await confirmModal({
-      title: 'Supprimer la commande ?',
+    const ok = await confirmer({
+      titre: 'Supprimer la commande ?',
       message: o.direction === 'vente'
         ? 'Ses ventes restent, elles repassent « En ligne » sans commande.'
         : 'Ses articles sont supprimés avec elle (les ventes déjà mises en stock restent).',
-      confirmLabel: 'Supprimer', danger: true,
+      libelle: 'Supprimer', danger: true,
     });
     if (!ok) return;
     try {
       if (o.direction === 'vente') {
-        if (lines.length) await api.update('transactions', { commande_id: `eq.${id}` }, { status: 'en_vente', commande_id: null });
-      } else if (lines.length) await api.remove('transactions', { commande_id: `eq.${id}` });
-      await api.remove('commandes', { id: `eq.${id}` });
-      toast('Commande supprimée');
+        if (lines.length) await api.modifier('transactions', { commande_id: `eq.${id}` }, { status: 'en_vente', commande_id: null });
+      } else if (lines.length) await api.supprimer('transactions', { commande_id: `eq.${id}` });
+      await api.supprimer('commandes', { id: `eq.${id}` });
+      notifier('Commande supprimée');
       touch();
-      m.close();
-    } catch (err) { toastError(err); }
+      m.fermer();
+    } catch (err) { notifierErreur(err); }
   });
 
   async function refresh() {
@@ -222,16 +223,16 @@ export async function openCommande(id, { onChanged } = {}) {
 
 // Choisir des ventes en stock à mettre dans cette commande
 async function attachSales(o, done) {
-  const rows = await api.list('transaction_list', {
+  const rows = await api.lire('transaction_list', {
     direction: 'eq.vente', commande_id: 'is.null', order: 'day.desc', limit: 200,
     select: 'id,title,set_name,number,variant,qty,total,status,kind,card_image,accessoire_image,crop,label,set_count',
   });
-  if (!rows.length) return toast('Aucune vente sans commande à rattacher', { type: 'error' });
-  openModal({
-    title: 'Rattacher des ventes',
-    width: 640,
-    body: html`
-      <label class="search"><input type="search" placeholder="Filtrer…" data-filter aria-label="Filtrer"></label>
+  if (!rows.length) return notifier('Aucune vente sans commande à rattacher', { type: 'erreur' });
+  ouvrirModale({
+    titre: 'Rattacher des ventes',
+    largeur: 640,
+    corps: html`
+      <label class="recherche"><input type="search" placeholder="Filtrer…" data-filter aria-label="Filtrer"></label>
       <div class="check-list">
         ${rows.map(r => html`
           <label class="check-row" data-name="${(r.title + ' ' + (r.set_name || '')).toLowerCase()}">
@@ -240,20 +241,20 @@ async function attachSales(o, done) {
             <span class="price">${eur(r.total)}</span>
           </label>`)}
       </div>`,
-    onOpen: el => el.querySelector('[data-filter]').addEventListener('input', e => {
+    aOuverture: el => el.querySelector('[data-filter]').addEventListener('input', e => {
       const q = e.target.value.toLowerCase();
       el.querySelectorAll('.check-row').forEach(r => { r.hidden = !r.dataset.name.includes(q); });
     }),
     actions: [
-      { label: 'Annuler' },
-      { label: 'Rattacher', primary: true, run: async el => {
+      { libelle: 'Annuler' },
+      { libelle: 'Rattacher', principal: true, run: async el => {
         const ids = [...el.querySelectorAll('.check-row input:checked')].map(i => i.value);
         if (!ids.length) return false;
         try {
-          await api.update('transactions', { id: inList(ids) }, { commande_id: o.id, status: 'vendue' });
-          toast(`${ids.length} vente${ids.length > 1 ? 's' : ''} rattachée${ids.length > 1 ? 's' : ''}`);
+          await api.modifier('transactions', { id: inList(ids) }, { commande_id: o.id, status: 'vendue' });
+          notifier(`${ids.length} vente${ids.length > 1 ? 's' : ''} rattachée${ids.length > 1 ? 's' : ''}`);
           await done();
-        } catch (err) { toastError(err); return false; }
+        } catch (err) { notifierErreur(err); return false; }
       } },
     ],
   });

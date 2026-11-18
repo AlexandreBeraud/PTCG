@@ -1,7 +1,7 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, errorHtml, reloadPage } from '../../ui/dom.js';
-import { openModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on, etatErreur, rechargerPage } from '/_shared/ui/dom.js';
+import { ouvrirModale } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { spriteHtml, formBadge, cardImage, norm, setSymbolHtml } from '../../shared/sales.js';
 import { cardTile, pokemonTile } from '../../shared/cards.js';
 
@@ -21,20 +21,20 @@ export async function renderPokemon(main, key) {
   let p, cards;
   try {
     [p, cards] = await Promise.all([
-      api.one('pokedex', { key: `eq.${key}` }),
-      api.list('fiche_cards', { fiche: `eq.${key}`, order: 'release_date.desc.nullslast,set_id,number' }),
+      api.un('pokedex', { key: `eq.${key}` }),
+      api.lire('fiche_cards', { fiche: `eq.${key}`, order: 'release_date.desc.nullslast,set_id,number' }),
     ]);
   } catch (err) {
-    return setHtml(main, errorHtml('Impossible de charger la fiche', err));
+    return setHtml(main, etatErreur('Impossible de charger la fiche', err, 'data-recharger'));
   }
-  if (!p) return setHtml(main, html`<div class="empty"><h2>Pokémon introuvable</h2><a href="#/pokedex">Retour au Pokédex</a></div>`);
+  if (!p) return setHtml(main, html`<div class="vide-etat"><h2>Pokémon introuvable</h2><a href="#/pokedex">Retour au Pokédex</a></div>`);
   document.title = `${p.name_fr} · PTCG`;
 
   const select = 'key,dex,name_fr,sprite,pokeapi_id,form_badge,form_color,cartes,en_stock,is_default,sort_order,masque';
   const [forms, evolutions, label] = await Promise.all([
-    api.list('pokedex', { species_key: `eq.${p.species_key}`, select, order: 'sort_order' }).catch(() => []),
-    p.evolution_id ? api.list('pokedex', { evolution_id: `eq.${p.evolution_id}`, is_default: 'eq.true', select, order: 'sort_order' }).catch(() => []) : [],
-    p.label_type ? api.one('labels', { type: `eq.${p.label_type}` }).catch(() => null) : null,
+    api.lire('pokedex', { species_key: `eq.${p.species_key}`, select, order: 'sort_order' }).catch(() => []),
+    p.evolution_id ? api.lire('pokedex', { evolution_id: `eq.${p.evolution_id}`, is_default: 'eq.true', select, order: 'sort_order' }).catch(() => []) : [],
+    p.label_type ? api.un('labels', { type: `eq.${p.label_type}` }).catch(() => null) : null,
   ]);
   const base = forms.find(f => f.is_default);
   const others = forms.filter(f => f.key !== p.key);
@@ -43,7 +43,7 @@ export async function renderPokemon(main, key) {
   // cartes groupées par extension (tri par date), sinon à plat
   function cardsHtml() {
     const sort = SORTS.find(o => o.id === sortId);
-    if (!cards.length) return html`<div class="empty"><h2>Aucune carte sur cette fiche</h2></div>`;
+    if (!cards.length) return html`<div class="vide-etat"><h2>Aucune carte sur cette fiche</h2></div>`;
     if (sort.cmp) return html`<div class="card-grid">${[...cards].sort(sort.cmp).map(c => cardTile(c, { showSet: true }))}</div>`;
     const groups = [];
     for (const c of sortId === 'old' ? [...cards].reverse() : cards) {
@@ -63,11 +63,11 @@ export async function renderPokemon(main, key) {
       <div class="grow">
         <p class="muted small" style="margin: 0">n°${String(p.dex).padStart(3, '0')}${p.generation ? ` · Génération ${GEN[p.generation]}` : ''} ·
           ${p.is_default ? 'forme de base' : html`forme de <a href="#/pokedex/${encodeURIComponent(base?.key || p.species_key)}">${base?.name_fr || p.species_key}</a>`}</p>
-        <h1 class="card-title">${p.name_fr} ${formBadge(p)}${p.masque ? html` <span class="tag">Masquée</span>` : ''}</h1>
-        <div class="chips-static">${(p.types || []).map(t => html`<span class="tag">${t}</span>`)}</div>
+        <h1 class="card-title">${p.name_fr} ${formBadge(p)}${p.masque ? html` <span class="badge">Masquée</span>` : ''}</h1>
+        <div class="chips-static">${(p.types || []).map(t => html`<span class="badge">${t}</span>`)}</div>
         <div class="row-actions">
-          ${!p.is_default ? html`<button type="button" class="btn btn-sm ${p.masque ? 'btn-primary' : 'btn-ghost'}" data-masque>${p.masque ? 'Afficher cette forme' : 'Masquer cette forme'}</button>` : ''}
-          <button type="button" class="btn btn-sm btn-ghost" data-sprite>Changer le sprite</button>
+          ${!p.is_default ? html`<button type="button" class="btn btn-petit ${p.masque ? 'btn-principal' : 'btn-fantome'}" data-masque>${p.masque ? 'Afficher cette forme' : 'Masquer cette forme'}</button>` : ''}
+          <button type="button" class="btn btn-petit btn-fantome" data-sprite>Changer le sprite</button>
           ${p.masque ? html`<span class="muted small">Absente du Pokédex et du choix des cartes ; ses cartes sont sur ${base?.name_fr || 'l’espèce'}.</span>` : ''}
         </div>
       </div>
@@ -83,9 +83,9 @@ export async function renderPokemon(main, key) {
           ? html` : leur nom contient ${label.prefixes?.length ? quote(label.prefixes) : ''}${label.prefixes?.length && label.suffixes?.length ? ' et ' : ''}${label.suffixes?.length ? quote(label.suffixes) : ''}.`
           : html` — il n’a encore aucun préfixe ni suffixe : aucune carte ne peut y arriver.`}
           ${p.label_manuel ? ' Label posé à la main sur cette forme.' : ''}</span>
-        <a class="btn btn-sm" href="#/labels/${encodeURIComponent(label.type)}">Voir le label</a>
+        <a class="btn btn-petit" href="#/labels/${encodeURIComponent(label.type)}">Voir le label</a>
       </div>` : ''}
-    ${!p.is_default && !label ? html`<div class="banner banner-warn"><span class="small">Aucun label n’est relié à cette forme : ses cartes restent sur ${base?.name_fr || 'l’espèce'}.</span><a class="btn btn-sm" href="#/labels">Gérer les labels</a></div>` : ''}
+    ${!p.is_default && !label ? html`<div class="banner banner-warn"><span class="small">Aucun label n’est relié à cette forme : ses cartes restent sur ${base?.name_fr || 'l’espèce'}.</span><a class="btn btn-petit" href="#/labels">Gérer les labels</a></div>` : ''}
 
     ${evolutions.length > 1 ? html`
       <section>
@@ -101,8 +101,8 @@ export async function renderPokemon(main, key) {
     <section>
       <div class="toolbar">
         <h2 class="section-title grow">Cartes</h2>
-        <select class="select select-auto" id="fsort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === sortId ? 'selected' : ''}>${o.label}</option>`)}</select>
-        <button type="button" class="btn btn-sm" data-ranger>Ranger des cartes ici</button>
+        <select class="input select-auto" id="fsort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === sortId ? 'selected' : ''}>${o.label}</option>`)}</select>
+        <button type="button" class="btn btn-petit" data-ranger>Ranger des cartes ici</button>
       </div>
       <div id="fcards">${cardsHtml()}</div>
     </section>
@@ -115,19 +115,19 @@ export async function renderPokemon(main, key) {
     const v = await askImage({ title: `Sprite de ${p.name_fr}`, folder: 'Sprites', removable: true });
     if (v === null) return;
     try {
-      await api.rpc('set_pokemon_sprite', { pokemon_key: p.key, sprite: !v || /^https?:/.test(v) ? v : `/${v}` });
-      toast(v ? 'Sprite enregistré' : 'Sprite du NAS rétabli à la prochaine mise à jour');
-      reloadPage();
-    } catch (err) { toastError(err); }
+      await api.appeler('set_pokemon_sprite', { pokemon_key: p.key, sprite: !v || /^https?:/.test(v) ? v : `/${v}` });
+      notifier(v ? 'Sprite enregistré' : 'Sprite du NAS rétabli à la prochaine mise à jour');
+      rechargerPage();
+    } catch (err) { notifierErreur(err); }
   });
   // une forme dont je ne veux pas (Pokémon Dominant…) : ses cartes repartent sur l'espèce
   on(main, 'click', '[data-masque]', async () => {
     try {
-      if (p.masque) await api.remove('pokemon_masques', { pokemon_key: `eq.${p.key}` });
-      else await api.insert('pokemon_masques', { pokemon_key: p.key });
-      toast(p.masque ? 'Forme de nouveau affichée' : 'Forme masquée');
-      reloadPage();
-    } catch (err) { toastError(err); }
+      if (p.masque) await api.supprimer('pokemon_masques', { pokemon_key: `eq.${p.key}` });
+      else await api.ajouter('pokemon_masques', { pokemon_key: p.key });
+      notifier(p.masque ? 'Forme de nouveau affichée' : 'Forme masquée');
+      rechargerPage();
+    } catch (err) { notifierErreur(err); }
   });
 }
 
@@ -136,23 +136,23 @@ export async function renderPokemon(main, key) {
 async function rangerIci(p, here) {
   let list;
   try {
-    list = await api.list('card_list', {
+    list = await api.lire('card_list', {
       dex_ids: `cs.{${p.dex}}`, category: 'eq.pokemon',
       select: 'id,name,number,set_id,set_name,set_symbol,image,pokemon_key,pokemon_name,form_badge,form_color,release_date',
       order: 'release_date.desc.nullslast,set_id,number_sort.nullslast,number',
     });
-  } catch (err) { return toastError(err); }
+  } catch (err) { return notifierErreur(err); }
   const onHere = new Set(here.map(c => c.id));
   list = list.filter(c => !onHere.has(c.id));
-  if (!list.length) return toast('Toutes les cartes de ce Pokémon sont déjà sur cette fiche');
+  if (!list.length) return notifier('Toutes les cartes de ce Pokémon sont déjà sur cette fiche');
   const picked = new Set();
 
-  const m = openModal({
-    title: `Ranger des cartes sur ${p.name_fr}`,
-    width: 900,
-    body: html`
+  const m = ouvrirModale({
+    titre: `Ranger des cartes sur ${p.name_fr}`,
+    largeur: 900,
+    corps: html`
       <p class="muted" style="margin: 0">Coche les cartes qui montrent ${p.name_fr}. Elles quittent leur fiche actuelle ; « Revenir au rangement automatique » sur la page d’une carte annule.</p>
-      <label class="search"><input type="search" id="rg-q" placeholder="Filtrer : nom, extension, numéro…" aria-label="Filtrer"></label>
+      <label class="recherche"><input type="search" id="rg-q" placeholder="Filtrer : nom, extension, numéro…" aria-label="Filtrer"></label>
       <div class="pick-grid" id="rg-list">${list.map(c => html`
         <label class="pick-card" data-name="${norm(`${c.name} ${c.set_name} ${c.set_id} ${c.number}`)}">
           <input type="checkbox" value="${c.id}" class="pick-check">
@@ -161,7 +161,7 @@ async function rangerIci(p, here) {
           <span class="pick-name small">${c.name}</span>
           <span class="muted small">sur ${c.pokemon_name || '—'} ${formBadge(c)}</span>
         </label>`)}</div>`,
-    onOpen: el => {
+    aOuverture: el => {
       el.querySelector('#rg-q').addEventListener('input', e => {
         const words = norm(e.target.value).split(/\s+/).filter(Boolean);
         el.querySelectorAll('#rg-list .pick-card').forEach(c => { c.hidden = !words.every(w => c.dataset.name.includes(w)); });
@@ -173,14 +173,14 @@ async function rangerIci(p, here) {
       });
     },
     actions: [
-      { label: 'Annuler' },
-      { label: 'Ranger ici', primary: true, run: async () => {
-        if (!picked.size) { toastError(new Error('Coche au moins une carte')); return false; }
+      { libelle: 'Annuler' },
+      { libelle: 'Ranger ici', principal: true, run: async () => {
+        if (!picked.size) { notifierErreur(new Error('Coche au moins une carte')); return false; }
         try {
-          await api.upsert('card_overrides', [...picked].map(id => ({ card_id: id, pokemon_key: p.key })), 'card_id');
-          toast(`${picked.size} carte${picked.size > 1 ? 's' : ''} rangée${picked.size > 1 ? 's' : ''} sur ${p.name_fr}`);
-          reloadPage();
-        } catch (err) { toastError(err); return false; }
+          await api.enregistrer('card_overrides', [...picked].map(id => ({ card_id: id, pokemon_key: p.key })), 'card_id');
+          notifier(`${picked.size} carte${picked.size > 1 ? 's' : ''} rangée${picked.size > 1 ? 's' : ''} sur ${p.name_fr}`);
+          rechargerPage();
+        } catch (err) { notifierErreur(err); return false; }
       } },
     ],
   });

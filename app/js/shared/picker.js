@@ -1,6 +1,6 @@
 import { api } from '../api.js';
-import { html, setHtml, on } from '../ui/dom.js';
-import { icon } from '../ui/icons.js';
+import { html, setHtml, on } from '/_shared/ui/dom.js';
+import { icone } from '../ui/icones.js';
 import { cardImage, spriteHtml, formBadge, setSymbolHtml, norm } from './sales.js';
 import { KINDS, ficheImg, loadFicheImages } from './fiches.js';
 
@@ -44,8 +44,8 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
         ${stockToggle ? html`<label class="check-inline picker-stock"><input type="checkbox" data-stock ${stockOnly ? 'checked' : ''}> Seulement mon stock</label>` : ''}
       </div>
       <div class="picker-head" hidden></div>
-      <label class="search">
-        ${icon('search')}
+      <label class="recherche">
+        ${icone('recherche')}
         <input type="search" aria-label="Chercher" autocomplete="off">
       </label>
       <div class="picker-body" aria-live="polite"></div>
@@ -69,7 +69,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
     const q = input.value.trim();
     note('Recherche…');
     try {
-      const [rows] = await Promise.all([api.rpc('picker_entities', { kind: st.tab, q: q || null, lim: 2000 }), loadFicheImages()]);
+      const [rows] = await Promise.all([api.appeler('picker_entities', { kind: st.tab, q: q || null, lim: 2000 }), loadFicheImages()]);
       if (mine !== seq) return;
       st.entities = rows || [];
       renderEntities(q);
@@ -103,7 +103,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
     input.value = '';
     setPlaceholder();
     setHtml(head, html`
-      <button type="button" class="btn btn-sm btn-ghost" data-back>← ${tab().label}</button>
+      <button type="button" class="btn btn-petit btn-fantome" data-back>← ${tab().label}</button>
       ${entityImg(e, true)}
       <strong>${e.name}</strong> ${formBadge(e)}`);
     head.hidden = false;
@@ -111,8 +111,8 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
     const mine = ++seq;
     const order = 'release_date.desc.nullslast,set_id,number_sort.nullslast,number';
     const p = e.type === 'pokemon'
-      ? api.list('fiche_cards', { fiche: `eq.${e.key}`, select: CARD_SELECT, order })
-      : api.list('fiche_card_list', { fiche_key: `eq.${e.key}`, select: CARD_SELECT, order });
+      ? api.lire('fiche_cards', { fiche: `eq.${e.key}`, select: CARD_SELECT, order })
+      : api.lire('fiche_card_list', { fiche_key: `eq.${e.key}`, select: CARD_SELECT, order });
     try {
       const rows = await p;
       if (mine !== seq) return;
@@ -161,7 +161,7 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
     if (q.length < 2) { st.results = []; return note('Tape au moins deux lettres.'); }
     note('Recherche…');
     try {
-      const rows = await api.rpc('search_cards', { q, lim: 40 });
+      const rows = await api.appeler('search_cards', { q, lim: 40 });
       if (mine !== seq) return;
       st.results = (rows || []).filter(c => !onlyStock() || inStock(c));
       if (st.results.length) {
@@ -169,14 +169,14 @@ export function cardPicker(el, { onPick, onManual, autofocus = true, stockToggle
           <button type="button" class="picker-item" role="option" data-card="${i}">
             <span class="thumb thumb-xs">${c.image ? html`<img src="${cardImage(c.image)}" alt="" loading="lazy" data-hide-on-error>` : ''}</span>
             <span class="grow">
-              <span class="picker-name">${c.name}${c.lang === 'en' ? html` <span class="tag">EN</span>` : ''}</span>
+              <span class="picker-name">${c.name}${c.lang === 'en' ? html` <span class="badge">EN</span>` : ''}</span>
               <span class="muted small">${c.set_name} · ${c.number || '—'}${c.rarity ? ` · ${c.rarity}` : ''}</span>
             </span>
-            ${Number(c.en_stock) ? html`<span class="tag tag-info">${c.en_stock} en stock</span>` : ''}
+            ${Number(c.en_stock) ? html`<span class="badge badge-info">${c.en_stock} en stock</span>` : ''}
           </button>`)}</div>`);
       }
       note(`Aucune carte pour « ${q} »`);
-      const sugg = await api.rpc('suggest_names', { q, lim: 3 }).catch(() => []);
+      const sugg = await api.appeler('suggest_names', { q, lim: 3 }).catch(() => []);
       if (mine === seq && sugg.length) {
         body.insertAdjacentHTML('beforeend', String(html`<p class="small picker-note">Tu voulais dire ${sugg.map((s, i) => html`${i ? ', ' : ''}<button type="button" class="link" data-suggest="${s.name}">${s.name}</button>`)} ?</p>`));
       }

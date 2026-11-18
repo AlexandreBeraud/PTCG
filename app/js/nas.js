@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { uid } from './ui/dom.js';
+import { uid } from '/_shared/ui/dom.js';
 
 // FileBrowser, joint via Caddy sur /nas (même origine que l'appli)
 let token = null;

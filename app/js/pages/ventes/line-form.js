@@ -1,8 +1,9 @@
 import { api } from '../../api.js';
 import { imageUrl } from '../../nas.js';
-import { html, setHtml, on, eur } from '../../ui/dom.js';
-import { openModal, confirmModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on } from '/_shared/ui/dom.js';
+import { eur } from '../../format.js';
+import { ouvrirModale, confirmer } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { dropzone } from '../../ui/upload.js';
 import { cardPicker } from '../../shared/picker.js';
 import { store, ensureContact } from '../../shared/store.js';
@@ -60,16 +61,16 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     ? (direction === 'vente' ? 'Modifier la vente' : 'Modifier l’article')
     : (direction === 'vente' ? 'Nouvelle vente' : 'Ajouter un article');
 
-  const m = openModal({
-    title,
-    width: 780,
-    body: html`<div class="form-grid" id="lf"></div>`,
+  const m = ouvrirModale({
+    titre: title,
+    largeur: 780,
+    corps: html`<div class="form-grid" id="lf"></div>`,
     actions: [
-      ...(editing ? [{ label: 'Supprimer', danger: true, run: remove }] : []),
-      ...(editing && line.kind !== 'lot' && line.qty > 1 ? [{ label: 'Séparer', run: split }] : []),
-      { label: 'Annuler' },
-      ...(!editing && !fixedCommande ? [{ label: 'Enregistrer et en ajouter une autre', run: () => save(true) }] : []),
-      { label: 'Enregistrer', primary: true, run: () => save(false) },
+      ...(editing ? [{ libelle: 'Supprimer', danger: true, run: remove }] : []),
+      ...(editing && line.kind !== 'lot' && line.qty > 1 ? [{ libelle: 'Séparer', run: split }] : []),
+      { libelle: 'Annuler' },
+      ...(!editing && !fixedCommande ? [{ libelle: 'Enregistrer et en ajouter une autre', run: () => save(true) }] : []),
+      { libelle: 'Enregistrer', principal: true, run: () => save(false) },
     ],
   });
   const root = m.el.querySelector('#lf');
@@ -80,7 +81,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     if (!conds.some(c => c.id === st.condition)) st.condition = conds[0].id;
     setHtml(root, html`
       ${!editing && kindList.length > 1 ? html`
-        <div class="segmented" role="tablist" aria-label="Type d’article">
+        <div class="segmente" role="tablist" aria-label="Type d’article">
           ${kindList.map(k => html`<button type="button" role="tab" data-kind="${k}" aria-selected="${st.kind === k}">${KINDS[k]}</button>`)}
         </div>` : ''}
       <div id="lf-item">${itemHtml()}</div>
@@ -104,9 +105,9 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
             ${low.price != null ? html`
               <p class="small" style="margin: 6px 0 0">Prix le plus bas sur Cardmarket${low.holo ? ' (holo/reverse)' : ''} : <strong>${eur(low.price)}</strong></p>` : ''}
             <div class="row-actions">
-              ${low.price != null ? html`<button type="button" class="btn btn-sm" data-take>Prendre ce prix</button>` : ''}
-              ${c.cardmarket_url ? html`<a class="btn btn-sm btn-ghost" href="${c.cardmarket_url}" target="_blank" rel="noopener">Voir sur Cardmarket</a>` : ''}
-              ${!editing ? html`<button type="button" class="btn btn-sm btn-ghost" data-change-card>Changer de carte</button>` : ''}
+              ${low.price != null ? html`<button type="button" class="btn btn-petit" data-take>Prendre ce prix</button>` : ''}
+              ${c.cardmarket_url ? html`<a class="btn btn-petit btn-fantome" href="${c.cardmarket_url}" target="_blank" rel="noopener">Voir sur Cardmarket</a>` : ''}
+              ${!editing ? html`<button type="button" class="btn btn-petit btn-fantome" data-change-card>Changer de carte</button>` : ''}
             </div>
           </div>
         </div>`;
@@ -146,7 +147,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
   function setField() {
     return html`
       <label class="field grow">Extension (facultatif)
-        <select class="select" data-f="setId">${setOptionsHtml(sets, st.setId, { empty: 'Aucune' })}</select>
+        <select class="input" data-f="setId">${setOptionsHtml(sets, st.setId, { empty: 'Aucune' })}</select>
       </label>`;
   }
 
@@ -169,11 +170,11 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         </div>` : ''}
       <div class="form-row">
         <label class="field">État
-          <select class="select" data-f="condition">${conds.map(c => html`<option value="${c.id}" ${c.id === st.condition ? 'selected' : ''}>${c.id}</option>`)}</select>
+          <select class="input" data-f="condition">${conds.map(c => html`<option value="${c.id}" ${c.id === st.condition ? 'selected' : ''}>${c.id}</option>`)}</select>
         </label>
         ${st.kind !== 'accessoire' && st.kind !== 'produit' ? html`
           <label class="field">Langue
-            <select class="select" data-f="lang">${LANGS.map(l => html`<option value="${l.id}" ${l.id === st.lang ? 'selected' : ''}>${l.label}</option>`)}</select>
+            <select class="input" data-f="lang">${LANGS.map(l => html`<option value="${l.id}" ${l.id === st.lang ? 'selected' : ''}>${l.label}</option>`)}</select>
           </label>` : ''}
         <label class="field">${st.kind === 'lot' ? 'Nombre de cartes' : 'Quantité'}
           <input class="input" type="number" min="1" step="1" inputmode="numeric" data-f="qty" value="${st.qty}">
@@ -189,14 +190,14 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
     const contactCommandes = st.commandes || [];
     return html`
       <div class="field"><span>Statut</span>
-        <div class="segmented" role="radiogroup" aria-label="Statut">
+        <div class="segmente" role="radiogroup" aria-label="Statut">
           ${VENTE_STATUS.map(s => html`<button type="button" role="radio" data-status="${s.id}" aria-checked="${st.status === s.id}" aria-pressed="${st.status === s.id}">${s.label}</button>`)}
         </div>
       </div>
       ${st.status === 'vendue' ? html`
         <div class="form-row">
           <label class="field grow">Acheteur
-            <select class="select" data-f="contactId">
+            <select class="input" data-f="contactId">
               <option value="">Aucun, à rattacher plus tard</option>
               ${contacts.map(c => html`<option value="${c.id}" ${c.id === st.contactId ? 'selected' : ''}>${c.pseudo}</option>`)}
               <option value="__new" ${st.contactId === '__new' ? 'selected' : ''}>+ Nouveau contact…</option>
@@ -205,7 +206,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
           ${st.contactId === '__new' ? html`<label class="field grow">Pseudo<input class="input" data-f="newPseudo" value="${st.newPseudo || ''}"></label>` : ''}
           ${st.contactId ? html`
             <label class="field grow">Commande
-              <select class="select" data-f="commandeId">
+              <select class="input" data-f="commandeId">
                 <option value="">Nouvelle commande (aujourd’hui)</option>
                 ${contactCommandes.map(o => html`<option value="${o.id}" ${o.id === st.commandeId ? 'selected' : ''}>Commande du ${fmtDate(o.ordered_on || o.created_at)} · ${commandeStatus('vente', o.status).label}</option>`)}
               </select>
@@ -213,7 +214,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         </div>
         ${st.contactId && !st.commandeId && !editing ? shippingHtml() : ''}` : ''}
       <label class="field">Pour le compte de
-        <select class="select" data-f="forAccount">
+        <select class="input" data-f="forAccount">
           <option value="">Moi</option>
           ${[...new Set([...known, st.forAccount].filter(Boolean))].map(n => html`<option value="${n}" ${n === st.forAccount ? 'selected' : ''}>${n}</option>`)}
           <option value="__new">+ Quelqu’un d’autre…</option>
@@ -239,7 +240,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         onManual: async name => {
           const { openManualCard } = await import('../cartes/manual.js');
           openManualCard({ name, onSaved: async id => {
-            const [card] = await api.list('card_list', { id: `eq.${id}` });
+            const [card] = await api.lire('card_list', { id: `eq.${id}` });
             st.card = { ...card, set_name: card.set_name };
             st.variant = defaultVariant(card);
             render();
@@ -267,12 +268,12 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
   async function loadCommandes() {
     if (!st.contactId || st.contactId === '__new') { st.commandes = []; return; }
     const select = 'id,ordered_on,created_at,status';
-    st.commandes = await api.list('commandes', {
+    st.commandes = await api.lire('commandes', {
       select, contact_id: `eq.${st.contactId}`, direction: 'eq.vente', order: 'created_at.desc', limit: 12,
     });
     // la commande actuelle de la ligne doit rester choisie, même ancienne
     if (st.commandeId && !st.commandes.some(o => o.id === st.commandeId)) {
-      const current = await api.one('commandes', { select, id: `eq.${st.commandeId}` });
+      const current = await api.un('commandes', { select, id: `eq.${st.commandeId}` });
       if (current) st.commandes.unshift(current);
     }
   }
@@ -332,7 +333,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
       const row = readRow();
 
       if (st.kind === 'accessoire' && !row.accessoire_id) {
-        const acc = await api.insert('accessoires', { name: st.newAccessoire.name.trim(), image: st.newAccessoire.image || null });
+        const acc = await api.ajouter('accessoires', { name: st.newAccessoire.name.trim(), image: st.newAccessoire.image || null });
         row.accessoire_id = acc.id;
         store.forget('accessoires');
       }
@@ -344,7 +345,7 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         if (fixedCommande) row.commande_id = commande.id;
         else if (st.status === 'vendue' && st.contactId) {
           const contactId = await ensureContact(st.contactId === '__new' ? { newPseudo: st.newPseudo } : { contactId: st.contactId });
-          row.commande_id = st.commandeId || (await api.insert('commandes', {
+          row.commande_id = st.commandeId || (await api.ajouter('commandes', {
             contact_id: contactId, direction: 'vente', ordered_on: today(), status: 'a_envoyer',
             shipping: Number(String(st.shipping || '').replace(',', '.')) || 0, shipping_paid: st.shippingPaid,
           })).id;
@@ -356,10 +357,10 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         row.commande_id = commande?.id || line?.commande_id || null;
       }
 
-      if (editing) await api.update('transactions', { id: `eq.${line.id}` }, row);
-      else await api.insert('transactions', { direction, ...row });
+      if (editing) await api.modifier('transactions', { id: `eq.${line.id}` }, row);
+      else await api.ajouter('transactions', { direction, ...row });
 
-      toast(editing ? 'Modification enregistrée' : direction === 'vente' ? 'Vente enregistrée' : 'Article ajouté');
+      notifier(editing ? 'Modification enregistrée' : direction === 'vente' ? 'Vente enregistrée' : 'Article ajouté');
       onSaved?.();
       if (again) {
         setTimeout(() => openLineForm({
@@ -368,29 +369,29 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
         }), 0);
       }
     } catch (err) {
-      toastError(err);
+      notifierErreur(err);
       return false;
     }
   }
 
   async function remove() {
-    const ok = await confirmModal({ title: 'Supprimer cette ligne ?', message: `${line.title} · ${eur(line.total)}. Cette suppression est définitive.`, confirmLabel: 'Supprimer', danger: true });
+    const ok = await confirmer({ titre: 'Supprimer cette ligne ?', message: `${line.title} · ${eur(line.total)}. Cette suppression est définitive.`, libelle: 'Supprimer', danger: true });
     if (!ok) return false;
     try {
-      await api.remove('transactions', { id: `eq.${line.id}` });
-      toast('Ligne supprimée');
+      await api.supprimer('transactions', { id: `eq.${line.id}` });
+      notifier('Ligne supprimée');
       onSaved?.();
-    } catch (err) { toastError(err); return false; }
+    } catch (err) { notifierErreur(err); return false; }
   }
 
   async function split() {
     const n = await askQty(line.qty);
     if (!n) return false;
     try {
-      await api.rpc('split_transaction', { id: line.id, qty: n });
-      toast(`${n} exemplaire${n > 1 ? 's' : ''} séparé${n > 1 ? 's' : ''} sur une nouvelle ligne`);
+      await api.appeler('split_transaction', { id: line.id, qty: n });
+      notifier(`${n} exemplaire${n > 1 ? 's' : ''} séparé${n > 1 ? 's' : ''} sur une nouvelle ligne`);
       onSaved?.();
-    } catch (err) { toastError(err); return false; }
+    } catch (err) { notifierErreur(err); return false; }
   }
 
   const sets = kindList.some(k => k === 'lot' || k === 'produit') ? await setOptions().catch(() => []) : [];
@@ -403,17 +404,17 @@ export async function openLineForm({ direction = 'vente', line = null, commande 
 function askQty(max) {
   return new Promise(resolve => {
     let value = null;
-    const m = openModal({
-      title: 'Séparer la ligne',
-      width: 420,
-      body: html`
+    const m = ouvrirModale({
+      titre: 'Séparer la ligne',
+      largeur: 420,
+      corps: html`
         <p class="muted" style="margin: 0">La ligne compte ${max} exemplaires. Combien en mettre sur une ligne à part (pour les vendre séparément, par exemple) ?</p>
         <label class="field">Quantité à séparer<input class="input" type="number" min="1" max="${max - 1}" value="1" id="split-n"></label>`,
       actions: [
-        { label: 'Annuler', run: () => resolve(null) },
-        { label: 'Séparer', primary: true, run: el => {
+        { libelle: 'Annuler', run: () => resolve(null) },
+        { libelle: 'Séparer', principal: true, run: el => {
           value = parseInt(el.querySelector('#split-n').value, 10);
-          if (!(value >= 1 && value < max)) { toastError(new Error(`Entre 1 et ${max - 1}`)); return false; }
+          if (!(value >= 1 && value < max)) { notifierErreur(new Error(`Entre 1 et ${max - 1}`)); return false; }
           resolve(value);
         } },
       ],

@@ -1,6 +1,6 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, errorHtml, autoMore } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
+import { html, setHtml, on, etatErreur, chargerSuite } from '/_shared/ui/dom.js';
+import { icone } from '../../ui/icones.js';
 import { norm } from '../../shared/sales.js';
 import { FAMILLES, familleLabel, cardTile } from '../../shared/cards.js';
 
@@ -30,13 +30,13 @@ export default {
     let rows = [];
     let total = 0;
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div><h1>Cartes</h1><p>Tout le catalogue, classé automatiquement d’après TCGdex · rien à trier à la main</p></div>
-        <div class="page-actions"><button type="button" class="btn" data-manual>${icon('plus')}Carte absente de TCGdex</button></div>
+        <div class="page-actions"><button type="button" class="btn" data-manual>${icone('plus')}Carte absente de TCGdex</button></div>
       </header>
       <div class="toolbar">
-        <label class="search grow">${icon('search')}<input type="search" id="q" placeholder="Nom, nom anglais ou numéro : « dracaufeu 125 »" value="${state.q}" aria-label="Rechercher une carte"></label>
-        <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(s => html`<option value="${s.id}" ${s.id === state.sort ? 'selected' : ''}>${s.label}</option>`)}</select>
+        <label class="recherche grow">${icone('recherche')}<input type="search" id="q" placeholder="Nom, nom anglais ou numéro : « dracaufeu 125 »" value="${state.q}" aria-label="Rechercher une carte"></label>
+        <select class="input select-auto" id="sort" aria-label="Tri">${SORTS.map(s => html`<option value="${s.id}" ${s.id === state.sort ? 'selected' : ''}>${s.label}</option>`)}</select>
         <label class="check-inline"><input type="checkbox" id="group" ${state.group ? 'checked' : ''}> Regrouper les versions d’une même carte</label>
       </div>
       <div class="facets" id="facets"></div>
@@ -59,7 +59,7 @@ export default {
 
     async function facets() {
       let f;
-      try { f = await api.rpc('card_facets', { q: state.q || null, serie: state.serie || null }); } catch (_) { return; }
+      try { f = await api.appeler('card_facets', { q: state.q || null, serie: state.serie || null }); } catch (_) { return; }
       setHtml($('#facets'), html`
         <div class="chips" role="group" aria-label="Catégorie">
           <button type="button" class="chip" data-famille="" aria-pressed="${!state.famille}">Toutes<span class="n">${f.total}</span></button>
@@ -69,7 +69,7 @@ export default {
         <div class="chips" role="group" aria-label="Mes cartes">
           <button type="button" class="chip" data-mine="stock" aria-pressed="${state.stock}">En stock<span class="n">${f.en_stock}</span></button>
           <button type="button" class="chip" data-mine="vendues" aria-pressed="${state.vendues}">Déjà vendues<span class="n">${f.vendues}</span></button>
-          <select class="select select-auto" id="serie" aria-label="Bloc">
+          <select class="input select-auto" id="serie" aria-label="Bloc">
             <option value="">Tous les blocs</option>
             ${f.series.filter(s => s.id).map(s => html`<option value="${s.id}" ${s.id === state.serie ? 'selected' : ''}>${s.name} (${s.n})</option>`)}
           </select>
@@ -79,27 +79,27 @@ export default {
     async function load(append = false) {
       if (!append) setHtml($('#results'), html`<p class="muted">Chargement…</p>`);
       try {
-        const page = await api.page('card_list', params_(), { offset: append ? rows.length : 0, limit: PAGE });
-        rows = append ? rows.concat(page.rows) : page.rows;
+        const page = await api.page('card_list', params_(), { debut: append ? rows.length : 0, taille: PAGE });
+        rows = append ? rows.concat(page.lignes) : page.lignes;
         total = page.total;
         render();
       } catch (err) {
-        setHtml($('#results'), errorHtml('Impossible de charger les cartes', err));
+        setHtml($('#results'), etatErreur('Impossible de charger les cartes', err, 'data-recharger'));
       }
     }
 
     async function render() {
       const more = rows.length < total
-        ? html`<div class="more" data-more><span class="muted small">Chargement de la suite (${total - rows.length} restantes)…</span></div>` : '';
+        ? html`<div class="more" data-suite><span class="muted small">Chargement de la suite (${total - rows.length} restantes)…</span></div>` : '';
       if (!rows.length) {
         setHtml($('#count'), '');
-        setHtml($('#results'), html`<div class="empty">
+        setHtml($('#results'), html`<div class="vide-etat">
           <h2>Aucune carte${state.q ? ` pour « ${state.q} »` : ''}</h2>
           <p id="suggest"></p>
           <button type="button" class="btn" data-manual>Ajouter une carte absente de TCGdex</button>
         </div>`);
         if (state.q) {
-          const sugg = await api.rpc('suggest_names', { q: state.q, lim: 3 }).catch(() => []);
+          const sugg = await api.appeler('suggest_names', { q: state.q, lim: 3 }).catch(() => []);
           const box = $('#suggest');
           if (box && sugg.length) setHtml(box, html`Tu voulais dire ${sugg.map((s, i) => html`${i ? ', ' : ''}<button type="button" class="link" data-suggest="${s.name}">${s.name}</button>`)} ?`);
         }
@@ -141,7 +141,7 @@ export default {
     on(main, 'click', '[data-famille]', (_, b) => { state.famille = b.dataset.famille; facets(); load(); });
     on(main, 'click', '[data-mine]', (_, b) => { state[b.dataset.mine] = !state[b.dataset.mine]; facets(); load(); });
     on(main, 'change', '#serie', (_, s) => { state.serie = s.value; refresh(); });
-    autoMore(main, () => rows.length < total && load(true));
+    chargerSuite(main, () => rows.length < total && load(true));
     on(main, 'click', '[data-suggest]', (_, b) => { state.q = b.dataset.suggest; $('#q').value = state.q; refresh(); });
     on(main, 'click', '[data-manual]', async () => {
       const { openManualCard } = await import('./manual.js');

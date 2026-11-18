@@ -1,9 +1,9 @@
 import { api } from './api.js';
 import { ensureLogin } from './nas.js';
 import { renderNav } from './nav.js';
-import { html, setHtml, errorHtml, reloadPage } from './ui/dom.js';
-import { toastError } from './ui/toast.js';
-import { applyAppearance } from './appearance.js';
+import { html, setHtml, etatErreur, rechargerPage } from '/_shared/ui/dom.js';
+import { notifierErreur } from '/_shared/ui/notifications.js';
+import { appliquerApparence } from './apparence.js';
 import { loadFicheImages } from './shared/fiches.js';
 
 // Chaque page est un module chargé seulement quand on l'ouvre.
@@ -62,7 +62,7 @@ async function route() {
     window.scrollTo(0, 0);
   } catch (err) {
     console.error(err);
-    setHtml(main, errorHtml('Cette page n’a pas pu s’afficher', err));
+    setHtml(main, etatErreur('Cette page n’a pas pu s’afficher', err, 'data-recharger'));
   }
 }
 
@@ -89,21 +89,21 @@ document.addEventListener('error', e => {
 
 // « Réessayer » sur un écran d'erreur : on réaffiche la page
 document.addEventListener('click', e => {
-  if (e.target.closest('[data-retry-page]')) reloadPage();
+  if (e.target.closest('[data-recharger]')) rechargerPage();
 });
 
-// Pi injoignable : un rappel discret dans le menu tant que ça dure
-window.addEventListener('pi-status', e => {
-  const box = document.getElementById('sidebar-status');
-  if (box) setHtml(box, e.detail.ok ? '' : html`<strong>Le Pi ne répond pas</strong><span class="muted">Vérifie Tailscale et que le Pi est allumé. Rien de ce que tu as saisi n’est perdu.</span>`);
+// NAS injoignable : un rappel discret dans le menu tant que ça dure
+window.addEventListener('nas-statut', e => {
+  const box = document.getElementById('statut-nas');
+  if (box) setHtml(box, e.detail.ok ? '' : html`<strong>Le NAS ne répond pas</strong><span class="muted">Vérifie que Tailscale est actif. Rien de ce que tu as saisi n’est perdu.</span>`);
 });
 
 async function loadAppearance() {
   try {
-    const settings = await api.one('settings', { id: 'eq.1' });
-    if (settings) applyAppearance(settings);
+    const settings = await api.un('settings', { id: 'eq.1' });
+    if (settings) appliquerApparence(settings);
   } catch (err) {
-    toastError(err, { label: 'Réessayer', run: loadAppearance });
+    notifierErreur(err, { libelle: 'Réessayer', run: loadAppearance });
   }
 }
 

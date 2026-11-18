@@ -1,0 +1,24 @@
+/* Propre à PTCG ; la mise en page commune vient de /_shared/drom.css */
+
+.small { font-size: 12.5px; }
+.contents { display: contents; }
+.page-tete p { margin: 6px 0 0; color: var(--text-2); }
+.chip .n { opacity: 0.7; margin-left: 4px; }
+/* la recherche prend toute la place libre de la barre d'outils */
+.recherche { max-width: none; }
+
+/* envoi d'image */
+.dropzone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--text-2);
+}
+.dropzone.is-over { border-color: var(--accent); background: var(--accent-bg); }
+.dropzone img { max-width: 220px; max-height: 220px; border-radius: var(--radius); }

@@ -1,6 +1,6 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, errorHtml, autoMore } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
+import { html, setHtml, on, etatErreur, chargerSuite } from '/_shared/ui/dom.js';
+import { icone } from '../../ui/icones.js';
 import { norm } from '../../shared/sales.js';
 import { pokemonTile } from '../../shared/cards.js';
 
@@ -28,13 +28,13 @@ export default {
     let rows = [];
     let total = 0;
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div><h1>Pokédex</h1><p>Chaque forme a sa propre fiche · tes labels décident dans quelle fiche va chaque carte</p></div>
         <div class="page-actions"><a class="btn" href="#/labels">Gérer les labels</a></div>
       </header>
       <div class="toolbar">
-        <label class="search grow">${icon('search')}<input type="search" id="q" placeholder="Rechercher un Pokémon" value="${state.q}" aria-label="Rechercher un Pokémon"></label>
-        <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
+        <label class="recherche grow">${icone('recherche')}<input type="search" id="q" placeholder="Rechercher un Pokémon" value="${state.q}" aria-label="Rechercher un Pokémon"></label>
+        <select class="input select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
         <label class="check-inline"><input type="checkbox" id="forms" ${state.forms ? 'checked' : ''}> Afficher les formes</label>
         <label class="check-inline"><input type="checkbox" id="withcards" ${state.withCards ? 'checked' : ''}> Avec des cartes</label>
         <label class="check-inline"><input type="checkbox" id="masked" ${state.masked ? 'checked' : ''}> Formes masquées</label>
@@ -58,16 +58,16 @@ export default {
       if (!state.masked) p.masque = 'is.false';
       if (state.q) p.search = `ilike.*${norm(state.q).replace(/[*(),]/g, '')}*`;
       try {
-        const page = await api.page('pokedex', p, { offset: append ? rows.length : 0, limit: PAGE });
-        rows = append ? rows.concat(page.rows) : page.rows;
+        const page = await api.page('pokedex', p, { debut: append ? rows.length : 0, taille: PAGE });
+        rows = append ? rows.concat(page.lignes) : page.lignes;
         total = page.total;
       } catch (err) {
-        return setHtml($('#grid'), errorHtml('Impossible de charger le Pokédex', err));
+        return setHtml($('#grid'), etatErreur('Impossible de charger le Pokédex', err, 'data-recharger'));
       }
       setHtml($('#grid'), rows.length ? html`
         <div class="poke-grid">${rows.map(r => pokemonTile(r))}</div>
-        ${rows.length < total ? html`<div class="more" data-more><span class="muted small">Chargement de la suite (${total - rows.length} restants)…</span></div>` : ''}`
-        : html`<div class="empty"><h2>Aucun Pokémon${state.q ? ` pour « ${state.q} »` : ''}</h2></div>`);
+        ${rows.length < total ? html`<div class="more" data-suite><span class="muted small">Chargement de la suite (${total - rows.length} restants)…</span></div>` : ''}`
+        : html`<div class="vide-etat"><h2>Aucun Pokémon${state.q ? ` pour « ${state.q} »` : ''}</h2></div>`);
     }
 
     let timer;
@@ -84,7 +84,7 @@ export default {
       load();
     });
     $('#masked').addEventListener('change', e => { state.masked = e.target.checked; load(); });
-    autoMore(main, () => rows.length < total && load(true));
+    chargerSuite(main, () => rows.length < total && load(true));
     load();
   },
 };

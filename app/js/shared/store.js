@@ -9,10 +9,10 @@ function cached(key, load) {
 }
 
 export const store = {
-  contacts: () => cached('contacts', () => api.list('contacts', { select: 'id,pseudo,icon', order: 'pseudo' })),
-  accessoires: () => cached('accessoires', () => api.list('accessoires', { order: 'name' })),
-  forAccounts: () => cached('forAccounts', () => api.list('for_accounts', { order: 'name' })),
-  settings: () => cached('settings', () => api.one('settings', { id: 'eq.1' })),
+  contacts: () => cached('contacts', () => api.lire('contacts', { select: 'id,pseudo,icon', order: 'pseudo' })),
+  accessoires: () => cached('accessoires', () => api.lire('accessoires', { order: 'name' })),
+  forAccounts: () => cached('forAccounts', () => api.lire('for_accounts', { order: 'name' })),
+  settings: () => cached('settings', () => api.un('settings', { id: 'eq.1' })),
 
   forget(...keys) {
     if (!keys.length) cache.clear();
@@ -27,7 +27,7 @@ export async function ensureContact({ contactId, newPseudo }) {
   if (!pseudo) return null;
   const existing = (await store.contacts()).find(c => c.pseudo.toLowerCase() === pseudo.toLowerCase());
   if (existing) return existing.id;
-  const row = await api.insert('contacts', { pseudo });
+  const row = await api.ajouter('contacts', { pseudo });
   store.forget('contacts');
   return row.id;
 }

@@ -1,9 +1,9 @@
 import { api } from '../../api.js';
 import { imageUrl } from '../../nas.js';
-import { html, setHtml, on, reloadPage, errorHtml } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
-import { openModal, confirmModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on, rechargerPage, etatErreur } from '/_shared/ui/dom.js';
+import { icone } from '../../ui/icones.js';
+import { ouvrirModale, confirmer } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { dropzone } from '../../ui/upload.js';
 import { setOptions, setOptionsHtml } from '../../shared/sets.js';
 import { setSymbolHtml } from '../../shared/sales.js';
@@ -35,12 +35,12 @@ export default {
 
   async render(main) {
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div><h1>Classeurs</h1><p id="sub">Tes classeurs physiques et ce qui est rangé dedans</p></div>
         <div class="page-actions">
-          <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === sortId ? 'selected' : ''}>${o.label}</option>`)}</select>
+          <select class="input select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === sortId ? 'selected' : ''}>${o.label}</option>`)}</select>
           <button type="button" class="btn" data-new-sep>Nouveau séparateur</button>
-          <button type="button" class="btn btn-primary" data-new>${icon('plus')}Nouveau classeur</button>
+          <button type="button" class="btn btn-principal" data-new>${icone('plus')}Nouveau classeur</button>
         </div>
       </header>
       <section id="list" aria-live="polite"><p class="muted">Chargement…</p></section>
@@ -50,11 +50,11 @@ export default {
     let binders = [], groups = [];
     try {
       [binders, groups] = await Promise.all([
-        api.list('classeur_list', { order: 'sort_order.asc.nullslast,created_at' }),
-        api.list('classeur_groupes', { order: 'sort_order.asc.nullslast,name' }),
+        api.lire('classeur_list', { order: 'sort_order.asc.nullslast,created_at' }),
+        api.lire('classeur_groupes', { order: 'sort_order.asc.nullslast,name' }),
       ]);
     } catch (err) {
-      return setHtml($('#list'), errorHtml('Impossible de charger les classeurs', err));
+      return setHtml($('#list'), etatErreur('Impossible de charger les classeurs', err, 'data-recharger'));
     }
     setHtml($('#sub'), `${binders.length} classeur${binders.length > 1 ? 's' : ''} · tes classeurs physiques et ce qui est rangé dedans`);
 
@@ -64,19 +64,19 @@ export default {
       return html`
         <article class="binder">
           <button type="button" class="binder-cover" data-edit="${b.id}" aria-label="Modifier ${b.name}">
-            ${b.image ? html`<img src="${imageUrl(b.image)}" alt="" loading="lazy" data-hide-on-error>` : html`<span>${icon('classeurs', 32)}</span>`}
+            ${b.image ? html`<img src="${imageUrl(b.image)}" alt="" loading="lazy" data-hide-on-error>` : html`<span>${icone('classeurs', 32)}</span>`}
           </button>
           <div class="binder-body">
-            <div class="panel-head">
+            <div class="panel-tete">
               <h2>${b.name}</h2>
-              <span class="tag ${done ? 'tag-ok' : 'tag-warn'}">${done ? 'Complet' : 'En cours'}</span>
+              <span class="badge ${done ? 'badge-ok' : 'badge-warn'}">${done ? 'Complet' : 'En cours'}</span>
             </div>
             <span class="muted small">${b.pages || '?'} pages · ${b.slots_per_page || '?'} places par page</span>
             <div class="progress ${pct >= 100 ? 'is-full' : ''}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Remplissage"><span style="--w: ${pct}%"></span></div>
             <span class="small">${b.remplies} / ${b.places || '?'} places remplies</span>
             ${b.extensions.length ? html`<ul class="binder-sets">${pageRanges(b.extensions).map(e => html`
               <li>${setSymbolHtml({ set_id: e.set_id, set_symbol: e.symbol, set_name: e.name })}<a class="grow" href="#/extensions/${encodeURIComponent(e.set_id)}">${e.name}</a><span class="muted small">${e.range}</span></li>`)}</ul>` : ''}
-            <div><button type="button" class="btn btn-sm" data-edit="${b.id}">Modifier</button></div>
+            <div><button type="button" class="btn btn-petit" data-edit="${b.id}">Modifier</button></div>
           </div>
         </article>`;
     };
@@ -84,7 +84,7 @@ export default {
     // les classeurs rangés sous leurs séparateurs, ceux sans séparateur à la fin
     function draw() {
       if (!binders.length && !groups.length) {
-        return setHtml($('#list'), html`<div class="empty"><h2>Aucun classeur</h2><button type="button" class="btn" data-new>Créer le premier</button></div>`);
+        return setHtml($('#list'), html`<div class="vide-etat"><h2>Aucun classeur</h2><button type="button" class="btn" data-new>Créer le premier</button></div>`);
       }
       const sorted = [...binders].sort(SORTS.find(o => o.id === sortId).cmp);
       const loose = sorted.filter(b => !groups.some(g => g.id === b.groupe_id));
@@ -97,9 +97,9 @@ export default {
                 <h2>${g.name}</h2>
                 <span class="binder-sep-line"></span>
                 <span class="muted small">${inside.length} classeur${inside.length > 1 ? 's' : ''}</span>
-                <button type="button" class="btn btn-ghost btn-icon btn-sm" data-sep-move="${i}:-1" aria-label="Monter ${g.name}" ${i === 0 ? 'disabled' : ''}>↑</button>
-                <button type="button" class="btn btn-ghost btn-icon btn-sm" data-sep-move="${i}:1" aria-label="Descendre ${g.name}" ${i === groups.length - 1 ? 'disabled' : ''}>↓</button>
-                <button type="button" class="btn btn-ghost btn-sm" data-sep-edit="${g.id}">Modifier</button>
+                <button type="button" class="btn btn-fantome btn-icone btn-petit" data-sep-move="${i}:-1" aria-label="Monter ${g.name}" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <button type="button" class="btn btn-fantome btn-icone btn-petit" data-sep-move="${i}:1" aria-label="Descendre ${g.name}" ${i === groups.length - 1 ? 'disabled' : ''}>↓</button>
+                <button type="button" class="btn btn-fantome btn-petit" data-sep-edit="${g.id}">Modifier</button>
               </div>
               ${inside.length ? html`<div class="binder-grid">${inside.map(binderHtml)}</div>`
                 : html`<p class="muted small" style="margin: 0">Aucun classeur ici : choisis ce séparateur dans un classeur (Modifier).</p>`}
@@ -117,31 +117,31 @@ export default {
       const list = [...groups];
       [list[i], list[i + d]] = [list[i + d], list[i]];
       try {
-        await api.upsert('classeur_groupes', list.map((g, n) => ({ id: g.id, name: g.name, sort_order: n + 1 })), 'id');
+        await api.enregistrer('classeur_groupes', list.map((g, n) => ({ id: g.id, name: g.name, sort_order: n + 1 })), 'id');
         groups = list.map((g, n) => ({ ...g, sort_order: n + 1 }));
         draw();
-      } catch (err) { toastError(err); }
+      } catch (err) { notifierErreur(err); }
     }
 
     function editGroup(g = null) {
-      openModal({
-        title: g ? 'Modifier le séparateur' : 'Nouveau séparateur',
-        width: 460,
-        body: html`<label class="field">Nom<input class="input" id="sep-name" value="${g?.name || ''}" placeholder="Méga-Évolution, DPP, Énergies…"></label>`,
+      ouvrirModale({
+        titre: g ? 'Modifier le séparateur' : 'Nouveau séparateur',
+        largeur: 460,
+        corps: html`<label class="field">Nom<input class="input" id="sep-name" value="${g?.name || ''}" placeholder="Méga-Évolution, DPP, Énergies…"></label>`,
         actions: [
-          ...(g ? [{ label: 'Supprimer', danger: true, run: async () => {
-            if (!await confirmModal({ title: `Supprimer « ${g.name} » ?`, message: 'Ses classeurs restent, sans séparateur.', confirmLabel: 'Supprimer', danger: true })) return false;
-            try { await api.remove('classeur_groupes', { id: `eq.${g.id}` }); reloadPage(); } catch (err) { toastError(err); return false; }
+          ...(g ? [{ libelle: 'Supprimer', danger: true, run: async () => {
+            if (!await confirmer({ titre: `Supprimer « ${g.name} » ?`, message: 'Ses classeurs restent, sans séparateur.', libelle: 'Supprimer', danger: true })) return false;
+            try { await api.supprimer('classeur_groupes', { id: `eq.${g.id}` }); rechargerPage(); } catch (err) { notifierErreur(err); return false; }
           } }] : []),
-          { label: 'Annuler' },
-          { label: 'Enregistrer', primary: true, run: async el => {
+          { libelle: 'Annuler' },
+          { libelle: 'Enregistrer', principal: true, run: async el => {
             const name = el.querySelector('#sep-name').value.trim();
-            if (!name) { toastError(new Error('Le nom est obligatoire')); return false; }
+            if (!name) { notifierErreur(new Error('Le nom est obligatoire')); return false; }
             try {
-              if (g) await api.update('classeur_groupes', { id: `eq.${g.id}` }, { name });
-              else await api.insert('classeur_groupes', { name, sort_order: groups.length + 1 });
-              reloadPage();
-            } catch (err) { toastError(err); return false; }
+              if (g) await api.modifier('classeur_groupes', { id: `eq.${g.id}` }, { name });
+              else await api.ajouter('classeur_groupes', { name, sort_order: groups.length + 1 });
+              rechargerPage();
+            } catch (err) { notifierErreur(err); return false; }
           } },
         ],
       });
@@ -169,21 +169,21 @@ async function editBinder(b, groups = []) {
     rows: (b?.extensions || []).map(e => ({ set_id: e.set_id, name: e.name, symbol: e.symbol, pages: e.pages ?? '', filled: e.filled ?? 0 })),
   };
 
-  const m = openModal({
-    title: b ? 'Modifier un classeur' : 'Nouveau classeur',
-    width: 760,
-    body: html`<div class="manual-grid"><div id="bf-photo"></div><div class="form-grid" id="bf"></div></div>`,
+  const m = ouvrirModale({
+    titre: b ? 'Modifier un classeur' : 'Nouveau classeur',
+    largeur: 760,
+    corps: html`<div class="manual-grid"><div id="bf-photo"></div><div class="form-grid" id="bf"></div></div>`,
     actions: [
-      ...(b ? [{ label: 'Supprimer le classeur', danger: true, run: async () => {
-        if (!await confirmModal({ title: `Supprimer « ${b.name} » ?`, message: 'Le classeur et la liste de ses extensions seront effacés.', confirmLabel: 'Supprimer', danger: true })) return false;
+      ...(b ? [{ libelle: 'Supprimer le classeur', danger: true, run: async () => {
+        if (!await confirmer({ titre: `Supprimer « ${b.name} » ?`, message: 'Le classeur et la liste de ses extensions seront effacés.', libelle: 'Supprimer', danger: true })) return false;
         try {
-          await api.remove('classeurs', { id: `eq.${b.id}` });
-          toast('Classeur supprimé');
-          reloadPage();
-        } catch (err) { toastError(err); return false; }
+          await api.supprimer('classeurs', { id: `eq.${b.id}` });
+          notifier('Classeur supprimé');
+          rechargerPage();
+        } catch (err) { notifierErreur(err); return false; }
       } }] : []),
-      { label: 'Annuler' },
-      { label: 'Enregistrer', primary: true, run: save },
+      { libelle: 'Annuler' },
+      { libelle: 'Enregistrer', principal: true, run: save },
     ],
   });
   const root = m.el.querySelector('#bf');
@@ -197,7 +197,7 @@ async function editBinder(b, groups = []) {
       <div class="form-row">
         <label class="field grow">Nom<input class="input" data-f="name" value="${st.name}" required></label>
         ${groups.length ? html`<label class="field">Séparateur
-          <select class="select" data-f="groupe"><option value="">Aucun</option>${groups.map(g => html`<option value="${g.id}" ${g.id === st.groupe ? 'selected' : ''}>${g.name}</option>`)}</select>
+          <select class="input" data-f="groupe"><option value="">Aucun</option>${groups.map(g => html`<option value="${g.id}" ${g.id === st.groupe ? 'selected' : ''}>${g.name}</option>`)}</select>
         </label>` : ''}
       </div>
       <div class="form-row">
@@ -217,14 +217,14 @@ async function editBinder(b, groups = []) {
             <label class="field small">Pages<input class="input input-sm" type="number" min="0" data-row="${i}" data-k="pages" value="${r.pages}"></label>
             <label class="field small">Places remplies<input class="input input-sm" type="number" min="0" data-row="${i}" data-k="filled" value="${r.filled}"></label>
             <span class="row-actions" style="margin: 0">
-              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-move="${i}:-1" aria-label="Monter" ${i === 0 ? 'disabled' : ''}>↑</button>
-              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-move="${i}:1" aria-label="Descendre" ${i === st.rows.length - 1 ? 'disabled' : ''}>↓</button>
-              <button type="button" class="btn btn-ghost btn-icon btn-sm" data-del="${i}" aria-label="Retirer ${r.name}">✕</button>
+              <button type="button" class="btn btn-fantome btn-icone btn-petit" data-move="${i}:-1" aria-label="Monter" ${i === 0 ? 'disabled' : ''}>↑</button>
+              <button type="button" class="btn btn-fantome btn-icone btn-petit" data-move="${i}:1" aria-label="Descendre" ${i === st.rows.length - 1 ? 'disabled' : ''}>↓</button>
+              <button type="button" class="btn btn-fantome btn-icone btn-petit" data-del="${i}" aria-label="Retirer ${r.name}">✕</button>
             </span>
           </div>`)}</div>` : html`<p class="muted small" style="margin: 0">Aucune extension rangée.</p>`}
       </div>
       <label class="field">Ranger une extension
-        <select class="select" id="bf-add">${setOptionsHtml(sets.filter(s => !st.rows.some(r => r.set_id === s.id)), '', { empty: '+ Choisir l’extension à ajouter' })}</select>
+        <select class="input" id="bf-add">${setOptionsHtml(sets.filter(s => !st.rows.some(r => r.set_id === s.id)), '', { empty: '+ Choisir l’extension à ajouter' })}</select>
       </label>
     `);
   }
@@ -232,7 +232,7 @@ async function editBinder(b, groups = []) {
   function addSet() {
     const s = sets.find(x => x.id === root.querySelector('#bf-add').value);
     if (!s) return;
-    if (st.rows.some(r => r.set_id === s.id)) return toastError(new Error('Déjà rangée dans ce classeur'));
+    if (st.rows.some(r => r.set_id === s.id)) return notifierErreur(new Error('Déjà rangée dans ce classeur'));
     // pages proposées d'après le nombre de cartes
     const pages = Number(st.slots) ? Math.ceil((s.card_count_total || s.card_count || 0) / Number(st.slots)) || '' : '';
     st.rows.push({ set_id: s.id, name: s.name, symbol: symbol(s.id), pages, filled: 0 });
@@ -261,7 +261,7 @@ async function editBinder(b, groups = []) {
 
   async function save() {
     try {
-      await api.rpc('save_classeur', {
+      await api.appeler('save_classeur', {
         classeur: {
           id: b?.id || null, name: st.name.trim(), pages: Number(st.pages) || null, slots_per_page: Number(st.slots) || null,
           image: st.image || null, status: st.complete ? 'complete' : 'in_progress', sort_order: b?.sort_order ?? null,
@@ -269,9 +269,9 @@ async function editBinder(b, groups = []) {
         },
         rangees: st.rows.map(r => ({ set_id: r.set_id, pages: r.pages === '' ? null : Number(r.pages), filled: Number(r.filled) || 0 })),
       });
-      toast('Classeur enregistré');
-      reloadPage();
-    } catch (err) { toastError(err); return false; }
+      notifier('Classeur enregistré');
+      rechargerPage();
+    } catch (err) { notifierErreur(err); return false; }
   }
 
   render();

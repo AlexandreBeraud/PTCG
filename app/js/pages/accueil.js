@@ -1,8 +1,9 @@
 import { api } from '../api.js';
 import { imageUrl } from '../nas.js';
-import { html, setHtml, on, eur, reloadPage as reload } from '../ui/dom.js';
-import { icon } from '../ui/icons.js';
-import { toastError } from '../ui/toast.js';
+import { html, setHtml, on, rechargerPage as reload } from '/_shared/ui/dom.js';
+import { eur } from '../format.js';
+import { icone } from '../ui/icones.js';
+import { notifierErreur } from '/_shared/ui/notifications.js';
 import { store } from '../shared/store.js';
 import { thumbHtml, subtitle, fmtDate, setSymbolHtml } from '../shared/sales.js';
 import { lineSpriteHtml, loadFicheImages } from '../shared/fiches.js';
@@ -32,11 +33,11 @@ export default {
     const day = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     const monthName = now.toLocaleDateString('fr-FR', { month: 'long' });
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div><p class="muted" style="margin: 0 0 6px">${day[0].toUpperCase() + day.slice(1)}</p><h1>Accueil</h1></div>
         <div class="page-actions">
           <a class="btn" href="#/achats">Ventes et achats</a>
-          <button type="button" class="btn btn-primary" data-new-sale>${icon('plus')}Nouvelle vente</button>
+          <button type="button" class="btn btn-principal" data-new-sale>${icone('plus')}Nouvelle vente</button>
         </div>
       </header>
       <div id="alerts" class="alerts"></div>
@@ -55,8 +56,8 @@ export default {
     (async () => {
       try {
         const [months, stock] = await Promise.all([
-          api.rpc('bilan_mensuel', { scope: null }),
-          api.rpc('transaction_counts', { dir: 'vente' }),
+          api.appeler('bilan_mensuel', { scope: null }),
+          api.appeler('transaction_counts', { dir: 'vente' }),
         ]);
         const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         const m = months.find(x => x.mois.startsWith(key)) || { ventes: 0, achats: 0, cartes_vendues: 0, cartes_achetees: 0 };
@@ -80,8 +81,8 @@ export default {
     (async () => {
       try {
         const [orders, stock] = await Promise.all([
-          api.list('commande_list', { status: 'in.(a_envoyer,a_payer,paye)', order: 'ordered_on.asc.nullsfirst' }),
-          api.rpc('transaction_counts', { dir: 'vente' }),
+          api.lire('commande_list', { status: 'in.(a_envoyer,a_payer,paye)', order: 'ordered_on.asc.nullsfirst' }),
+          api.appeler('transaction_counts', { dir: 'vente' }),
         ]);
         const items = orders.map(o => ({
           id: o.id,
@@ -92,17 +93,17 @@ export default {
         }));
         const toList = Number(stock.a_mettre?.cartes || 0);
         setHtml($('#todo'), html`
-          <div class="panel-head"><h2>À faire</h2><span class="muted small">${items.length + (toList ? 1 : 0)} action(s)</span></div>
+          <div class="panel-tete"><h2>À faire</h2><span class="muted small">${items.length + (toList ? 1 : 0)} action(s)</span></div>
           ${items.length || toList ? html`<div class="todo">
             ${items.map(t => html`
               <button type="button" class="todo-item" data-commande="${t.id}">
-                <span class="dot dot-${t.tone}"></span>
+                <span class="point point-${t.tone}"></span>
                 <span class="grow"><strong>${t.title}</strong><span class="muted small">${t.meta}</span></span>
                 <span class="muted small">Ouvrir</span>
               </button>`)}
             ${toList ? html`
               <a class="todo-item" href="#/ventes/a_mettre">
-                <span class="dot dot-info"></span>
+                <span class="point point-info"></span>
                 <span class="grow"><strong>${toList} carte(s) à mettre en vente</strong><span class="muted small">${Number(stock.a_mettre.total) ? `${eur(stock.a_mettre.total)} au prix saisi` : 'prix à fixer'}</span></span>
                 <span class="muted small">Ouvrir</span>
               </a>` : ''}
@@ -114,12 +115,12 @@ export default {
     (async () => {
       try {
         const [rows, settings] = await Promise.all([
-          api.list('transaction_list', { direction: 'eq.vente', status: 'eq.vendue', order: 'day.desc,created_at.desc', limit: 6 }),
+          api.lire('transaction_list', { direction: 'eq.vente', status: 'eq.vendue', order: 'day.desc,created_at.desc', limit: 6 }),
           store.settings().catch(() => null),
           loadFicheImages(),
         ]);
         setHtml($('#sales'), html`
-          <div class="panel-head"><h2>Dernières ventes</h2><a class="small" href="#/ventes/vendue">Toutes les ventes</a></div>
+          <div class="panel-tete"><h2>Dernières ventes</h2><a class="small" href="#/ventes/vendue">Toutes les ventes</a></div>
           ${rows.length ? html`<div class="mini-list">${rows.map(t => html`
             <div class="mini-row">
               <span class="tx-media">${setSymbolHtml(t)}${thumbHtml(t, { lotImage: settings?.lot_image, size: 'xs' })}<span class="tx-sprite">${lineSpriteHtml(t)}</span></span>
@@ -134,18 +135,18 @@ export default {
       try {
         // sorties des deux derniers mois, et extensions récentes encore en anglais
         const day = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
-        const sets = await api.list('sets', {
+        const sets = await api.lire('sets', {
           select: 'id,name,lang,card_count_total,release_date,symbol',
           or: `(release_date.gte.${day(60)},and(lang.eq.en,release_date.gte.${day(365)}))`,
           order: 'release_date.desc.nullslast', limit: 6,
         });
         setHtml($('#news'), html`
-          <div class="panel-head"><h2>Nouveautés du catalogue</h2><span class="muted small">ajoutées automatiquement</span></div>
+          <div class="panel-tete"><h2>Nouveautés du catalogue</h2><span class="muted small">ajoutées automatiquement</span></div>
           ${sets.length ? html`<div class="mini-list">${sets.map(s => html`
             <div class="mini-row">
               <span class="set-code">${s.symbol ? html`<img src="${imageUrl(s.symbol)}" alt="" data-hide-on-error>` : s.id.toUpperCase().slice(0, 4)}</span>
               <span class="grow"><strong>${s.name}</strong><span class="muted small">${s.card_count_total || '?'} cartes${s.release_date ? ` · sortie le ${fmtDate(s.release_date)}` : ''}</span></span>
-              <span class="tag ${s.lang === 'en' ? 'tag-warn' : 'tag-ok'}">${s.lang === 'en' ? 'EN en attendant la VF' : 'VF'}</span>
+              <span class="badge ${s.lang === 'en' ? 'badge-warn' : 'badge-ok'}">${s.lang === 'en' ? 'EN en attendant la VF' : 'VF'}</span>
             </div>`)}</div>` : html`<p class="muted small">Rien de neuf ces deux derniers mois.</p>`}
         `);
       } catch (err) { fail($('#news'), 'Nouveautés du catalogue', err); }
@@ -153,15 +154,15 @@ export default {
 
     (async () => {
       try {
-        const runs = await api.list('job_runs', { order: 'started_at.desc', limit: 50 });
+        const runs = await api.lire('job_runs', { order: 'started_at.desc', limit: 50 });
         alertJobs(runs);
         setHtml($('#jobs'), html`
-          <div class="panel-head"><h2>Automatisations</h2><a class="small" href="#/reglages">Historique</a></div>
+          <div class="panel-tete"><h2>Automatisations</h2><a class="small" href="#/reglages">Historique</a></div>
           <div class="mini-list">${Object.entries(JOBS).map(([job, label]) => {
             const r = runs.find(x => x.job === job);
             return html`
               <div class="mini-row">
-                <span class="dot ${!r ? '' : !r.finished_at ? 'dot-warn' : r.ok ? 'dot-ok' : 'dot-danger'}"></span>
+                <span class="point ${!r ? '' : !r.finished_at ? 'point-warn' : r.ok ? 'point-ok' : 'point-danger'}"></span>
                 <span class="grow"><strong>${label}</strong><span class="muted small">${r ? jobMeta(r) : 'jamais lancé'}</span></span>
                 <span class="muted small">${r ? new Date(r.started_at).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span>
               </div>`;
@@ -179,30 +180,30 @@ export default {
         <div class="banner banner-warn">
           <strong>${!last ? 'Le catalogue n’a encore jamais tourné' : old ? 'Le catalogue n’a pas tourné depuis le ' + new Date(last.started_at).toLocaleDateString('fr-FR') : 'Le catalogue a échoué cette nuit'}</strong>
           <span class="small">${last && last.error ? `${last.error}. ` : ''}Nouvel essai automatique la nuit prochaine ; l’appli reste utilisable avec les données d’avant.</span>
-          <a class="btn btn-sm" href="#/reglages">Voir les automatisations</a>
+          <a class="btn btn-petit" href="#/reglages">Voir les automatisations</a>
         </div>`));
     }
 
     // une carte ajoutée à la main que TCGdex connaît maintenant
     (async () => {
-      const found = await api.list('manual_lookalikes', { limit: 5 }).catch(() => []);
+      const found = await api.lire('manual_lookalikes', { limit: 5 }).catch(() => []);
       for (const x of found) {
         $('#alerts').insertAdjacentHTML('beforeend', String(html`
           <div class="banner banner-info">
             <strong>TCGdex vient d’ajouter ${x.tcgdex_name} · ${x.tcgdex_set} ${x.tcgdex_number || ''}</strong>
             <span class="small">Elle ressemble à ta carte manuelle « ${x.manual_name} »${x.lignes ? `. Ses ${x.lignes} vente(s) ou achat(s) suivront.` : '.'}</span>
-            <a class="btn btn-sm" href="#/cartes/${encodeURIComponent(x.manual_id)}">Voir et remplacer</a>
+            <a class="btn btn-petit" href="#/cartes/${encodeURIComponent(x.manual_id)}">Voir et remplacer</a>
           </div>`));
       }
     })();
 
     on(main, 'click', '[data-commande]', async (_, b) => {
       const { openCommande } = await import('../shared/commande.js');
-      openCommande(b.dataset.commande, { onChanged: reload }).catch(toastError);
+      openCommande(b.dataset.commande, { onChanged: reload }).catch(notifierErreur);
     });
     on(main, 'click', '[data-new-sale]', async () => {
       const { openLineForm } = await import('./ventes/line-form.js');
-      openLineForm({ direction: 'vente', onSaved: reload }).catch(toastError);
+      openLineForm({ direction: 'vente', onSaved: reload }).catch(notifierErreur);
     });
   },
 };

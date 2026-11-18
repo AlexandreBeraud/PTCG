@@ -1,8 +1,8 @@
 import { api } from '../../api.js';
 import { imageUrl } from '../../nas.js';
-import { html, setHtml, on } from '../../ui/dom.js';
-import { openModal, confirmModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on } from '/_shared/ui/dom.js';
+import { ouvrirModale, confirmer } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { dropzone, askImage } from '../../ui/upload.js';
 import { store } from '../../shared/store.js';
 import { setSymbolHtml, spriteHtml, formBadge, cardImage } from '../../shared/sales.js';
@@ -14,17 +14,17 @@ const pct = (a, b) => (b ? `${Math.round(a / b * 100)} %` : '—');
 // Dernières sauvegardes de nuit et export JSON de mes données
 export async function renderBackups(box) {
   let runs = [];
-  try { runs = await api.list('job_runs', { job: 'eq.sauvegarde', order: 'started_at.desc', limit: 5 }); } catch (_) { /* affiché vide */ }
+  try { runs = await api.lire('job_runs', { job: 'eq.sauvegarde', order: 'started_at.desc', limit: 5 }); } catch (_) { /* affiché vide */ }
   setHtml(box, html`
     <h2>Sauvegardes</h2>
     <p class="muted small" style="margin: 0">Copie complète de la base chaque nuit sur le NAS (Sauvegardes/ptcg), 14 jours conservés.</p>
     <div class="mini-list">${runs.length ? runs.map(r => html`
       <div class="mini-row">
-        <span class="dot ${r.ok ? 'dot-ok' : r.finished_at ? 'dot-danger' : 'dot-warn'}"></span>
+        <span class="point ${r.ok ? 'point-ok' : r.finished_at ? 'point-danger' : 'point-warn'}"></span>
         <span class="grow"><strong>${r.summary?.fichier || new Date(r.started_at).toLocaleDateString('fr-FR')}</strong>
           <span class="muted small">${r.ok ? `${Math.round((r.summary?.taille_ko || 0) / 102.4) / 10} Mo` : r.error || 'en cours'}</span></span>
       </div>`) : html`<p class="muted small" style="margin: 0">Aucune sauvegarde enregistrée pour l’instant.</p>`}</div>
-    <div><button type="button" class="btn btn-sm" data-export>Exporter mes données en JSON</button></div>`);
+    <div><button type="button" class="btn btn-petit" data-export>Exporter mes données en JSON</button></div>`);
   on(box, 'click', '[data-export]', (_, b) => exportJson(b));
 }
 
@@ -39,23 +39,23 @@ async function exportJson(btn) {
     for (const t of MY_TABLES) {
       const rows = [];
       for (let offset = 0; ; offset += 1000) {
-        const page = await api.page(t, {}, { offset, limit: 1000 });
-        rows.push(...page.rows);
-        if (rows.length >= page.total || !page.rows.length) break;
+        const page = await api.page(t, {}, { debut: offset, taille: 1000 });
+        rows.push(...page.lignes);
+        if (rows.length >= page.total || !page.lignes.length) break;
       }
       data[t] = rows;
     }
-    data.cartes_manuelles = await api.list('cards', { source: 'eq.manual' });
-    data.extensions_manuelles = await api.list('sets', { source: 'eq.manual' });
+    data.cartes_manuelles = await api.lire('cards', { source: 'eq.manual' });
+    data.extensions_manuelles = await api.lire('sets', { source: 'eq.manual' });
     const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `ptcg-export-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('Export téléchargé');
+    notifier('Export téléchargé');
   } catch (err) {
-    toastError(err);
+    notifierErreur(err);
   } finally {
     btn.disabled = false;
   }
@@ -65,7 +65,7 @@ async function exportJson(btn) {
 export async function renderSources(box) {
   symbols = null;
   let s, fiches;
-  try { [s, fiches] = await Promise.all([api.rpc('catalogue_stats'), api.count('fiches').catch(() => null)]); } catch (err) {
+  try { [s, fiches] = await Promise.all([api.appeler('catalogue_stats'), api.compter('fiches').catch(() => null)]); } catch (err) {
     return setHtml(box, html`<h2>Images et liens</h2><p class="muted">${err.message}</p>`);
   }
   const rows = [
@@ -81,7 +81,7 @@ export async function renderSources(box) {
     ['prix', 'Prix Cardmarket', 'Prix le plus bas de TCGdex, chaque nuit, pour les cartes de tes ventes et achats', `${nb(s.prices)} cartes · ${nb(s.prices_tracked)} suivies`, 1],
   ];
   setHtml(box, html`
-    <div class="panel-head"><h2>Images et liens</h2><span class="muted small">Rempli automatiquement · clique sur une ligne pour voir ce qui manque</span></div>
+    <div class="panel-tete"><h2>Images et liens</h2><span class="muted small">Rempli automatiquement · clique sur une ligne pour voir ce qui manque</span></div>
     <div class="table-scroll"><table class="table table-click">
       <tbody>${rows.map(([id, name, how, state, missing]) => html`
         <tr data-missing="${missing ? id : ''}" tabindex="${missing ? 0 : -1}">
@@ -96,11 +96,11 @@ export async function renderSources(box) {
   on(box, 'click', '[data-refiches]', async (_, b) => {
     b.disabled = true;
     try {
-      const n = await api.rpc('refresh_fiches', {}, { timeout: 120000 });
-      toast(`Encyclopédie recalculée : ${nb(n)} fiches`);
+      const n = await api.appeler('refresh_fiches', {}, { delai: 120000 });
+      notifier(`Encyclopédie recalculée : ${nb(n)} fiches`);
       renderSources(box);
     } catch (err) {
-      toastError(err);
+      notifierErreur(err);
       b.disabled = false;
     }
   });
@@ -147,21 +147,21 @@ const MISSING = {
 
 // Corriger à la main depuis la liste : une image (logo, sigle, image de carte, sprite) ou un texte (code, lien)
 const FIX = {
-  logos: { label: 'Logo…', image: r => ({ title: `Logo de ${r.name}`, folder: 'Extensions' }), save: (r, v) => api.rpc('set_set_image', { set_id: r.id, quoi: 'logo', url: v }) },
+  logos: { label: 'Logo…', image: r => ({ title: `Logo de ${r.name}`, folder: 'Extensions' }), save: (r, v) => api.appeler('set_set_image', { set_id: r.id, quoi: 'logo', url: v }) },
   sigles: { label: 'Sigle…', image: r => ({ title: `Sigle de ${r.name}`, folder: 'Extensions', hint: 'Une petite icône, de préférence sur fond transparent.' }),
-    save: (r, v) => api.rpc('set_set_image', { set_id: r.id, quoi: 'symbol', url: v }) },
+    save: (r, v) => api.appeler('set_set_image', { set_id: r.id, quoi: 'symbol', url: v }) },
   images: { label: 'Image…', image: r => ({ title: `Image de ${r.name}`, folder: 'Cartes', hint: 'Sur Cardmarket : clic droit sur l’image de la carte, « Copier l’adresse de l’image ».' }),
-    save: (r, v) => api.rpc('set_card_image', { card_id: r.id, image: v }) },
+    save: (r, v) => api.appeler('set_card_image', { card_id: r.id, image: v }) },
   sprites: { label: 'Sprite…', image: r => ({ title: `Sprite de ${r.name_fr}`, folder: 'Sprites' }),
-    save: (r, v) => api.rpc('set_pokemon_sprite', { pokemon_key: r.key, sprite: /^https?:/.test(v) ? v : `/${v}` }) },
-  liens: { text: 'https://www.cardmarket.com/fr/Pokemon/Products/Singles/…', save: (r, v) => api.rpc('set_card_cardmarket_url', { card_id: r.id, url: v }) },
-  codes: { text: 'PFL, SVI…', save: (r, v) => api.rpc('set_cardmarket_code', { set_id: r.id, code: v }) },
+    save: (r, v) => api.appeler('set_pokemon_sprite', { pokemon_key: r.key, sprite: /^https?:/.test(v) ? v : `/${v}` }) },
+  liens: { text: 'https://www.cardmarket.com/fr/Pokemon/Products/Singles/…', save: (r, v) => api.appeler('set_card_cardmarket_url', { card_id: r.id, url: v }) },
+  codes: { text: 'PFL, SVI…', save: (r, v) => api.appeler('set_cardmarket_code', { set_id: r.id, code: v }) },
 };
 
 // Sigles qui ne s'affichent pas (absents ou image cassée), vérifiés une fois par visite de Réglages
 let symbols = null;
 function checkSymbols() {
-  symbols ||= api.list('set_list', { source: 'eq.tcgdex', select: 'id,symbol' })
+  symbols ||= api.lire('set_list', { source: 'eq.tcgdex', select: 'id,symbol' })
     .then(async rows => {
       const fails = await Promise.all(rows.map(r => !r.symbol || imageFails(imageUrl(r.symbol))));
       return { total: rows.length, broken: rows.filter((_, i) => fails[i]).map(r => r.id) };
@@ -186,14 +186,14 @@ async function showMissing(id) {
   const m = MISSING[id];
   const fix = FIX[id];
   let page;
-  try { page = await api.page(m.table, m.params, { limit: m.limit || 300 }); } catch (err) { return toastError(err); }
+  try { page = await api.page(m.table, m.params, { taille: m.limit || 300 }); } catch (err) { return notifierErreur(err); }
   if (m.keep) {
-    const rows = await m.keep(page.rows);
-    page = { rows, total: rows.length };
+    const rows = await m.keep(page.lignes);
+    page = { lignes: rows, total: rows.length };
   }
   const control = (r, i) => !fix ? ''
-    : fix.text ? html`<span class="input-group missing-fix"><input class="input input-sm" data-fix-text="${i}" placeholder="${fix.text}" aria-label="Corriger"><button type="button" class="btn btn-sm" data-fix-ok="${i}">OK</button></span>`
-    : html`<button type="button" class="btn btn-sm" data-fix-image="${i}">${fix.label}</button>`;
+    : fix.text ? html`<span class="input-group missing-fix"><input class="input input-sm" data-fix-text="${i}" placeholder="${fix.text}" aria-label="Corriger"><button type="button" class="btn btn-petit" data-fix-ok="${i}">OK</button></span>`
+    : html`<button type="button" class="btn btn-petit" data-fix-image="${i}">${fix.label}</button>`;
   const item = (r, i) => {
     if (m.kind === 'set') return html`
       <div class="todo-item" data-row="${i}">
@@ -216,32 +216,32 @@ async function showMissing(id) {
         ${control(r, i)}
       </div>`;
   };
-  const modal = openModal({
-    title: m.title,
-    width: 760,
-    body: html`
-      <p class="muted small" style="margin: 0">${page.total.toLocaleString('fr-FR')} au total${page.total > page.rows.length ? `, les ${page.rows.length} premiers` : ''}${m.note ? ` · ${m.note}` : ''}</p>
-      ${page.rows.length ? html`<div class="mini-list missing-list">${page.rows.map(item)}</div>` : html`<p class="pos">Rien ne manque.</p>`}`,
-    actions: [{ label: 'Fermer' }],
+  const modal = ouvrirModale({
+    titre: m.title,
+    largeur: 760,
+    corps: html`
+      <p class="muted small" style="margin: 0">${page.total.toLocaleString('fr-FR')} au total${page.total > page.lignes.length ? `, les ${page.lignes.length} premiers` : ''}${m.note ? ` · ${m.note}` : ''}</p>
+      ${page.lignes.length ? html`<div class="mini-list missing-list">${page.lignes.map(item)}</div>` : html`<p class="pos">Rien ne manque.</p>`}`,
+    actions: [{ libelle: 'Fermer' }],
   });
   // un lien ouvert ferme la liste
-  on(modal.el, 'click', 'a[href]', () => modal.close());
+  on(modal.el, 'click', 'a[href]', () => modal.fermer());
 
   const done = i => {
     if (id === 'sigles') forgetSymbols();
     const row = modal.el.querySelector(`[data-row="${i}"]`);
     row.classList.add('is-fixed');
-    row.querySelector('.missing-fix, [data-fix-image]')?.replaceWith(Object.assign(document.createElement('span'), { className: 'tag tag-ok', textContent: 'Corrigé' }));
+    row.querySelector('.missing-fix, [data-fix-image]')?.replaceWith(Object.assign(document.createElement('span'), { className: 'badge badge-ok', textContent: 'Corrigé' }));
   };
   const apply = async (i, value) => {
     try {
-      await fix.save(page.rows[i], value);
+      await fix.save(page.lignes[i], value);
       done(i);
-      if (id === 'codes' || id === 'liens') toast('Enregistré · liens Cardmarket recalculés');
-    } catch (err) { toastError(err); }
+      if (id === 'codes' || id === 'liens') notifier('Enregistré · liens Cardmarket recalculés');
+    } catch (err) { notifierErreur(err); }
   };
   on(modal.el, 'click', '[data-fix-image]', async (_, b) => {
-    const r = page.rows[Number(b.dataset.fixImage)];
+    const r = page.lignes[Number(b.dataset.fixImage)];
     const value = await askImage(fix.image(r));
     if (value) apply(Number(b.dataset.fixImage), value);
   });
@@ -263,15 +263,15 @@ export async function renderAccessoires(panel) {
   let items = [], used = [];
   try {
     [items, used] = await Promise.all([
-      api.list('accessoires', { order: 'name' }),
-      api.list('transactions', { select: 'accessoire_id', accessoire_id: 'not.is.null' }),
+      api.lire('accessoires', { order: 'name' }),
+      api.lire('transactions', { select: 'accessoire_id', accessoire_id: 'not.is.null' }),
     ]);
   } catch (err) {
     return setHtml(box, html`<h2>Accessoires</h2><p class="muted">${err.message}</p>`);
   }
   const count = id => used.filter(u => u.accessoire_id === id).length;
   setHtml(box, html`
-    <div class="panel-head"><h2>Accessoires</h2><button type="button" class="btn btn-sm" data-acc-new>+ Nouvel accessoire</button></div>
+    <div class="panel-tete"><h2>Accessoires</h2><button type="button" class="btn btn-petit" data-acc-new>+ Nouvel accessoire</button></div>
     <p class="muted small" style="margin: 0">Articles qui ne sont pas des cartes, à choisir dans une vente ou un achat.</p>
     ${items.length ? html`<div class="acc-grid">${items.map(a => html`
       <button type="button" class="acc" data-acc-edit="${a.id}">
@@ -282,27 +282,27 @@ export async function renderAccessoires(panel) {
 
   const edit = a => {
     let image = a?.image || '';
-    const m = openModal({
-      title: a ? 'Modifier l’accessoire' : 'Nouvel accessoire',
-      width: 560,
-      body: html`<label class="field">Nom<input class="input" id="acc-name" value="${a?.name || ''}"></label><div id="acc-photo"></div>`,
+    const m = ouvrirModale({
+      titre: a ? 'Modifier l’accessoire' : 'Nouvel accessoire',
+      largeur: 560,
+      corps: html`<label class="field">Nom<input class="input" id="acc-name" value="${a?.name || ''}"></label><div id="acc-photo"></div>`,
       actions: [
-        ...(a ? [{ label: 'Supprimer', danger: true, run: async () => {
-          if (count(a.id)) { toastError(new Error('Utilisé dans des ventes ou achats : impossible de le supprimer')); return false; }
-          if (!await confirmModal({ title: `Supprimer « ${a.name} » ?`, message: 'Cette suppression est définitive.', confirmLabel: 'Supprimer', danger: true })) return false;
-          try { await api.remove('accessoires', { id: `eq.${a.id}` }); store.forget('accessoires'); renderAccessoires(panel); } catch (err) { toastError(err); return false; }
+        ...(a ? [{ libelle: 'Supprimer', danger: true, run: async () => {
+          if (count(a.id)) { notifierErreur(new Error('Utilisé dans des ventes ou achats : impossible de le supprimer')); return false; }
+          if (!await confirmer({ titre: `Supprimer « ${a.name} » ?`, message: 'Cette suppression est définitive.', libelle: 'Supprimer', danger: true })) return false;
+          try { await api.supprimer('accessoires', { id: `eq.${a.id}` }); store.forget('accessoires'); renderAccessoires(panel); } catch (err) { notifierErreur(err); return false; }
         } }] : []),
-        { label: 'Annuler' },
-        { label: 'Enregistrer', primary: true, run: async el => {
+        { libelle: 'Annuler' },
+        { libelle: 'Enregistrer', principal: true, run: async el => {
           const name = el.querySelector('#acc-name').value.trim();
-          if (!name) { toastError(new Error('Le nom est obligatoire')); return false; }
+          if (!name) { notifierErreur(new Error('Le nom est obligatoire')); return false; }
           try {
-            if (a) await api.update('accessoires', { id: `eq.${a.id}` }, { name, image: image || null });
-            else await api.insert('accessoires', { name, image: image || null });
+            if (a) await api.modifier('accessoires', { id: `eq.${a.id}` }, { name, image: image || null });
+            else await api.ajouter('accessoires', { name, image: image || null });
             store.forget('accessoires');
-            toast('Accessoire enregistré');
+            notifier('Accessoire enregistré');
             renderAccessoires(panel);
-          } catch (err) { toastError(err); return false; }
+          } catch (err) { notifierErreur(err); return false; }
         } },
       ],
     });
@@ -320,9 +320,9 @@ export async function renderSeries(panel) {
   let series = [], prefs = [], counts = [];
   try {
     [series, prefs, counts] = await Promise.all([
-      api.list('series', { order: 'name' }),
-      api.list('set_prefs', { kind: 'eq.serie' }),
-      api.list('set_list', { select: 'serie_id,release_date' }),
+      api.lire('series', { order: 'name' }),
+      api.lire('set_prefs', { kind: 'eq.serie' }),
+      api.lire('set_list', { select: 'serie_id,release_date' }),
     ]);
   } catch (err) {
     return setHtml(box, html`<h2>Blocs</h2><p class="muted">${err.message}</p>`);
@@ -335,16 +335,16 @@ export async function renderSeries(panel) {
   const custom = series.some(s => pref(s.id).sort_order != null);
 
   setHtml(box, html`
-    <div class="panel-head"><h2>Blocs</h2><span class="muted small">Créés par le catalogue · tu choisis la couleur (reprise par les extensions qui n’en ont pas), la visibilité et l’ordre</span></div>
+    <div class="panel-tete"><h2>Blocs</h2><span class="muted small">Créés par le catalogue · tu choisis la couleur (reprise par les extensions qui n’en ont pas), la visibilité et l’ordre</span></div>
     <div class="series-list">${series.map((s, i) => html`
       <div class="serie-row">
         <input class="input input-color" type="color" data-serie-color="${s.id}" value="${pref(s.id).color || '#8C95A8'}" aria-label="Couleur de ${s.name}">
         <span class="grow"><strong>${s.name}</strong> <span class="muted small">${nbSets(s.id)} extension(s)</span></span>
         <label class="check-inline small"><input type="checkbox" data-serie-visible="${s.id}" ${pref(s.id).hidden ? '' : 'checked'}> Visible</label>
-        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-serie-move="${i}:-1" aria-label="Monter ${s.name}" ${i === 0 ? 'disabled' : ''}>↑</button>
-        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-serie-move="${i}:1" aria-label="Descendre ${s.name}" ${i === series.length - 1 ? 'disabled' : ''}>↓</button>
+        <button type="button" class="btn btn-fantome btn-icone btn-petit" data-serie-move="${i}:-1" aria-label="Monter ${s.name}" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button type="button" class="btn btn-fantome btn-icone btn-petit" data-serie-move="${i}:1" aria-label="Descendre ${s.name}" ${i === series.length - 1 ? 'disabled' : ''}>↓</button>
       </div>`)}</div>
-    ${custom ? html`<div><button type="button" class="btn btn-sm btn-ghost" data-serie-reset>Revenir à l’ordre par date</button></div>` : ''}`);
+    ${custom ? html`<div><button type="button" class="btn btn-petit btn-fantome" data-serie-reset>Revenir à l’ordre par date</button></div>` : ''}`);
 
   const row = (id, patch) => {
     const cur = pref(id);
@@ -353,18 +353,18 @@ export async function renderSeries(panel) {
   const savePref = async (id, patch) => {
     try {
       const r = row(id, patch);
-      await api.upsert('set_prefs', r, 'kind,target_id');
+      await api.enregistrer('set_prefs', r, 'kind,target_id');
       const i = prefs.findIndex(p => p.target_id === id);
       if (i >= 0) prefs[i] = r; else prefs.push(r);
-    } catch (err) { toastError(err); }
+    } catch (err) { notifierErreur(err); }
   };
   // l'ordre complet est enregistré d'un coup
   const saveOrder = async list => {
     try {
-      await api.upsert('set_prefs', list.map((s, i) => row(s.id, { sort_order: i + 1 })), 'kind,target_id');
+      await api.enregistrer('set_prefs', list.map((s, i) => row(s.id, { sort_order: i + 1 })), 'kind,target_id');
       forgetSets();
       renderSeries(panel);
-    } catch (err) { toastError(err); }
+    } catch (err) { notifierErreur(err); }
   };
   on(box, 'change', '[data-serie-color]', (_, inp) => savePref(inp.dataset.serieColor, { color: inp.value }));
   on(box, 'change', '[data-serie-visible]', (_, c) => savePref(c.dataset.serieVisible, { hidden: !c.checked }));
@@ -376,9 +376,9 @@ export async function renderSeries(panel) {
   });
   on(box, 'click', '[data-serie-reset]', async () => {
     try {
-      await api.upsert('set_prefs', series.map(s => row(s.id, { sort_order: null })), 'kind,target_id');
+      await api.enregistrer('set_prefs', series.map(s => row(s.id, { sort_order: null })), 'kind,target_id');
       forgetSets();
       renderSeries(panel);
-    } catch (err) { toastError(err); }
+    } catch (err) { notifierErreur(err); }
   });
 }

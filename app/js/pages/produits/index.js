@@ -1,9 +1,9 @@
 import { api } from '../../api.js';
 import { imageUrl } from '../../nas.js';
-import { html, setHtml, on, reloadPage, errorHtml } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
-import { openModal, confirmModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on, rechargerPage, etatErreur } from '/_shared/ui/dom.js';
+import { icone } from '../../ui/icones.js';
+import { ouvrirModale, confirmer } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { dropzone } from '../../ui/upload.js';
 import { fmtDate, today, norm } from '../../shared/sales.js';
 import { setOptions, setOptionsHtml } from '../../shared/sets.js';
@@ -32,24 +32,24 @@ export default {
 
   async render(main) {
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div>
           <h1>Produits</h1><p id="sub">Boosters, ETB, coffrets et decks</p>
-          <nav class="segmented" aria-label="Affichage" style="margin-top: 12px">
+          <nav class="segmente" aria-label="Affichage" style="margin-top: 12px">
             <button type="button" data-view="list" aria-pressed="${state.view === 'list'}">Produits</button>
             <button type="button" data-view="stats" aria-pressed="${state.view === 'stats'}">Statistiques</button>
           </nav>
         </div>
         <div class="page-actions">
           <button type="button" class="btn" data-fill>Compléter automatiquement</button>
-          <button type="button" class="btn btn-primary" data-new>${icon('plus')}Ajouter un produit</button>
+          <button type="button" class="btn btn-principal" data-new>${icone('plus')}Ajouter un produit</button>
         </div>
       </header>
       <div class="chips" id="types" role="group" aria-label="Type"></div>
       <div class="toolbar" id="tools">
-        <label class="search grow">${icon('search')}<input type="search" id="q" placeholder="Rechercher un produit ou une extension" value="${state.q}" aria-label="Rechercher un produit"></label>
-        <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
-        <div class="segmented" role="group" aria-label="Obtenu">
+        <label class="recherche grow">${icone('recherche')}<input type="search" id="q" placeholder="Rechercher un produit ou une extension" value="${state.q}" aria-label="Rechercher un produit"></label>
+        <select class="input select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
+        <div class="segmente" role="group" aria-label="Obtenu">
           ${[['', 'Tous'], ['yes', 'Obtenus'], ['no', 'À obtenir']].map(([v, l]) => html`<button type="button" data-got="${v}" aria-pressed="${state.got === v}">${l}</button>`)}
         </div>
       </div>
@@ -59,9 +59,9 @@ export default {
 
     let items = [];
     try {
-      items = await api.list('produit_list', { order: 'release_date.desc.nullslast,set_id,sort_order.asc.nullslast,created_at' });
+      items = await api.lire('produit_list', { order: 'release_date.desc.nullslast,set_id,sort_order.asc.nullslast,created_at' });
     } catch (err) {
-      return setHtml($('#list'), errorHtml('Impossible de charger les produits', err));
+      return setHtml($('#list'), etatErreur('Impossible de charger les produits', err, 'data-recharger'));
     }
     const got = items.filter(p => p.obtained).length;
     setHtml($('#sub'), `Boosters, ETB, coffrets et decks · ${items.length} produit${items.length > 1 ? 's' : ''}, ${got} obtenu${got > 1 ? 's' : ''}`);
@@ -83,7 +83,7 @@ export default {
       if (sort.cmp) {
         return setHtml($('#list'), shown.length
           ? html`<div class="product-grid">${[...shown].sort(sort.cmp).map(p => productHtml(p, true))}</div>`
-          : html`<div class="empty"><h2>Aucun produit${state.type || state.got || q ? ' pour ces filtres' : ''}</h2></div>`);
+          : html`<div class="vide-etat"><h2>Aucun produit${state.type || state.got || q ? ' pour ces filtres' : ''}</h2></div>`);
       }
       const groups = [];
       for (const p of state.sort === 'old' ? [...shown].reverse() : shown) {
@@ -95,12 +95,12 @@ export default {
         <div class="serie-head"><h2>${g.id ? html`<a href="#/extensions/${encodeURIComponent(g.id)}">${g.name}</a>` : g.name}</h2>
           <span class="muted small">${g.items.filter(p => p.obtained).length} / ${g.items.length} obtenus</span></div>
         <div class="product-grid">${g.items.map(p => productHtml(p))}</div>`)}`
-        : html`<div class="empty"><h2>Aucun produit${state.type || state.got || q ? ' pour ces filtres' : ''}</h2></div>`);
+        : html`<div class="vide-etat"><h2>Aucun produit${state.type || state.got || q ? ' pour ces filtres' : ''}</h2></div>`);
     }
 
     // Où j'en suis : par type, par bloc, et ce que j'ai obtenu chaque année
     function renderStats() {
-      if (!items.length) return setHtml($('#list'), html`<div class="empty"><h2>Aucun produit pour l’instant</h2></div>`);
+      if (!items.length) return setHtml($('#list'), html`<div class="vide-etat"><h2>Aucun produit pour l’instant</h2></div>`);
       const count = key => {
         const m = new Map();
         for (const p of items) {
@@ -134,14 +134,14 @@ export default {
           <div class="kpi"><span class="muted small">À obtenir</span><strong>${items.length - got.length}</strong></div>
           <div class="kpi"><span class="muted small">Extensions complètes</span><strong>${sets}</strong><span class="muted small">tous leurs produits obtenus</span></div>
         </div>
-        <div class="grid-auto" style="--min: 320px">
-          <section class="panel"><div class="panel-head"><h2>Par type</h2><span class="muted small">obtenus / total</span></div>${bars(types)}</section>
-          <section class="panel"><div class="panel-head"><h2>Obtenus par année</h2></div>
+        <div class="grille-auto" style="--min: 320px">
+          <section class="panel"><div class="panel-tete"><h2>Par type</h2><span class="muted small">obtenus / total</span></div>${bars(types)}</section>
+          <section class="panel"><div class="panel-tete"><h2>Obtenus par année</h2></div>
             <div class="bars">${years.map(([y, n]) => html`
               <div class="bar-row"><span class="bar-label">${y}</span><span class="bar"><span class="bar-fill bar-achat" style="--w: ${Math.round(n / maxYear * 100)}%"></span></span><span class="bar-value">${n}</span></div>`)}</div>
           </section>
         </div>
-        <section class="panel"><div class="panel-head"><h2>Par bloc</h2><span class="muted small">obtenus / total</span></div>${bars(blocs)}</section>
+        <section class="panel"><div class="panel-tete"><h2>Par bloc</h2><span class="muted small">obtenus / total</span></div>${bars(blocs)}</section>
       </div>`);
     }
 
@@ -150,7 +150,7 @@ export default {
         <article class="product ${p.obtained ? 'is-got' : ''}">
           <button type="button" class="product-img" data-edit="${p.id}" aria-label="Modifier ${p.description || typeLabel(p.type)}">
             ${p.image ? html`<img src="${imageUrl(p.image, 'thumb')}" alt="" loading="lazy" data-hide-on-error>`
-              : p.set_logo ? html`<img class="product-logo" src="${p.set_logo}" alt="" loading="lazy" data-hide-on-error>` : html`<span>${icon('produits', 28)}</span>`}
+              : p.set_logo ? html`<img class="product-logo" src="${p.set_logo}" alt="" loading="lazy" data-hide-on-error>` : html`<span>${icone('produits', 28)}</span>`}
           </button>
           <span class="muted small">${typeLabel(p.type)}${withSet && p.set_name ? ` · ${p.set_name}` : ''}</span>
           <strong>${p.description || typeLabel(p.type)}</strong>
@@ -173,10 +173,10 @@ export default {
       const p = items.find(x => x.id === c.dataset.gotId);
       const patch = { obtained: c.checked, obtained_on: c.checked ? (p.obtained_on || today()) : null };
       try {
-        await api.update('produits', { id: `eq.${p.id}` }, patch);
+        await api.modifier('produits', { id: `eq.${p.id}` }, patch);
         Object.assign(p, patch);
         render();
-      } catch (err) { toastError(err); c.checked = !c.checked; }
+      } catch (err) { notifierErreur(err); c.checked = !c.checked; }
     });
     on(main, 'click', '[data-view]', (_, b) => {
       state.view = b.dataset.view;
@@ -194,10 +194,10 @@ export default {
 async function fillProducts() {
   const sets = await setOptions().catch(() => []);
   const blocs = [...new Map(sets.filter(s => s.serie_id).map(s => [s.serie_id, s.serie_name])).entries()];
-  openModal({
-    title: 'Compléter automatiquement',
-    width: 560,
-    body: html`
+  ouvrirModale({
+    titre: 'Compléter automatiquement',
+    largeur: 560,
+    corps: html`
       <p class="muted" style="margin: 0">Ajoute, pour chaque extension déjà sortie, les produits choisis qui n’existent pas encore, à cocher ensuite quand tu les as. Les sous-extensions (galeries…) sont ignorées.</p>
       <div class="field"><span>Produits</span>
         <div class="chips">${TYPES.filter(t => t.id !== 'autre').map(t => html`
@@ -205,20 +205,20 @@ async function fillProducts() {
       </div>
       <div class="form-row">
         <label class="field grow">Extensions
-          <select class="select" id="fill-bloc"><option value="">Tous les blocs</option>${blocs.map(([id, name]) => html`<option value="${id}">${name}</option>`)}</select>
+          <select class="input" id="fill-bloc"><option value="">Tous les blocs</option>${blocs.map(([id, name]) => html`<option value="${id}">${name}</option>`)}</select>
         </label>
         <label class="field">Sorties depuis<input class="input" type="date" id="fill-since"></label>
       </div>`,
     actions: [
-      { label: 'Annuler' },
-      { label: 'Compléter', primary: true, run: async el => {
+      { libelle: 'Annuler' },
+      { libelle: 'Compléter', principal: true, run: async el => {
         const types = [...el.querySelectorAll('[data-fill-type]:checked')].map(c => c.dataset.fillType);
-        if (!types.length) { toastError(new Error('Choisis au moins un type de produit')); return false; }
+        if (!types.length) { notifierErreur(new Error('Choisis au moins un type de produit')); return false; }
         try {
-          const n = await api.rpc('fill_produits', { types, serie: el.querySelector('#fill-bloc').value || null, depuis: el.querySelector('#fill-since').value || null });
-          toast(n ? `${n} produit${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''}` : 'Rien à ajouter : tout y est déjà');
-          if (n) reloadPage();
-        } catch (err) { toastError(err); return false; }
+          const n = await api.appeler('fill_produits', { types, serie: el.querySelector('#fill-bloc').value || null, depuis: el.querySelector('#fill-since').value || null });
+          notifier(n ? `${n} produit${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''}` : 'Rien à ajouter : tout y est déjà');
+          if (n) rechargerPage();
+        } catch (err) { notifierErreur(err); return false; }
       } },
     ],
   });
@@ -230,10 +230,10 @@ async function editProduct(p, type = '') {
     type: p?.type || type || 'booster', description: p?.description || '', image: p?.image || '',
     setId: p?.set_id || '', obtained: p?.obtained ?? false, obtained_on: p?.obtained_on || '',
   };
-  const m = openModal({
-    title: p ? 'Modifier le produit' : 'Ajouter un produit',
-    width: 720,
-    body: html`
+  const m = ouvrirModale({
+    titre: p ? 'Modifier le produit' : 'Ajouter un produit',
+    largeur: 720,
+    corps: html`
       <div class="manual-grid">
         <div class="form-grid">
           <div id="pf-photo"></div>
@@ -243,9 +243,9 @@ async function editProduct(p, type = '') {
           </label>
         </div>
         <div class="form-grid">
-          <label class="field">Type<select class="select" id="pf-type">${TYPES.map(t => html`<option value="${t.id}" ${t.id === st.type ? 'selected' : ''}>${t.label}</option>`)}</select></label>
+          <label class="field">Type<select class="input" id="pf-type">${TYPES.map(t => html`<option value="${t.id}" ${t.id === st.type ? 'selected' : ''}>${t.label}</option>`)}</select></label>
           <label class="field">Description<input class="input" id="pf-desc" value="${st.description}" placeholder="ETB Nuit Noire, booster illustration 2…"></label>
-          <label class="field">Extension (facultatif)<select class="select" id="pf-set">${setOptionsHtml(sets, st.setId, { empty: 'Aucune' })}</select></label>
+          <label class="field">Extension (facultatif)<select class="input" id="pf-set">${setOptionsHtml(sets, st.setId, { empty: 'Aucune' })}</select></label>
           <div class="form-row">
             <label class="check-inline"><input type="checkbox" id="pf-got" ${st.obtained ? 'checked' : ''}> Obtenu</label>
             <label class="field">Le<input class="input" type="date" id="pf-date" value="${st.obtained_on}"></label>
@@ -253,12 +253,12 @@ async function editProduct(p, type = '') {
         </div>
       </div>`,
     actions: [
-      ...(p ? [{ label: 'Supprimer', danger: true, run: async () => {
-        if (!await confirmModal({ title: 'Supprimer ce produit ?', message: p.description || typeLabel(p.type), confirmLabel: 'Supprimer', danger: true })) return false;
-        try { await api.remove('produits', { id: `eq.${p.id}` }); toast('Produit supprimé'); reloadPage(); } catch (err) { toastError(err); return false; }
+      ...(p ? [{ libelle: 'Supprimer', danger: true, run: async () => {
+        if (!await confirmer({ titre: 'Supprimer ce produit ?', message: p.description || typeLabel(p.type), libelle: 'Supprimer', danger: true })) return false;
+        try { await api.supprimer('produits', { id: `eq.${p.id}` }); notifier('Produit supprimé'); rechargerPage(); } catch (err) { notifierErreur(err); return false; }
       } }] : []),
-      { label: 'Annuler' },
-      { label: 'Enregistrer', primary: true, run: async el => {
+      { libelle: 'Annuler' },
+      { libelle: 'Enregistrer', principal: true, run: async el => {
         const obtained = el.querySelector('#pf-got').checked;
         const row = {
           type: el.querySelector('#pf-type').value,
@@ -269,11 +269,11 @@ async function editProduct(p, type = '') {
           obtained_on: obtained ? (el.querySelector('#pf-date').value || today()) : null,
         };
         try {
-          if (p) await api.update('produits', { id: `eq.${p.id}` }, row);
-          else await api.insert('produits', row);
-          toast('Produit enregistré');
-          reloadPage();
-        } catch (err) { toastError(err); return false; }
+          if (p) await api.modifier('produits', { id: `eq.${p.id}` }, row);
+          else await api.ajouter('produits', row);
+          notifier('Produit enregistré');
+          rechargerPage();
+        } catch (err) { notifierErreur(err); return false; }
       } },
     ],
   });

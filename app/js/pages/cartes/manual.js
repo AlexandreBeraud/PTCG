@@ -1,7 +1,7 @@
 import { api } from '../../api.js';
-import { html, setHtml, on } from '../../ui/dom.js';
-import { openModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on } from '/_shared/ui/dom.js';
+import { ouvrirModale } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { dropzone } from '../../ui/upload.js';
 import { VARIANTS, norm, spriteHtml, formBadge } from '../../shared/sales.js';
 import { CATEGORIES } from '../../shared/cards.js';
@@ -12,7 +12,7 @@ import { setOptions, setOptionsHtml, forgetSets } from '../../shared/sets.js';
 async function guessPokemon(cardName) {
   const words = norm(cardName).split(/[\s'’-]+/).filter(w => w.length >= 3).sort((a, b) => b.length - a.length);
   if (!words.length) return null;
-  const rows = await api.list('pokedex', {
+  const rows = await api.lire('pokedex', {
     select: 'key,name_fr,dex,sprite,pokeapi_id,form_badge,form_color,is_default',
     search: `ilike.*${words[0]}*`, limit: 30,
   }).catch(() => []);
@@ -38,16 +38,16 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
     choosing: false,
   };
 
-  const m = openModal({
-    title: card ? 'Modifier la carte' : 'Carte absente de TCGdex',
-    width: 760,
-    body: html`
+  const m = ouvrirModale({
+    titre: card ? 'Modifier la carte' : 'Carte absente de TCGdex',
+    largeur: 760,
+    corps: html`
       ${card ? '' : html`<p class="muted" style="margin: -10px 0 0">Pour une promo, une carte japonaise ou une vieille carte que TCGdex n’a pas. Si elle y apparaît plus tard, tu pourras remplacer ta fiche par la sienne depuis la fiche carte, ventes comprises.</p>`}
       <div class="manual-grid">
         <div id="mc-photo"></div>
         <div class="form-grid" id="mc"></div>
       </div>`,
-    actions: [{ label: 'Annuler' }, { label: card ? 'Enregistrer' : 'Créer la carte', primary: true, run: save }],
+    actions: [{ libelle: 'Annuler' }, { libelle: card ? 'Enregistrer' : 'Créer la carte', principal: true, run: save }],
   });
   const root = m.el.querySelector('#mc');
 
@@ -61,7 +61,7 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
       <label class="field">Nom de la carte<input class="input" data-f="name" value="${st.name}" required></label>
       <div class="form-row">
         <label class="field grow">Extension
-          <select class="select" data-f="set_id">
+          <select class="input" data-f="set_id">
             <option value="">Choisir…</option>
             <option value="__new" ${st.set_id === '__new' ? 'selected' : ''}>+ Nouvelle extension…</option>
             ${setOptionsHtml(sets, st.set_id, { label: s => `${s.name}${s.source === 'manual' ? ' (à la main)' : ''}` })}
@@ -72,7 +72,7 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
       </div>
       <div class="form-row">
         <label class="field">Catégorie
-          <select class="select" data-f="category">${CATEGORIES.map(c => html`<option value="${c.id}" ${c.id === st.category ? 'selected' : ''}>${c.label}</option>`)}</select>
+          <select class="input" data-f="category">${CATEGORIES.map(c => html`<option value="${c.id}" ${c.id === st.category ? 'selected' : ''}>${c.label}</option>`)}</select>
         </label>
         <label class="field grow">Rareté<input class="input" data-f="rarity" value="${st.rarity}" placeholder="Promo, Holo rare…"></label>
       </div>
@@ -91,14 +91,14 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
     setHtml(box, html`
         <div class="field"><span>Fiche Pokémon${st.pokemonAuto && st.pokemon ? ' trouvée d’après le nom' : ''}</span>
           ${st.choosing ? html`
-            <label class="search"><input type="search" data-poke-q placeholder="Chercher un Pokémon ou une forme" aria-label="Chercher un Pokémon"></label>
+            <label class="recherche"><input type="search" data-poke-q placeholder="Chercher un Pokémon ou une forme" aria-label="Chercher un Pokémon"></label>
             <div class="picker-results" id="mc-poke"></div>`
           : html`
             <div class="picked picked-sm">
               ${st.pokemon ? html`<span class="tx-media">${spriteHtml(st.pokemon, 'poke-img poke-img-sm')}</span><strong>${st.pokemon.name_fr} ${formBadge(st.pokemon)}</strong>` : html`<span class="muted">Aucune pour l’instant</span>`}
               <span class="grow"></span>
-              <button type="button" class="btn btn-sm" data-choose>Changer</button>
-              ${st.pokemon ? html`<button type="button" class="btn btn-sm btn-ghost" data-nopoke>Aucune</button>` : ''}
+              <button type="button" class="btn btn-petit" data-choose>Changer</button>
+              ${st.pokemon ? html`<button type="button" class="btn btn-petit btn-fantome" data-nopoke>Aucune</button>` : ''}
             </div>`}
         </div>`);
     if (st.choosing) box.querySelector('[data-poke-q]').focus();
@@ -137,7 +137,7 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
     const mine = ++pokeSeq;
     const box = root.querySelector('#mc-poke');
     if (norm(q).length < 2) return setHtml(box, '');
-    const rows = await api.list('pokedex', {
+    const rows = await api.lire('pokedex', {
       select: 'key,name_fr,dex,sprite,pokeapi_id,form_badge,form_color', search: `ilike.*${norm(q)}*`, order: 'sort_order', limit: 20,
     }).catch(() => []);
     if (mine !== pokeSeq) return;
@@ -152,7 +152,7 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
     try {
       if (!st.name.trim()) throw new Error('Le nom de la carte est obligatoire');
       if (!st.set_id) throw new Error('Choisis l’extension');
-      const id = await api.rpc('save_manual_card', {
+      const id = await api.appeler('save_manual_card', {
         carte: {
           id: card?.id || null,
           set_id: st.set_id === '__new' ? null : st.set_id,
@@ -163,10 +163,10 @@ export async function openManualCard({ card = null, name = '', onSaved } = {}) {
         },
       });
       if (st.set_id === '__new') forgetSets();
-      toast(card ? 'Carte enregistrée' : 'Carte créée');
+      notifier(card ? 'Carte enregistrée' : 'Carte créée');
       onSaved?.(id);
     } catch (err) {
-      toastError(err);
+      notifierErreur(err);
       return false;
     }
   }

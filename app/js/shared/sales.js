@@ -1,6 +1,6 @@
 import { config } from '../../config.js';
 import { imageUrl, rawUrl } from '../nas.js';
-import { html, esc } from '../ui/dom.js';
+import { html, esc } from '/_shared/ui/dom.js';
 
 export const CONDITIONS = [
   { id: 'Mint', short: 'M', tone: 'info' },
@@ -59,12 +59,12 @@ export const conditionShort = id => COND[id]?.short || id || '—';
 
 export function conditionTag(id) {
   if (!id) return html`<span class="muted">—</span>`;
-  return html`<span class="tag tag-${COND[id]?.tone || ''}" title="${id}">${COND[id]?.short || id}</span>`;
+  return html`<span class="badge badge-${COND[id]?.tone || ''}" title="${id}">${COND[id]?.short || id}</span>`;
 }
 
 export function venteStatusTag(id) {
   const s = VST[id] || VENTE_STATUS[0];
-  return html`<span class="tag tag-${s.tone}">${s.label}</span>`;
+  return html`<span class="badge badge-${s.tone}">${s.label}</span>`;
 }
 
 export function commandeStatus(direction, id) {
@@ -72,7 +72,7 @@ export function commandeStatus(direction, id) {
 }
 export function commandeStatusTag(direction, id) {
   const s = commandeStatus(direction, id);
-  return html`<span class="tag tag-${s.tone}">${s.label}</span>`;
+  return html`<span class="badge badge-${s.tone}">${s.label}</span>`;
 }
 
 // Prix affiché d'une ligne : rien tant qu'il n'est pas fixé

@@ -1,7 +1,8 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, eur, errorHtml, autoMore } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
-import { toastError } from '../../ui/toast.js';
+import { html, setHtml, on, etatErreur, chargerSuite } from '/_shared/ui/dom.js';
+import { eur } from '../../format.js';
+import { icone } from '../../ui/icones.js';
+import { notifierErreur } from '/_shared/ui/notifications.js';
 import { store } from '../../shared/store.js';
 import {
   CONDITIONS, ITEM_CONDITIONS, LANGS, VENTE_STATUS, COMMANDE_STATUS,
@@ -48,24 +49,24 @@ export default {
       : [{ id: 'all', label: 'Tous' }, ...COMMANDE_STATUS.achat.map(s => ({ id: s.id, label: s.id === 'paye' ? 'Payés' : s.id === 'arrive' ? 'Reçus' : s.label })), { id: 'sans', label: 'Sans commande' }];
 
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div>
           <h1>Ventes et achats</h1>
-          <nav class="segmented" aria-label="Onglets" style="margin-top: 12px">
+          <nav class="segmente" aria-label="Onglets" style="margin-top: 12px">
             <a href="#/ventes" aria-selected="${dir === 'vente'}">Ventes</a>
             <a href="#/achats" aria-selected="${dir === 'achat'}">Achats</a>
           </nav>
         </div>
         <div class="page-actions">
-          <button type="button" class="btn btn-primary" data-new>${icon('plus')}${dir === 'vente' ? 'Nouvelle vente' : 'Nouvel achat'}</button>
+          <button type="button" class="btn btn-principal" data-new>${icone('plus')}${dir === 'vente' ? 'Nouvelle vente' : 'Nouvel achat'}</button>
         </div>
       </header>
       <div class="chips" id="status-chips" role="group" aria-label="Statut"></div>
       <div class="toolbar">
-        <label class="search grow">${icon('search')}<input type="search" id="q" placeholder="Rechercher une carte, une extension, un contact…" value="${f.q || ''}" aria-label="Rechercher"></label>
-        <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(s => html`<option value="${s.id}" ${s.id === f.sort ? 'selected' : ''}>${s.label}</option>`)}</select>
+        <label class="recherche grow">${icone('recherche')}<input type="search" id="q" placeholder="Rechercher une carte, une extension, un contact…" value="${f.q || ''}" aria-label="Rechercher"></label>
+        <select class="input select-auto" id="sort" aria-label="Tri">${SORTS.map(s => html`<option value="${s.id}" ${s.id === f.sort ? 'selected' : ''}>${s.label}</option>`)}</select>
         <button type="button" class="btn" id="more-filters" aria-expanded="${!!f.open}">Filtres<span class="n" id="nb-filters"></span></button>
-        <div class="segmented" role="group" aria-label="Affichage">
+        <div class="segmente" role="group" aria-label="Affichage">
           <button type="button" data-view="list" aria-pressed="${view === 'list'}">Liste</button>
           <button type="button" data-view="grid" aria-pressed="${view === 'grid'}">Grille</button>
         </div>
@@ -81,20 +82,20 @@ export default {
     // ── filtres ──
     async function renderFilters() {
       const [setsList, accounts] = await Promise.all([
-        api.list('transaction_sets', { direction: `eq.${dir}`, order: 'set_release.desc.nullslast,set_name' }).catch(() => []),
+        api.lire('transaction_sets', { direction: `eq.${dir}`, order: 'set_release.desc.nullslast,set_name' }).catch(() => []),
         dir === 'vente' ? store.forAccounts().catch(() => []) : [],
       ]);
       const opt = (val, label, cur) => html`<option value="${val}" ${val === (cur || '') ? 'selected' : ''}>${label}</option>`;
       setHtml($('#filters'), html`
-        <label class="field">État<select class="select" data-filter="condition">${opt('', 'Tous')}${[...CONDITIONS, ...ITEM_CONDITIONS].map(c => opt(c.id, c.id, f.condition))}</select></label>
-        <label class="field">Langue<select class="select" data-filter="lang">${opt('', 'Toutes')}${LANGS.map(l => opt(l.id, l.label, f.lang))}</select></label>
-        <label class="field">Bloc ou extension<select class="select" data-filter="set">${setOptionsHtml(setsList, f.set || '', { empty: 'Toutes', blocs: true, label: s => `${s.set_name} (${s.lignes})` })}</select></label>
-        ${dir === 'vente' ? html`<label class="field">Pour le compte de<select class="select" data-filter="account">${opt('', 'Tout le monde')}${opt('__moi', 'Moi', f.account)}${accounts.map(a => opt(a.name, a.name, f.account))}</select></label>` : ''}
+        <label class="field">État<select class="input" data-filter="condition">${opt('', 'Tous')}${[...CONDITIONS, ...ITEM_CONDITIONS].map(c => opt(c.id, c.id, f.condition))}</select></label>
+        <label class="field">Langue<select class="input" data-filter="lang">${opt('', 'Toutes')}${LANGS.map(l => opt(l.id, l.label, f.lang))}</select></label>
+        <label class="field">Bloc ou extension<select class="input" data-filter="set">${setOptionsHtml(setsList, f.set || '', { empty: 'Toutes', blocs: true, label: s => `${s.set_name} (${s.lignes})` })}</select></label>
+        ${dir === 'vente' ? html`<label class="field">Pour le compte de<select class="input" data-filter="account">${opt('', 'Tout le monde')}${opt('__moi', 'Moi', f.account)}${accounts.map(a => opt(a.name, a.name, f.account))}</select></label>` : ''}
         <label class="field">Du<input class="input" type="date" data-filter="from" value="${f.from || ''}"></label>
         <label class="field">Au<input class="input" type="date" data-filter="to" value="${f.to || ''}"></label>
         <label class="field">Prix min<input class="input" type="number" min="0" step="0.01" data-filter="pmin" value="${f.pmin || ''}"></label>
         <label class="field">Prix max<input class="input" type="number" min="0" step="0.01" data-filter="pmax" value="${f.pmax || ''}"></label>
-        <button type="button" class="btn btn-ghost btn-sm" data-reset>Réinitialiser</button>
+        <button type="button" class="btn btn-fantome btn-petit" data-reset>Réinitialiser</button>
       `);
       updateFilterCount();
     }
@@ -106,7 +107,7 @@ export default {
 
     async function renderChips() {
       let counts = {};
-      try { counts = await api.rpc('transaction_counts', { dir }) || {}; } catch (_) { /* compteurs facultatifs */ }
+      try { counts = await api.appeler('transaction_counts', { dir }) || {}; } catch (_) { /* compteurs facultatifs */ }
       const n = id => id === 'all'
         ? Object.values(counts).reduce((s, c) => s + c.lignes, 0)
         : counts[id]?.lignes || 0;
@@ -152,15 +153,15 @@ export default {
       if (!append && !keep) setHtml(box, html`<p class="muted">Chargement…</p>`);
       try {
         const limit = keep ? Math.max(rows.length, PAGE) : PAGE;
-        const [page] = await Promise.all([api.page('transaction_list', queryParams(), { offset: append ? rows.length : 0, limit }), loadFicheImages()]);
-        rows = append ? rows.concat(page.rows) : page.rows;
+        const [page] = await Promise.all([api.page('transaction_list', queryParams(), { debut: append ? rows.length : 0, taille: limit }), loadFicheImages()]);
+        rows = append ? rows.concat(page.lignes) : page.lignes;
         total = page.total;
         if (!append) selected = new Set([...selected].filter(id => rows.some(r => r.id === id)));
         const y = window.scrollY;
         renderResults();
         if (keep) window.scrollTo(0, y);
       } catch (err) {
-        setHtml(box, errorHtml('Impossible de charger la liste', err));
+        setHtml(box, etatErreur('Impossible de charger la liste', err, 'data-recharger'));
       }
     }
 
@@ -175,7 +176,7 @@ export default {
           <button type="button" class="tx-open" data-open="${t.id}">
             <span class="tx-media">${setSymbolHtml(t)}${thumbHtml(t, { lotImage: lotImage() })}<span class="tx-sprite">${lineSpriteHtml(t)}</span></span>
             <span class="tx-name">
-              <span class="tx-title">${t.title}${t.qty > 1 && t.kind !== 'lot' ? html` <span class="tag">×${t.qty}</span>` : ''} ${formBadge(t)}${t.for_account ? html` <span class="tag tag-owner">Pour ${t.for_account}</span>` : ''}</span>
+              <span class="tx-title">${t.title}${t.qty > 1 && t.kind !== 'lot' ? html` <span class="badge">×${t.qty}</span>` : ''} ${formBadge(t)}${t.for_account ? html` <span class="badge tag-owner">Pour ${t.for_account}</span>` : ''}</span>
               <span class="muted small">${subtitle(t)}</span>
               <span class="muted small mobile-only">${[t.kind === 'carte' ? variantLabel(t.variant) : '', t.condition, t.lang, t.contact].filter(Boolean).join(' · ')}</span>
             </span>
@@ -185,7 +186,7 @@ export default {
           <span class="tx-lang small">${t.lang || '—'}</span>
           <span class="tx-price">${priceText(t, eur)}</span>
           <span class="tx-order small">${t.commande_id ? html`<button type="button" class="link" data-commande="${t.commande_id}">${t.contact || 'Commande'}</button><span class="muted"> · ${fmtDate(t.day)}</span>` : html`<span class="muted">—</span>`}</span>
-          <span class="tx-status">${dir === 'vente' ? venteStatusTag(t.status) : t.commande_id ? commandeStatusTag('achat', t.commande_status) : html`<span class="tag">Sans commande</span>`}</span>
+          <span class="tx-status">${dir === 'vente' ? venteStatusTag(t.status) : t.commande_id ? commandeStatusTag('achat', t.commande_status) : html`<span class="badge">Sans commande</span>`}</span>
         </div>`;
     }
 
@@ -210,7 +211,7 @@ export default {
       const box = $('#results');
       if (!rows.length) {
         const filtered = f.q || f.status !== 'all' || f.condition || f.lang || f.set || f.account || f.from || f.to || f.pmin || f.pmax;
-        setHtml(box, html`<div class="empty">
+        setHtml(box, html`<div class="vide-etat">
           <h2>${filtered ? 'Rien ne correspond à ces filtres' : dir === 'vente' ? 'Aucune vente pour l’instant' : 'Aucun achat pour l’instant'}</h2>
           ${filtered ? html`<button type="button" class="btn" data-reset>Réinitialiser les filtres</button>` : ''}
         </div>`);
@@ -231,7 +232,7 @@ export default {
 
     // la suite se charge toute seule en arrivant en bas
     const moreHtml = () => rows.length < total
-      ? html`<div class="more" data-more><span class="muted small">Chargement de la suite (${total - rows.length} restantes)…</span></div>`
+      ? html`<div class="more" data-suite><span class="muted small">Chargement de la suite (${total - rows.length} restantes)…</span></div>`
       : '';
 
     function renderSelection() {
@@ -240,12 +241,12 @@ export default {
       if (!selected.size) return;
       setHtml(bar, html`
         <strong>${selected.size} sélectionnée${selected.size > 1 ? 's' : ''}</strong>
-        <button type="button" class="btn btn-sm" data-bulk="edit">Modifier en masse</button>
-        <button type="button" class="btn btn-sm" data-bulk="attach">Rattacher à une commande</button>
-        <button type="button" class="btn btn-sm btn-danger" data-bulk="delete">Supprimer</button>
+        <button type="button" class="btn btn-petit" data-bulk="edit">Modifier en masse</button>
+        <button type="button" class="btn btn-petit" data-bulk="attach">Rattacher à une commande</button>
+        <button type="button" class="btn btn-petit btn-danger" data-bulk="delete">Supprimer</button>
         <span class="grow"></span>
-        ${rows.length > selected.size ? html`<button type="button" class="btn btn-sm btn-ghost" data-bulk="all">Tout sélectionner (${rows.length})</button>` : ''}
-        <button type="button" class="btn btn-sm btn-ghost" data-bulk="none">Tout désélectionner</button>
+        ${rows.length > selected.size ? html`<button type="button" class="btn btn-petit btn-fantome" data-bulk="all">Tout sélectionner (${rows.length})</button>` : ''}
+        <button type="button" class="btn btn-petit btn-fantome" data-bulk="none">Tout désélectionner</button>
       `);
     }
 
@@ -286,12 +287,12 @@ export default {
       renderResults();
       try {
         const modes = { ...(settings?.view_modes || {}), [dir]: view };
-        await api.update('settings', { id: 'eq.1' }, { view_modes: modes });
+        await api.modifier('settings', { id: 'eq.1' }, { view_modes: modes });
         settings = { ...settings, view_modes: modes };
         store.forget('settings');
       } catch (_) { /* le choix d'affichage n'est qu'une préférence */ }
     });
-    autoMore(main, () => rows.length < total && load(true));
+    chargerSuite(main, () => rows.length < total && load(true));
     on(main, 'click', '[data-retry]', () => load());
 
     on(main, 'change', '[data-select]', (_, c) => {
@@ -307,19 +308,19 @@ export default {
     on(main, 'click', '[data-open]', async (_, b) => {
       const line = rows.find(r => r.id === b.dataset.open);
       const { openLineForm } = await import('./line-form.js');
-      openLineForm({ direction: dir, line, onSaved: refresh }).catch(toastError);
+      openLineForm({ direction: dir, line, onSaved: refresh }).catch(notifierErreur);
     });
     on(main, 'click', '[data-commande]', async (_, b) => {
       const { openCommande } = await import('../../shared/commande.js');
-      openCommande(b.dataset.commande, { onChanged: refresh }).catch(toastError);
+      openCommande(b.dataset.commande, { onChanged: refresh }).catch(notifierErreur);
     });
     on(main, 'click', '[data-new]', async () => {
       if (dir === 'vente') {
         const { openLineForm } = await import('./line-form.js');
-        openLineForm({ direction: 'vente', onSaved: refresh }).catch(toastError);
+        openLineForm({ direction: 'vente', onSaved: refresh }).catch(notifierErreur);
       } else {
         const { openAchatForm } = await import('./achat-form.js');
-        openAchatForm({ onSaved: refresh }).catch(toastError);
+        openAchatForm({ onSaved: refresh }).catch(notifierErreur);
       }
     });
     on(main, 'click', '[data-bulk]', async (_, b) => {

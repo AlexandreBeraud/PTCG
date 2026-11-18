@@ -1,7 +1,7 @@
 import { api } from '../../api.js';
 import { imageUrl } from '../../nas.js';
-import { html, setHtml, on, errorHtml } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
+import { html, setHtml, on, etatErreur } from '/_shared/ui/dom.js';
+import { icone } from '../../ui/icones.js';
 import { fmtDate, norm } from '../../shared/sales.js';
 
 const state = { q: '', stockOnly: false, showHidden: false, sort: 'date_desc' };
@@ -30,12 +30,12 @@ export default {
     }
 
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div><h1>Extensions</h1><p>Créées et mises à jour automatiquement depuis TCGdex</p></div>
       </header>
       <div class="toolbar">
-        <label class="search grow">${icon('search')}<input type="search" id="q" placeholder="Rechercher une extension" value="${state.q}" aria-label="Rechercher une extension"></label>
-        <select class="select select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
+        <label class="recherche grow">${icone('recherche')}<input type="search" id="q" placeholder="Rechercher une extension" value="${state.q}" aria-label="Rechercher une extension"></label>
+        <select class="input select-auto" id="sort" aria-label="Tri">${SORTS.map(o => html`<option value="${o.id}" ${o.id === state.sort ? 'selected' : ''}>${o.label}</option>`)}</select>
         <label class="check-inline"><input type="checkbox" id="stock" ${state.stockOnly ? 'checked' : ''}> Seulement celles où j’ai du stock</label>
         <label class="check-inline"><input type="checkbox" id="hidden" ${state.showHidden ? 'checked' : ''}> Afficher les masquées</label>
       </div>
@@ -45,12 +45,12 @@ export default {
 
     let sets = [];
     try {
-      sets = await api.list('set_list', {
+      sets = await api.lire('set_list', {
         select: 'id,name,name_en,serie_id,serie_name,symbol,logo,release_date,card_count,card_count_total,cartes,en_stock,vendues,lang,source,color,serie_color,hidden,serie_hidden,sort_order,serie_sort,serie_release',
         order: 'serie_sort.asc.nullslast,serie_release.desc.nullslast,sort_order.asc.nullslast,release_date.desc.nullslast,id',
       });
     } catch (err) {
-      return setHtml($('#list'), errorHtml('Impossible de charger les extensions', err));
+      return setHtml($('#list'), etatErreur('Impossible de charger les extensions', err, 'data-recharger'));
     }
 
     function render() {
@@ -64,7 +64,7 @@ export default {
       if (!sort.group) {
         return setHtml($('#list'), shown.length
           ? html`<div class="set-grid">${[...shown].sort(sort.cmp).map(s => setCard(s, true))}</div>`
-          : html`<div class="empty"><h2>Aucune extension ne correspond</h2></div>`);
+          : html`<div class="vide-etat"><h2>Aucune extension ne correspond</h2></div>`);
       }
       // rangées par bloc, extensions strictement par date de sortie (sans date : à la fin)
       const asc = state.sort === 'date_asc';
@@ -96,7 +96,7 @@ export default {
             </div>
             <div class="set-grid">${g.sets.map(s => setCard(s))}</div>
           </section>`;
-      })}` : html`<div class="empty"><h2>Aucune extension ne correspond</h2></div>`);
+      })}` : html`<div class="vide-etat"><h2>Aucune extension ne correspond</h2></div>`);
     }
 
     function setCard(s, withBloc = false) {
@@ -109,8 +109,8 @@ export default {
             <span class="muted small">${withBloc && s.serie_name ? `${s.serie_name} · ` : ''}${s.id.toUpperCase()} · ${releaseText(s.release_date)}</span>
             <span class="small">
               ${s.card_count_total || s.cartes} cartes
-              ${s.lang === 'en' ? html` <span class="tag tag-warn">EN</span>` : ''}
-              ${s.source === 'manual' ? html` <span class="tag">À la main</span>` : ''}
+              ${s.lang === 'en' ? html` <span class="badge badge-warn">EN</span>` : ''}
+              ${s.source === 'manual' ? html` <span class="badge">À la main</span>` : ''}
               ${Number(s.en_stock) ? html` · <span class="pos">${s.en_stock} en stock</span>` : ''}
               ${state.sort === 'vendues' && Number(s.vendues) ? html` · ${s.vendues} vendues` : ''}
             </span>

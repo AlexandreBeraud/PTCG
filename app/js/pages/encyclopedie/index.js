@@ -1,8 +1,8 @@
 import { api } from '../../api.js';
-import { html, setHtml, on, errorHtml, autoMore } from '../../ui/dom.js';
-import { icon } from '../../ui/icons.js';
-import { openModal, confirmModal } from '../../ui/modal.js';
-import { toast, toastError } from '../../ui/toast.js';
+import { html, setHtml, on, etatErreur, chargerSuite } from '/_shared/ui/dom.js';
+import { icone } from '../../ui/icones.js';
+import { ouvrirModale, confirmer } from '/_shared/ui/modale.js';
+import { notifier, notifierErreur } from '/_shared/ui/notifications.js';
 import { dropzone } from '../../ui/upload.js';
 import { uploadAs } from '../../nas.js';
 import { setSymbolHtml, norm } from '../../shared/sales.js';
@@ -23,17 +23,17 @@ export default {
     if (KINDS.some(k => k.id === params[0])) state.kind = params[0];
 
     setHtml(main, html`
-      <header class="page-header">
+      <header class="page-tete">
         <div>
           <h1>Encyclopédie</h1>
           <p>Personnages, supporters, objets, lieux et énergies, regroupés automatiquement chaque nuit</p>
         </div>
       </header>
-      <nav class="segmented" aria-label="Catégorie">
+      <nav class="segmente" aria-label="Catégorie">
         ${KINDS.map(k => html`<button type="button" data-kind="${k.id}" aria-pressed="${state.kind === k.id}">${k.label} <span class="muted" data-count="${k.id}"></span></button>`)}
       </nav>
       <div class="toolbar">
-        <label class="search grow">${icon('search')}<input type="search" id="q" value="${state.q}" aria-label="Rechercher"></label>
+        <label class="recherche grow">${icone('recherche')}<input type="search" id="q" value="${state.q}" aria-label="Rechercher"></label>
         <label class="check-inline"><input type="checkbox" id="stock" ${state.stock ? 'checked' : ''}> Seulement mon stock</label>
       </div>
       <section id="grid" aria-live="polite"><p class="muted">Chargement…</p></section>
@@ -45,7 +45,7 @@ export default {
     let seq = 0;
 
     // nombre de fiches par onglet
-    Promise.all(KINDS.map(k => api.count('fiches', { kind: `eq.${k.id}` }).then(n => [k.id, n]).catch(() => [k.id, null])))
+    Promise.all(KINDS.map(k => api.compter('fiches', { kind: `eq.${k.id}` }).then(n => [k.id, n]).catch(() => [k.id, null])))
       .then(list => list.forEach(([id, n]) => { const el = main.querySelector(`[data-count="${id}"]`); if (el && n != null) el.textContent = `· ${n}`; }));
 
     const tile = f => html`
@@ -58,10 +58,10 @@ export default {
     function more() {
       const grid = $('#ent-grid');
       if (!grid) return;
-      grid.querySelector('[data-more]')?.remove();
+      grid.querySelector('[data-suite]')?.remove();
       const next = rows.slice(shown, shown + STEP);
       shown += next.length;
-      grid.insertAdjacentHTML('beforeend', String(html`${next.map(tile)}${shown < rows.length ? html`<span data-more></span>` : ''}`));
+      grid.insertAdjacentHTML('beforeend', String(html`${next.map(tile)}${shown < rows.length ? html`<span data-suite></span>` : ''}`));
     }
 
     async function load() {
@@ -72,9 +72,9 @@ export default {
       if (nq) params.search = `like.* ${nq}*`;
       if (state.stock) params.en_stock = 'gt.0';
       try {
-        [rows] = await Promise.all([api.list('fiche_list', params), loadFicheImages()]);
+        [rows] = await Promise.all([api.lire('fiche_list', params), loadFicheImages()]);
       } catch (err) {
-        return setHtml($('#grid'), errorHtml('Impossible de charger l’Encyclopédie', err));
+        return setHtml($('#grid'), etatErreur('Impossible de charger l’Encyclopédie', err, 'data-recharger'));
       }
       if (mine !== seq) return;
       // les énergies de base d'abord, puis par nom
@@ -82,7 +82,7 @@ export default {
       rows.sort((a, b) => base(a) - base(b) || norm(a.name).localeCompare(norm(b.name)));
       shown = 0;
       if (!rows.length) {
-        return setHtml($('#grid'), html`<div class="empty"><h2>${state.stock ? `Aucun ${kind().one} en stock` : `Aucun ${kind().one}`}${state.q ? ` pour « ${state.q} »` : ''}</h2>
+        return setHtml($('#grid'), html`<div class="vide-etat"><h2>${state.stock ? `Aucun ${kind().one} en stock` : `Aucun ${kind().one}`}${state.q ? ` pour « ${state.q} »` : ''}</h2>
           ${!state.q && !state.stock ? html`<p class="muted">Les fiches sont calculées chaque nuit, ou tout de suite depuis les Réglages.</p>` : ''}</div>`);
       }
       setHtml($('#grid'), html`<div class="ent-grid" id="ent-grid"></div>`);
@@ -98,7 +98,7 @@ export default {
       history.replaceState(null, '', `#/encyclopedie/${state.kind}`);
       load();
     });
-    autoMore(main, more);
+    chargerSuite(main, more);
     load();
   },
 };
@@ -112,16 +112,16 @@ async function renderFiche(page, key, editing = false) {
   let f, cards;
   try {
     [f, cards] = await Promise.all([
-      api.one('fiche_list', { key: `eq.${key}` }),
-      api.list('fiche_card_list', { fiche_key: `eq.${key}`, order: 'release_date.desc.nullslast,set_id,number_sort.nullslast,number', limit: 2000 }),
+      api.un('fiche_list', { key: `eq.${key}` }),
+      api.lire('fiche_card_list', { fiche_key: `eq.${key}`, order: 'release_date.desc.nullslast,set_id,number_sort.nullslast,number', limit: 2000 }),
       loadFicheImages(),
     ]);
   } catch (err) {
-    return setHtml(main, errorHtml('Impossible de charger la fiche', err));
+    return setHtml(main, etatErreur('Impossible de charger la fiche', err, 'data-recharger'));
   }
   const kind = kindOf(key) || KINDS[0];
   if (!f) {
-    return setHtml(main, html`<div class="empty"><h2>Cette fiche n’existe plus</h2>
+    return setHtml(main, html`<div class="vide-etat"><h2>Cette fiche n’existe plus</h2>
       <p class="muted">Elle a peut-être été fusionnée ou recalculée.</p><a href="#/encyclopedie/${kind.id}">← ${kind.label}</a></div>`);
   }
   document.title = `${f.name} · PTCG`;
@@ -143,12 +143,12 @@ async function renderFiche(page, key, editing = false) {
       <div class="grow">
         <p class="muted small" style="margin: 0">${kind.one[0].toUpperCase() + kind.one.slice(1)}${f.retouches ? ' · retouchée à la main' : ''}</p>
         <h1 class="card-title">${f.name}</h1>
-        ${names.length > 1 ? html`<div class="chips-static">${names.map(n => html`<span class="tag">${n}</span>`)}</div>` : ''}
+        ${names.length > 1 ? html`<div class="chips-static">${names.map(n => html`<span class="badge">${n}</span>`)}</div>` : ''}
         <div class="row-actions">
           ${editing
-            ? html`<button type="button" class="btn btn-sm btn-primary" data-done>Terminer</button>`
-            : html`<button type="button" class="btn btn-sm btn-ghost" data-edit>Modifier</button>`}
-          <button type="button" class="btn btn-sm btn-ghost" data-image>Changer l’image</button>
+            ? html`<button type="button" class="btn btn-petit btn-principal" data-done>Terminer</button>`
+            : html`<button type="button" class="btn btn-petit btn-fantome" data-edit>Modifier</button>`}
+          <button type="button" class="btn btn-petit btn-fantome" data-image>Changer l’image</button>
         </div>
       </div>
       <div class="kpis kpis-2">
@@ -158,11 +158,11 @@ async function renderFiche(page, key, editing = false) {
     </header>
     ${editing ? html`
       <div class="edit-bar">
-        <button type="button" class="btn btn-sm" data-rename>Renommer</button>
-        <button type="button" class="btn btn-sm" data-merge>Fusionner avec…</button>
-        <button type="button" class="btn btn-sm" data-move>Changer d’onglet</button>
-        <button type="button" class="btn btn-sm" data-add>Ajouter des cartes…</button>
-        ${f.retouches ? html`<button type="button" class="btn btn-sm btn-ghost" data-undo>Annuler mes retouches (${f.retouches})</button>` : ''}
+        <button type="button" class="btn btn-petit" data-rename>Renommer</button>
+        <button type="button" class="btn btn-petit" data-merge>Fusionner avec…</button>
+        <button type="button" class="btn btn-petit" data-move>Changer d’onglet</button>
+        <button type="button" class="btn btn-petit" data-add>Ajouter des cartes…</button>
+        ${f.retouches ? html`<button type="button" class="btn btn-petit btn-fantome" data-undo>Annuler mes retouches (${f.retouches})</button>` : ''}
         <span class="muted small">Gardées au recalcul de la nuit.</span>
       </div>` : ''}
     <section class="${editing ? 'editing' : ''}">
@@ -171,18 +171,18 @@ async function renderFiche(page, key, editing = false) {
           <span class="muted small">${g.first.release_date ? g.first.release_date.slice(0, 4) : ''} · ${g.cards.length} carte${g.cards.length > 1 ? 's' : ''}</span></div>
         <div class="card-grid">${g.cards.map(c => html`
           <div class="card-tile-wrap">${cardTile(c)}${editing ? html`<button type="button" class="card-x" data-out="${c.id}" title="Retirer de la fiche" aria-label="Retirer ${c.name} de la fiche">✕</button>` : ''}</div>`)}</div>`)}`
-      : html`<div class="empty"><h2>Plus aucune carte sur cette fiche</h2></div>`}
+      : html`<div class="vide-etat"><h2>Plus aucune carte sur cette fiche</h2></div>`}
     </section>`);
 
   // une retouche, puis on réaffiche (la fiche peut avoir changé de clé)
   async function retouche(action, args = {}, { stay = true } = {}) {
     try {
-      const next = await api.rpc('fiche_retouche', { action, fiche: key, valeur: null, carte: null, ...args }, { timeout: 60000 });
+      const next = await api.appeler('fiche_retouche', { action, fiche: key, valeur: null, carte: null, ...args }, { delai: 60000 });
       if (next && next !== key) location.hash = `#/encyclopedie/${kindOf(next)?.id || kind.id}/${encodeURIComponent(next)}`;
       else if (stay) renderFiche(page, key, true);
       return true;
     } catch (err) {
-      toastError(err);
+      notifierErreur(err);
       return false;
     }
   }
@@ -192,42 +192,42 @@ async function renderFiche(page, key, editing = false) {
   on(main, 'click', '[data-image]', () => changeImage(f, kind, nasPath, () => renderFiche(page, key, editing)));
   on(main, 'click', '[data-out]', (_, b) => retouche('retirer', { carte: b.dataset.out }));
 
-  on(main, 'click', '[data-rename]', () => openModal({
-    title: `Renommer « ${f.name} »`,
-    width: 460,
-    body: html`<label class="field">Nom<input class="input" id="fi-name" value="${f.name}"></label>
+  on(main, 'click', '[data-rename]', () => ouvrirModale({
+    titre: `Renommer « ${f.name} »`,
+    largeur: 460,
+    corps: html`<label class="field">Nom<input class="input" id="fi-name" value="${f.name}"></label>
       <p class="muted small" style="margin: 0">Vide : le nom calculé revient.</p>`,
     actions: [
-      { label: 'Annuler' },
-      { label: 'Enregistrer', primary: true, run: el => retouche('nom', { valeur: el.querySelector('#fi-name').value.trim() || null }) },
+      { libelle: 'Annuler' },
+      { libelle: 'Enregistrer', principal: true, run: el => retouche('nom', { valeur: el.querySelector('#fi-name').value.trim() || null }) },
     ],
   }));
 
-  on(main, 'click', '[data-move]', () => openModal({
-    title: `Changer « ${f.name} » d’onglet`,
-    width: 460,
-    body: html`<div class="stack">${KINDS.filter(k => k.id !== kind.id).map((k, i) => html`
+  on(main, 'click', '[data-move]', () => ouvrirModale({
+    titre: `Changer « ${f.name} » d’onglet`,
+    largeur: 460,
+    corps: html`<div class="stack">${KINDS.filter(k => k.id !== kind.id).map((k, i) => html`
       <label class="check-inline"><input type="radio" name="fi-kind" value="${k.id}" ${i ? '' : 'checked'}> ${k.label}</label>`)}</div>`,
     actions: [
-      { label: 'Annuler' },
-      { label: 'Déplacer', primary: true, run: el => retouche('onglet', { valeur: el.querySelector('[name="fi-kind"]:checked').value }) },
+      { libelle: 'Annuler' },
+      { libelle: 'Déplacer', principal: true, run: el => retouche('onglet', { valeur: el.querySelector('[name="fi-kind"]:checked').value }) },
     ],
   }));
 
   on(main, 'click', '[data-merge]', () => mergeModal(f, target => retouche('fusion', { valeur: target.key })));
 
   on(main, 'click', '[data-add]', () => {
-    const m = openModal({
-      title: `Ajouter des cartes à « ${f.name} »`,
-      width: 760,
-      body: html`<div data-picker></div>`,
-      onOpen: el => cardPicker(el.querySelector('[data-picker]'), {
+    const m = ouvrirModale({
+      titre: `Ajouter des cartes à « ${f.name} »`,
+      largeur: 760,
+      corps: html`<div data-picker></div>`,
+      aOuverture: el => cardPicker(el.querySelector('[data-picker]'), {
         onPick: async c => {
-          if (cards.some(x => x.id === c.id)) return toast('Cette carte est déjà sur la fiche');
+          if (cards.some(x => x.id === c.id)) return notifier('Cette carte est déjà sur la fiche');
           if (await retouche('ajouter', { carte: c.id }, { stay: false })) {
-            m.close();
+            m.fermer();
             if (page.isConnected) renderFiche(page, key, true);
-            toast(`${c.name} ajoutée`);
+            notifier(`${c.name} ajoutée`);
           }
         },
       }),
@@ -235,13 +235,13 @@ async function renderFiche(page, key, editing = false) {
   });
 
   on(main, 'click', '[data-undo]', async () => {
-    if (!await confirmModal({ title: 'Annuler mes retouches ?', message: 'La fiche redevient telle que calculée automatiquement (nom, onglet, fusions, cartes ajoutées ou retirées).', confirmLabel: 'Annuler les retouches' })) return;
+    if (!await confirmer({ titre: 'Annuler mes retouches ?', message: 'La fiche redevient telle que calculée automatiquement (nom, onglet, fusions, cartes ajoutées ou retirées).', libelle: 'Annuler les retouches' })) return;
     try {
-      const next = await api.rpc('fiche_retouche', { action: 'annuler', fiche: key, valeur: null, carte: null }, { timeout: 60000 });
+      const next = await api.appeler('fiche_retouche', { action: 'annuler', fiche: key, valeur: null, carte: null }, { delai: 60000 });
       if (next && next !== key) location.hash = `#/encyclopedie/${kindOf(next)?.id || kind.id}/${encodeURIComponent(next)}`;
       else renderFiche(page, key, false);
     } catch (err) {
-      toastError(err);
+      notifierErreur(err);
     }
   });
 }
@@ -250,14 +250,14 @@ async function renderFiche(page, key, editing = false) {
 function mergeModal(f, done) {
   let found = [];
   let seq = 0;
-  openModal({
-    title: `Fusionner « ${f.name} » avec…`,
-    width: 620,
-    body: html`
-      <label class="search">${icon('search')}<input type="search" data-merge-q placeholder="Nom de l’autre fiche" aria-label="Nom de l’autre fiche"></label>
+  ouvrirModale({
+    titre: `Fusionner « ${f.name} » avec…`,
+    largeur: 620,
+    corps: html`
+      <label class="recherche">${icone('recherche')}<input type="search" data-merge-q placeholder="Nom de l’autre fiche" aria-label="Nom de l’autre fiche"></label>
       <p class="muted small">Toutes les cartes de « ${f.name} » iront sur la fiche choisie.</p>
       <div data-merge-list class="ent-grid"></div>`,
-    onOpen(el) {
+    aOuverture(el) {
       const input = el.querySelector('[data-merge-q]');
       const list = el.querySelector('[data-merge-list]');
       let timer;
@@ -268,8 +268,8 @@ function mergeModal(f, done) {
           const nq = norm(input.value).replace(/[^a-z0-9]+/g, ' ').trim();
           if (nq.length < 2) { found = []; return setHtml(list, ''); }
           try {
-            found = await api.list('fiche_list', { search: `like.* ${nq}*`, key: `neq.${f.key}`, order: 'cartes.desc', limit: 24, select: 'key,kind,name,cartes,image' });
-          } catch (err) { return toastError(err); }
+            found = await api.lire('fiche_list', { search: `like.* ${nq}*`, key: `neq.${f.key}`, order: 'cartes.desc', limit: 24, select: 'key,kind,name,cartes,image' });
+          } catch (err) { return notifierErreur(err); }
           if (mine !== seq) return;
           setHtml(list, found.length ? html`${found.map((x, i) => html`
             <button type="button" class="ent" data-pick="${i}">${ficheImg(x)}<span class="ent-name">${x.name}</span>
@@ -279,8 +279,8 @@ function mergeModal(f, done) {
       });
       on(list, 'click', '[data-pick]', async (_, b) => {
         const target = found[Number(b.dataset.pick)];
-        if (!await confirmModal({ title: `Fusionner dans « ${target.name} » ?`, message: `« ${f.name} » disparaît, ses cartes vont sur « ${target.name} ». Annulable depuis « ${target.name} ».`, confirmLabel: 'Fusionner' })) return;
-        el.closest('.modal-scrim')?.remove();
+        if (!await confirmer({ titre: `Fusionner dans « ${target.name} » ?`, message: `« ${f.name} » disparaît, ses cartes vont sur « ${target.name} ». Annulable depuis « ${target.name} ».`, libelle: 'Fusionner' })) return;
+        el.querySelector('[data-fermer]').click();
         done(target);
       });
       setTimeout(() => input.focus(), 0);
@@ -291,12 +291,12 @@ function mergeModal(f, done) {
 // L'image est rangée sur le NAS sous le nom de la fiche : Personnages/Cynthia.png
 function changeImage(f, kind, current, done) {
   const base = f.name.replace(/[\\/:*?"<>|]+/g, '').trim();
-  openModal({
-    title: `Image de ${f.name}`,
-    width: 520,
-    body: html`<div data-drop></div>
+  ouvrirModale({
+    titre: `Image de ${f.name}`,
+    largeur: 520,
+    corps: html`<div data-drop></div>
       <p class="muted small">Enregistrée sur le NAS dans <code>${kind.folder}/${base}.png</code>${current ? ` (remplace ${current})` : ''}.</p>`,
-    onOpen: el => dropzone(el.querySelector('[data-drop]'), {
+    aOuverture: el => dropzone(el.querySelector('[data-drop]'), {
       label: 'Glisse une image ici',
       send: async file => {
         const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
@@ -304,12 +304,12 @@ function changeImage(f, kind, current, done) {
         const path = current && current.endsWith(`.${ext}`) ? current : `${kind.folder}/${base}.${ext}`;
         await uploadAs(file, path);
         forgetFicheImages();
-        el.closest('.modal-scrim')?.remove();
-        toast('Image enregistrée');
+        el.querySelector('[data-fermer]').click();
+        notifier('Image enregistrée');
         done();
         return path;
       },
     }),
-    actions: [{ label: 'Fermer' }],
+    actions: [{ libelle: 'Fermer' }],
   });
 }

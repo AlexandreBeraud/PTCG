@@ -1,5 +1,5 @@
 import { listFolder, rawUrl, imageUrl } from '../nas.js';
-import { html } from '../ui/dom.js';
+import { html } from '/_shared/ui/dom.js';
 import { cardImage, spriteHtml } from './sales.js';
 
 // Fiches de l'Encyclopédie : leurs onglets et leurs images, rangées sur le NAS
